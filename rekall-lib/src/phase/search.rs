@@ -57,7 +57,7 @@ pub async fn run(
             config.dataset.dimension,
             config.dataset.metric,
             idx_config,
-        )?;
+        ).await?;
 
         if !backend.index_exists().await? {
             return Err(Error::IndexNotFound {

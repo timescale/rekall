@@ -66,10 +66,11 @@ fn encode_copy_row(buf: &mut Vec<u8>, id: i64, vector: &[f32]) {
     buf.write_i64::<BigEndian>(id).unwrap();
 
     // Field 2: vector (pgvector binary format)
-    // pgvector binary: 2-byte dim + dim * 4-byte floats
-    let vec_len = 2 + vector.len() * 4;
+    // pgvector binary: 2-byte dim + 2-byte unused + dim * 4-byte floats
+    let vec_len = 2 + 2 + vector.len() * 4;
     buf.write_i32::<BigEndian>(vec_len as i32).unwrap();
     buf.write_u16::<BigEndian>(vector.len() as u16).unwrap();
+    buf.write_u16::<BigEndian>(0).unwrap(); // unused, must be 0
     for &val in vector {
         buf.write_f32::<BigEndian>(val).unwrap();
     }
@@ -219,7 +220,7 @@ impl DataLoader for PgConnection {
             .await
             .map_err(Error::Pg)?;
 
-        let row_byte_size = 2 + 4 + 8 + 4 + 2 + self.dimension as usize * 4;
+        let row_byte_size = 2 + 4 + 8 + 4 + 2 + 2 + self.dimension as usize * 4;
         let mut buf = Vec::with_capacity(50_000 * row_byte_size);
         let mut loaded: u64 = 0;
         let start_time = Instant::now();

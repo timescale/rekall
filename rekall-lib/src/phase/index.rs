@@ -44,7 +44,7 @@ pub async fn run(
             config.dataset.dimension,
             config.dataset.metric,
             idx_config,
-        )?;
+        ).await?;
 
         backend.drop_index().await?;
         let result = backend.build_index().await?;

@@ -33,51 +33,14 @@ pub trait IndexBackend: Send + Sync {
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>>;
 }
 
-pub type BackendFactory = Box<
-    dyn Fn(
-            &ConnectionConfig,
-            &str,       // table_name
-            u32,        // dimension
-            Metric,
-            &IndexConfig,
-        ) -> Result<Box<dyn IndexBackend>>
-        + Send
-        + Sync,
->;
-
-pub struct BackendRegistry {
-    factories: HashMap<String, BackendFactory>,
-}
+pub struct BackendRegistry;
 
 impl BackendRegistry {
     pub fn new() -> Self {
-        let mut reg = Self {
-            factories: HashMap::new(),
-        };
-        reg.register(
-            "meerkat",
-            Box::new(|conn, table, dim, metric, idx| {
-                Ok(Box::new(meerkat::MeerkatBackend::new(
-                    conn, table, dim, metric, idx,
-                )?))
-            }),
-        );
-        reg.register(
-            "pgvector-hnsw",
-            Box::new(|conn, table, dim, metric, idx| {
-                Ok(Box::new(pgvector_hnsw::PgvectorHnswBackend::new(
-                    conn, table, dim, metric, idx,
-                )?))
-            }),
-        );
-        reg
+        Self
     }
 
-    pub fn register(&mut self, type_name: &str, factory: BackendFactory) {
-        self.factories.insert(type_name.to_string(), factory);
-    }
-
-    pub fn create(
+    pub async fn create(
         &self,
         conn: &ConnectionConfig,
         table: &str,
@@ -85,12 +48,21 @@ impl BackendRegistry {
         metric: Metric,
         index_config: &IndexConfig,
     ) -> Result<Box<dyn IndexBackend>> {
-        let factory = self.factories.get(&index_config.index_type).ok_or_else(|| {
-            Error::UnknownBackend {
-                backend_type: index_config.index_type.clone(),
-            }
-        })?;
-        factory(conn, table, dimension, metric, index_config)
+        match index_config.index_type.as_str() {
+            "meerkat" => Ok(Box::new(
+                meerkat::MeerkatBackend::create(conn, table, dimension, metric, index_config)
+                    .await?,
+            )),
+            "pgvector-hnsw" => Ok(Box::new(
+                pgvector_hnsw::PgvectorHnswBackend::create(
+                    conn, table, dimension, metric, index_config,
+                )
+                .await?,
+            )),
+            other => Err(Error::UnknownBackend {
+                backend_type: other.to_string(),
+            }),
+        }
     }
 }
 

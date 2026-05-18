@@ -3,6 +3,7 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use tokio_postgres::Client;
 use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
@@ -34,12 +35,13 @@ struct MeerkatParams {
 
 pub struct MeerkatBackend {
     pg: PgConnection,
+    client: Client,
     name: String,
     params: MeerkatParams,
 }
 
 impl MeerkatBackend {
-    pub fn new(
+    pub async fn create(
         conn: &ConnectionConfig,
         table: &str,
         dim: u32,
@@ -53,8 +55,12 @@ impl MeerkatBackend {
             ))
         })?;
 
+        let pg = PgConnection::new(conn, table, dim, metric);
+        let client = pg.connect().await?;
+
         Ok(Self {
-            pg: PgConnection::new(conn, table, dim, metric),
+            pg,
+            client,
             name: idx.name.clone(),
             params,
         })
@@ -122,11 +128,7 @@ impl IndexBackend for MeerkatBackend {
     }
 
     async fn build_index(&self) -> Result<IndexBuildResult> {
-        let client = self.pg.connect().await?;
-        let idx_name = self.pg.index_sql_name(&self.name);
-
-        // Ensure meerkat extension is loaded
-        client
+        self.client
             .execute("CREATE EXTENSION IF NOT EXISTS meerkat", &[])
             .await
             .map_err(|e| {
@@ -139,6 +141,7 @@ impl IndexBackend for MeerkatBackend {
                 }
             })?;
 
+        let idx_name = self.pg.index_sql_name(&self.name);
         let sql = format!(
             "CREATE INDEX {idx_name} ON {} USING mktann (v {}){}",
             self.pg.table_name,
@@ -148,7 +151,7 @@ impl IndexBackend for MeerkatBackend {
 
         info!("Building meerkat index: {sql}");
         let start = Instant::now();
-        client.execute(&sql, &[]).await?;
+        self.client.execute(&sql, &[]).await?;
         let build_time = start.elapsed();
 
         let size = self.index_size().await?;
@@ -163,18 +166,17 @@ impl IndexBackend for MeerkatBackend {
     }
 
     async fn drop_index(&self) -> Result<()> {
-        let client = self.pg.connect().await?;
         let idx_name = self.pg.index_sql_name(&self.name);
-        client
+        self.client
             .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
             .await?;
         Ok(())
     }
 
     async fn index_size(&self) -> Result<u64> {
-        let client = self.pg.connect().await?;
         let idx_name = self.pg.index_sql_name(&self.name);
-        let row = client
+        let row = self
+            .client
             .query_one(
                 &format!("SELECT pg_relation_size('{idx_name}')"),
                 &[],
@@ -185,9 +187,9 @@ impl IndexBackend for MeerkatBackend {
     }
 
     async fn index_exists(&self) -> Result<bool> {
-        let client = self.pg.connect().await?;
         let idx_name = self.pg.index_sql_name(&self.name);
-        let row = client
+        let row = self
+            .client
             .query_one(
                 "SELECT EXISTS(
                     SELECT 1 FROM pg_indexes WHERE indexname = $1
@@ -202,10 +204,8 @@ impl IndexBackend for MeerkatBackend {
         &self,
         params: &HashMap<String, toml::Value>,
     ) -> Result<()> {
-        let client = self.pg.connect().await?;
-
         if let Some(nprobe) = params.get("nprobe") {
-            client
+            self.client
                 .execute(
                     &format!("SET mkt.nprobe = {}", toml_to_sql(nprobe)),
                     &[],
@@ -213,7 +213,7 @@ impl IndexBackend for MeerkatBackend {
                 .await?;
         }
         if let Some(bits) = params.get("fastscan_bits") {
-            client
+            self.client
                 .execute(
                     &format!(
                         "SET mkt.fastscan_bits = {}",
@@ -228,9 +228,8 @@ impl IndexBackend for MeerkatBackend {
     }
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
-        let client = self.pg.connect().await?;
-        let vec_str = format!(
-            "[{}]",
+        let vec_lit = format!(
+            "'[{}]'::vector",
             vector
                 .iter()
                 .map(|v| v.to_string())
@@ -239,13 +238,14 @@ impl IndexBackend for MeerkatBackend {
         );
 
         let sql = format!(
-            "SELECT id FROM {} ORDER BY v {} $1::vector LIMIT {}",
+            "SELECT id FROM {} ORDER BY v {} {} LIMIT {}",
             self.pg.table_name,
             self.order_operator(),
+            vec_lit,
             k,
         );
 
-        let rows = client.query(&sql, &[&vec_str]).await?;
+        let rows = self.client.query(&sql, &[]).await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 }
