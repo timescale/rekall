@@ -1,0 +1,17 @@
+[package]
+name = "rekall"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "rekall"
+path = "src/main.rs"
+
+[dependencies]
+rekall-lib = { path = "../rekall-lib" }
+tokio = { workspace = true }
+clap = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+serde_json = { workspace = true }
