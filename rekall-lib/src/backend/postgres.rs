@@ -9,7 +9,7 @@ use tracing::{debug, info};
 
 use crate::config::{ConnectionConfig, Metric};
 use crate::error::{Error, Result};
-use crate::metrics::PgRuntimeInfo;
+use crate::metrics::{ExtensionInfo, PgRuntimeInfo};
 use crate::progress::{ProgressEvent, ProgressTx};
 
 use super::pg_vector_type::lookup_vector_type;
@@ -212,7 +212,44 @@ impl PgConnection {
         for row in &ext_rows {
             let name: String = row.get(0);
             let ver: String = row.get(1);
-            extensions.insert(name, ver);
+
+            // Probe for version/commit functions that extensions may provide.
+            // Try common patterns: <ext>.version(), <ext>.git_commit(),
+            // <ext>_version(), <ext>_git_commit()
+            let schema = match name.as_str() {
+                "meerkat" => Some("mkt"),
+                _ => None,
+            };
+
+            let version_candidates = match schema {
+                Some(s) => vec![
+                    format!("SELECT {s}.version()"),
+                    format!("SELECT {s}_version()"),
+                    format!("SELECT {name}_version()"),
+                ],
+                None => vec![format!("SELECT {name}_version()")],
+            };
+
+            let commit_candidates = match schema {
+                Some(s) => vec![
+                    format!("SELECT {s}.git_commit()"),
+                    format!("SELECT {s}_git_commit()"),
+                    format!("SELECT {name}_git_commit()"),
+                ],
+                None => vec![format!("SELECT {name}_git_commit()")],
+            };
+
+            let library_version = try_query_string(client, &version_candidates).await;
+            let git_commit = try_query_string(client, &commit_candidates).await;
+
+            extensions.insert(
+                name,
+                ExtensionInfo {
+                    version: ver,
+                    git_commit,
+                    library_version,
+                },
+            );
         }
 
         Ok(PgRuntimeInfo {
@@ -225,6 +262,17 @@ impl PgConnection {
     pub fn index_sql_name(&self, index_name: &str) -> String {
         format!("idx_rekall_{}", index_name.replace('-', "_"))
     }
+}
+
+async fn try_query_string(client: &Client, candidates: &[String]) -> Option<String> {
+    for sql in candidates {
+        if let Ok(row) = client.query_one(sql.as_str(), &[]).await {
+            if let Ok(val) = row.try_get::<_, String>(0) {
+                return Some(val);
+            }
+        }
+    }
+    None
 }
 
 fn toml_value_to_sql(v: &toml::Value) -> String {

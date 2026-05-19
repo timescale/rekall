@@ -51,8 +51,15 @@ impl OutputSink for StdoutSink {
         }
         if !info.extensions.is_empty() {
             println!("  Extensions:");
-            for (name, ver) in &info.extensions {
-                println!("    {name:40} {ver}");
+            for (name, ext) in &info.extensions {
+                let mut detail = ext.version.clone();
+                if let Some(ref lib_ver) = ext.library_version {
+                    detail = format!("{detail} (lib: {lib_ver})");
+                }
+                if let Some(ref commit) = ext.git_commit {
+                    detail = format!("{detail} (commit: {commit})");
+                }
+                println!("    {name:40} {detail}");
             }
         }
     }

@@ -40,10 +40,19 @@ pub struct ParetoPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtensionInfo {
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub library_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PgRuntimeInfo {
     pub version: String,
     pub settings: std::collections::BTreeMap<String, String>,
-    pub extensions: std::collections::BTreeMap<String, String>,
+    pub extensions: std::collections::BTreeMap<String, ExtensionInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
