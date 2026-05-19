@@ -102,6 +102,25 @@ enum Command {
         command: DatasetCommand,
     },
 
+    /// Generate recall-vs-QPS plot from result JSON files
+    Plot {
+        /// Result JSON files to plot (combine multiple for comparison)
+        #[arg(required = true)]
+        results: Vec<PathBuf>,
+
+        /// Output file (svg or png)
+        #[arg(short, long, default_value = "plot.svg")]
+        output: PathBuf,
+
+        /// Plot title
+        #[arg(short, long)]
+        title: Option<String>,
+
+        /// Also export CSV data file
+        #[arg(long)]
+        csv: Option<PathBuf>,
+    },
+
     /// Show configs. Without arguments, lists all configs found.
     /// With a path, shows the effective merged config.
     Config {
@@ -250,6 +269,32 @@ async fn main() -> anyhow::Result<()> {
                 }
             },
         },
+
+        Command::Plot {
+            results,
+            output,
+            title,
+            csv,
+        } => {
+            let mut summaries = Vec::new();
+            for path in &results {
+                let content = std::fs::read_to_string(path)
+                    .map_err(|e| anyhow::anyhow!("Cannot read '{}': {e}", path.display()))?;
+                let summary: rekall_lib::metrics::RunSummary = serde_json::from_str(&content)
+                    .map_err(|e| anyhow::anyhow!("Invalid JSON '{}': {e}", path.display()))?;
+                summaries.push(summary);
+            }
+
+            rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref())
+                .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;
+            println!("Plot written to {}", output.display());
+
+            if let Some(csv_path) = csv {
+                rekall_lib::output::plot::export_csv(&summaries, &csv_path)
+                    .map_err(|e| anyhow::anyhow!("CSV export failed: {e}"))?;
+                println!("CSV written to {}", csv_path.display());
+            }
+        }
 
         Command::Config { config } => {
             if let Some(path) = config {

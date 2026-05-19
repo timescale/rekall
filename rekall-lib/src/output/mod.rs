@@ -1,4 +1,5 @@
 pub mod json;
+pub mod plot;
 pub mod stdout;
 
 use crate::metrics::{IndexBuildResult, ParetoPoint, PgRuntimeInfo, RunSummary, SearchResult};
