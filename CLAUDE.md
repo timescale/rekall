@@ -43,6 +43,15 @@ rekall search <config.toml>        # Search only
 - **Shared table**: Multiple index backends share the same loaded table.
 - **Opaque params**: Each IndexBackend parses its own `toml::Value` params.
 
+## Git Rules
+
+- **Never use `git add -A`, `git add .`, or `git commit -a`**. Always stage
+  files explicitly by name to avoid committing binaries, results, or local
+  configs.
+- Review staged changes with `git diff --staged` before committing.
+- The `.gitignore` excludes `/target`, `results/`, `*.local.toml`, `/data/`,
+  `/configs/`, `plot.*` — but explicit staging is still required as a safeguard.
+
 ## Dependencies
 
 Requires system libhdf5 (uses `hdf5-metno` crate for HDF5 2.x support).
