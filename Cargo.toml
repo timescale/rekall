@@ -26,7 +26,6 @@ async-trait = "0.1"
 byteorder = "1"
 bytes = "1"
 futures-util = "0.3"
-plotters = "0.3"
 shellexpand = "3"
 tempfile = "3"
 
