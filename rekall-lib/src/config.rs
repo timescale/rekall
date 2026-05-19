@@ -160,12 +160,39 @@ pub struct BenchmarkConfig {
 }
 
 impl BenchmarkConfig {
+    /// Load config from a TOML file. If a `.local.toml` sibling exists
+    /// (e.g., `cohere-1m.local.toml` for `cohere-1m.toml`), it is merged
+    /// on top — local values override the base. This lets you keep
+    /// temporary overrides (different GUC values, fewer queries, etc.)
+    /// out of version control.
     pub fn from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path).map_err(|e| {
             Error::Config(format!("Cannot read config file '{}': {e}", path.display()))
         })?;
-        let config: Self = toml::from_str(&content)
+        let mut base: toml::Value = toml::from_str(&content)
             .map_err(|e| Error::Config(format!("Invalid config file '{}': {e}", path.display())))?;
+
+        let local_path = local_config_path(path);
+        if local_path.exists() {
+            let local_content = std::fs::read_to_string(&local_path).map_err(|e| {
+                Error::Config(format!(
+                    "Cannot read local config '{}': {e}",
+                    local_path.display()
+                ))
+            })?;
+            let local: toml::Value = toml::from_str(&local_content).map_err(|e| {
+                Error::Config(format!(
+                    "Invalid local config '{}': {e}",
+                    local_path.display()
+                ))
+            })?;
+            deep_merge(&mut base, local);
+            tracing::info!("Merged local overrides from {}", local_path.display());
+        }
+
+        let config: Self = base
+            .try_into()
+            .map_err(|e| Error::Config(format!("Invalid merged config: {e}")))?;
         config.validate()?;
         Ok(config)
     }
@@ -186,6 +213,33 @@ impl BenchmarkConfig {
             }
         }
         Ok(())
+    }
+}
+
+/// Derive the local config path: `foo.toml` -> `foo.local.toml`
+fn local_config_path(path: &Path) -> PathBuf {
+    let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+    let parent = path.parent().unwrap_or(Path::new("."));
+    parent.join(format!("{stem}.local.toml"))
+}
+
+/// Recursively merge `overlay` into `base`. For tables, keys are merged
+/// recursively. For all other types (scalars, arrays), the overlay value
+/// replaces the base value entirely.
+fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
+    match (base.as_table_mut(), overlay) {
+        (Some(base_table), toml::Value::Table(overlay_table)) => {
+            for (key, overlay_val) in overlay_table {
+                if let Some(base_val) = base_table.get_mut(&key) {
+                    deep_merge(base_val, overlay_val);
+                } else {
+                    base_table.insert(key, overlay_val);
+                }
+            }
+        }
+        (_, overlay) => {
+            *base = overlay;
+        }
     }
 }
 
@@ -358,5 +412,85 @@ index = "nonexistent"
         std::fs::write(tmp.path(), "this is not valid toml {{{").unwrap();
         let err = BenchmarkConfig::from_file(tmp.path()).unwrap_err();
         assert!(err.to_string().contains("Invalid config file"));
+    }
+
+    #[test]
+    fn deep_merge_scalars() {
+        let mut base: toml::Value = toml::from_str("[a]\nx = 1\ny = 2").unwrap();
+        let overlay: toml::Value = toml::from_str("[a]\ny = 99").unwrap();
+        super::deep_merge(&mut base, overlay);
+        assert_eq!(base["a"]["x"].as_integer(), Some(1));
+        assert_eq!(base["a"]["y"].as_integer(), Some(99));
+    }
+
+    #[test]
+    fn deep_merge_adds_new_keys() {
+        let mut base: toml::Value = toml::from_str("[a]\nx = 1").unwrap();
+        let overlay: toml::Value = toml::from_str("[a]\nz = 3").unwrap();
+        super::deep_merge(&mut base, overlay);
+        assert_eq!(base["a"]["x"].as_integer(), Some(1));
+        assert_eq!(base["a"]["z"].as_integer(), Some(3));
+    }
+
+    #[test]
+    fn deep_merge_array_replaces() {
+        let mut base: toml::Value = toml::from_str("vals = [1, 2, 3]").unwrap();
+        let overlay: toml::Value = toml::from_str("vals = [10, 20]").unwrap();
+        super::deep_merge(&mut base, overlay);
+        let arr = base["vals"].as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+        assert_eq!(arr[0].as_integer(), Some(10));
+    }
+
+    #[test]
+    fn deep_merge_nested_tables() {
+        let mut base: toml::Value = toml::from_str("[a]\n[a.b]\nx = 1\ny = 2").unwrap();
+        let overlay: toml::Value = toml::from_str("[a.b]\ny = 99\nz = 3").unwrap();
+        super::deep_merge(&mut base, overlay);
+        assert_eq!(base["a"]["b"]["x"].as_integer(), Some(1));
+        assert_eq!(base["a"]["b"]["y"].as_integer(), Some(99));
+        assert_eq!(base["a"]["b"]["z"].as_integer(), Some(3));
+    }
+
+    #[test]
+    fn local_config_path_derivation() {
+        assert_eq!(
+            super::local_config_path(Path::new("examples/cohere-1m.toml")),
+            PathBuf::from("examples/cohere-1m.local.toml")
+        );
+        assert_eq!(
+            super::local_config_path(Path::new("/abs/path/bench.toml")),
+            PathBuf::from("/abs/path/bench.local.toml")
+        );
+    }
+
+    #[test]
+    fn local_config_overrides_base() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_path = dir.path().join("bench.toml");
+        let local_path = dir.path().join("bench.local.toml");
+
+        std::fs::write(&base_path, MINIMAL_CONFIG).unwrap();
+        std::fs::write(
+            &local_path,
+            r#"
+[search]
+k = 50
+runs = 1
+"#,
+        )
+        .unwrap();
+
+        let cfg = BenchmarkConfig::from_file(&base_path).unwrap();
+        assert_eq!(cfg.search.k, 50);
+        assert_eq!(cfg.search.runs, 1);
+        assert_eq!(cfg.search.warmup, 100); // unchanged default
+        assert_eq!(cfg.dataset.name, "test-ds"); // unchanged base
+    }
+
+    #[test]
+    fn no_local_config_is_fine() {
+        let cfg = parse_config(MINIMAL_CONFIG);
+        assert_eq!(cfg.search.k, 10); // default, no local override
     }
 }
