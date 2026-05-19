@@ -58,6 +58,7 @@ pub async fn run(
                 config.dataset.dimension,
                 config.dataset.metric,
                 idx_config,
+                None,
             )
             .await?;
 

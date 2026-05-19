@@ -8,7 +8,7 @@ use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
 use rekall_lib::output::OutputSink;
 use rekall_lib::phase::Phase;
-use rekall_lib::Agent;
+use rekall_lib::{install_signal_handler, new_cancel_registry, Agent};
 
 #[derive(Parser)]
 #[command(name = "rekall", about = "Vector search benchmark tool")]
@@ -137,6 +137,9 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
+    let cancel_registry = new_cancel_registry();
+    install_signal_handler(cancel_registry.clone());
+
     match cli.command {
         Command::Run {
             configs,
@@ -167,7 +170,7 @@ async fn main() -> anyhow::Result<()> {
                 }
 
                 let outputs = build_outputs(&group.config);
-                let mut agent = Agent::new(group.config.clone(), outputs);
+                let mut agent = Agent::new(group.config.clone(), outputs, cancel_registry.clone());
                 agent.run(&phases, index.as_deref(), rebuild).await?;
             }
         }
@@ -175,7 +178,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Init { config } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
+            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Init], None, false).await?;
         }
 
@@ -189,21 +192,21 @@ async fn main() -> anyhow::Result<()> {
                 cfg.load.parallelism = p;
             }
             let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
+            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Load], None, false).await?;
         }
 
         Command::Index { config, name } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
+            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Index], name.as_deref(), false).await?;
         }
 
         Command::Search { config, index } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
+            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
                 .run(&[Phase::Search, Phase::Report], index.as_deref(), false)
                 .await?;
@@ -212,7 +215,7 @@ async fn main() -> anyhow::Result<()> {
         Command::Report { config } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
+            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Report], None, false).await?;
         }
 

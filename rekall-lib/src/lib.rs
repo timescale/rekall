@@ -9,6 +9,7 @@ pub mod output;
 pub mod phase;
 pub mod progress;
 
+use std::sync::Arc;
 use std::time::Instant;
 
 use config::{BenchmarkConfig, CacheMode};
@@ -17,19 +18,50 @@ use metrics::{IndexBuildResult, PgRuntimeInfo, SearchResult};
 use output::OutputSink;
 use phase::Phase;
 use progress::{progress_channel, ProgressEvent};
+use tokio_postgres::CancelToken;
+
+/// Shared registry of active PG cancel tokens. On Ctrl+C, all
+/// registered tokens are cancelled to stop in-flight PG queries.
+pub type CancelRegistry = Arc<tokio::sync::Mutex<Vec<CancelToken>>>;
+
+pub fn new_cancel_registry() -> CancelRegistry {
+    Arc::new(tokio::sync::Mutex::new(Vec::new()))
+}
+
+/// Spawn a Ctrl+C handler that cancels all registered PG backends.
+pub fn install_signal_handler(registry: CancelRegistry) {
+    tokio::spawn(async move {
+        if tokio::signal::ctrl_c().await.is_ok() {
+            eprintln!("\nInterrupted — cancelling PostgreSQL queries...");
+            let tokens = registry.lock().await;
+            for token in tokens.iter() {
+                let _ = token.cancel_query(tokio_postgres::NoTls).await;
+            }
+            // Give PG a moment to process cancellations
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            std::process::exit(130);
+        }
+    });
+}
 
 pub struct Agent {
     config: BenchmarkConfig,
     outputs: Vec<Box<dyn OutputSink>>,
     registry: backend::BackendRegistry,
+    cancel_registry: CancelRegistry,
 }
 
 impl Agent {
-    pub fn new(config: BenchmarkConfig, outputs: Vec<Box<dyn OutputSink>>) -> Self {
+    pub fn new(
+        config: BenchmarkConfig,
+        outputs: Vec<Box<dyn OutputSink>>,
+        cancel_registry: CancelRegistry,
+    ) -> Self {
         Self {
             config,
             outputs,
             registry: backend::BackendRegistry::new(),
+            cancel_registry,
         }
     }
 
@@ -215,6 +247,7 @@ impl Agent {
                     self.config.dataset.dimension,
                     self.config.dataset.metric,
                     idx_config,
+                    Some(&self.cancel_registry),
                 )
                 .await?;
 

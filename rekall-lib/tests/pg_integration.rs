@@ -187,7 +187,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
 
     let registry = BackendRegistry::new();
     let backend = registry
-        .create(&conn, table, dim, Metric::Euclidean, &idx_config)
+        .create(&conn, table, dim, Metric::Euclidean, &idx_config, None)
         .await
         .unwrap();
 
@@ -257,7 +257,7 @@ async fn backend_meerkat_lifecycle() {
 
     let registry = BackendRegistry::new();
     let backend = registry
-        .create(&conn, table, dim, Metric::Euclidean, &idx_config)
+        .create(&conn, table, dim, Metric::Euclidean, &idx_config, None)
         .await
         .unwrap();
 

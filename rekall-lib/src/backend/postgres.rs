@@ -4,7 +4,7 @@ use std::time::Instant;
 use async_trait::async_trait;
 use byteorder::{BigEndian, WriteBytesExt};
 use postgres_types::Type;
-use tokio_postgres::{Client, NoTls, Statement};
+use tokio_postgres::{CancelToken, Client, NoTls, Statement};
 use tracing::{debug, info};
 
 use crate::config::{ConnectionConfig, Metric};
@@ -26,6 +26,7 @@ pub struct PgConnection {
     client: Option<Client>,
     pub query_stmt: Option<Statement>,
     order_operator: Option<String>,
+    cancel_registry: Option<crate::CancelRegistry>,
 }
 
 impl PgConnection {
@@ -38,7 +39,13 @@ impl PgConnection {
             client: None,
             query_stmt: None,
             order_operator: None,
+            cancel_registry: None,
         }
+    }
+
+    /// Set the cancel registry so connections register their tokens.
+    pub fn set_cancel_registry(&mut self, registry: crate::CancelRegistry) {
+        self.cancel_registry = Some(registry);
     }
 
     /// Open a new connection (used for loading and DDL before connect() is called).
@@ -88,6 +95,15 @@ impl PgConnection {
             .await
             .map_err(|e| Error::Config(format!("Cannot prepare query: {e}")))?;
 
+        // Register cancel token for Ctrl+C handling
+        if let Some(ref registry) = self.cancel_registry {
+            let token = client.cancel_token();
+            let registry = registry.clone();
+            tokio::spawn(async move {
+                registry.lock().await.push(token);
+            });
+        }
+
         self.client = Some(client);
         self.query_stmt = Some(stmt);
         self.order_operator = Some(order_operator.to_string());
@@ -104,6 +120,12 @@ impl PgConnection {
         self.query_stmt
             .as_ref()
             .expect("PgConnection::connect() not called")
+    }
+
+    /// Get a cancel token for the current connection. Send this to a
+    /// signal handler to cancel in-flight PG queries on Ctrl+C.
+    pub fn cancel_token(&self) -> Option<CancelToken> {
+        self.client.as_ref().map(|c| c.cancel_token())
     }
 
     /// Validate that all GUC names in the param map exist.

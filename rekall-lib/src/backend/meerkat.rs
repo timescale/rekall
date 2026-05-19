@@ -46,6 +46,7 @@ impl MeerkatBackend {
         dim: u32,
         metric: Metric,
         idx: &IndexConfig,
+        cancel_registry: Option<&crate::CancelRegistry>,
     ) -> Result<Self> {
         let params: MeerkatParams = idx.params.clone().try_into().map_err(|e| {
             crate::error::Error::Config(format!("Invalid meerkat params for '{}': {e}", idx.name))
@@ -57,6 +58,9 @@ impl MeerkatBackend {
         };
 
         let mut pg = PgConnection::new(conn, table, dim, metric);
+        if let Some(cr) = cancel_registry {
+            pg.set_cancel_registry(cr.clone());
+        }
         pg.connect(order_op, Some("meerkat")).await?;
 
         Ok(Self {

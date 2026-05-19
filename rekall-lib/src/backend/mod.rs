@@ -64,12 +64,19 @@ impl BackendRegistry {
         dimension: u32,
         metric: Metric,
         index_config: &IndexConfig,
+        cancel_registry: Option<&crate::CancelRegistry>,
     ) -> Result<Box<dyn IndexBackend>> {
         match index_config.index_type.as_str() {
             "meerkat" => {
-                let backend =
-                    meerkat::MeerkatBackend::create(conn, table, dimension, metric, index_config)
-                        .await?;
+                let backend = meerkat::MeerkatBackend::create(
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
+                    cancel_registry,
+                )
+                .await?;
                 Ok(Box::new(backend) as Box<dyn IndexBackend>)
             }
             "pgvector-hnsw" => {
@@ -79,6 +86,7 @@ impl BackendRegistry {
                     dimension,
                     metric,
                     index_config,
+                    cancel_registry,
                 )
                 .await?;
                 Ok(Box::new(backend) as Box<dyn IndexBackend>)
