@@ -39,7 +39,8 @@ pub fn generate_plot(
     match ext {
         "svg" => draw_svg(output_path, title, &series, min_qps, max_qps),
         "png" => draw_png(output_path, title, &series, min_qps, max_qps),
-        _ => Err(format!("Unsupported format: {ext}. Use .svg or .png").into()),
+        "html" | "htm" => draw_html(output_path, title, &series),
+        _ => Err(format!("Unsupported format: {ext}. Use .svg, .png, or .html").into()),
     }
 }
 
@@ -124,6 +125,132 @@ fn draw_svg(
     let content = std::fs::read_to_string(path)?;
     let patched = content.replacen("width=\"900\" height=\"600\" viewBox", "viewBox", 1);
     std::fs::write(path, patched)?;
+
+    Ok(())
+}
+
+fn draw_html(
+    path: &Path,
+    title: &str,
+    series: &[Series],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use std::io::Write;
+    let mut f = std::fs::File::create(path)?;
+
+    // Build Plotly traces as JSON
+    let mut traces = String::new();
+    for (i, s) in series.iter().enumerate() {
+        let color = COLORS[i % COLORS.len()];
+        let color_str = format!("rgb({},{},{})", color.0, color.1, color.2);
+
+        // Compute Pareto frontier
+        let pareto_results: Vec<SearchResult> = s
+            .points
+            .iter()
+            .map(|&(recall, qps)| SearchResult {
+                index_name: s.name.clone(),
+                index_type: String::new(),
+                search_params: serde_json::json!({}),
+                k: 0,
+                num_queries: 0,
+                num_runs: 0,
+                avg_recall: recall,
+                qps,
+                avg_latency_us: 0.0,
+                p50_latency_us: 0.0,
+                p95_latency_us: 0.0,
+                p99_latency_us: 0.0,
+                p999_latency_us: 0.0,
+            })
+            .collect();
+        let pareto = compute_pareto(&pareto_results);
+        let pareto_set: std::collections::HashSet<u64> = pareto
+            .iter()
+            .filter(|p| p.is_pareto)
+            .map(|p| p.recall.to_bits())
+            .collect();
+
+        let mut pareto_x = Vec::new();
+        let mut pareto_y = Vec::new();
+        let mut other_x = Vec::new();
+        let mut other_y = Vec::new();
+
+        for &(recall, qps) in &s.points {
+            if pareto_set.contains(&recall.to_bits()) {
+                pareto_x.push(recall);
+                pareto_y.push(qps);
+            } else {
+                other_x.push(recall);
+                other_y.push(qps);
+            }
+        }
+
+        // Pareto frontier trace (thick line + filled markers)
+        if !traces.is_empty() {
+            traces.push(',');
+        }
+        traces.push_str(&format!(
+            r#"{{
+                x: {pareto_x:?},
+                y: {pareto_y:?},
+                name: "{name}",
+                type: "scatter",
+                mode: "lines+markers",
+                line: {{ color: "{color_str}", width: 3 }},
+                marker: {{ color: "{color_str}", size: 8 }},
+                legendgroup: "{name}",
+                hovertemplate: "<b>{name}</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+            }}"#,
+            name = s.name,
+        ));
+
+        // Non-Pareto points (small hollow markers, no separate legend entry)
+        if !other_x.is_empty() {
+            traces.push(',');
+            traces.push_str(&format!(
+                r#"{{
+                    x: {other_x:?},
+                    y: {other_y:?},
+                    type: "scatter",
+                    mode: "markers",
+                    marker: {{ color: "{color_str}", size: 5, opacity: 0.4 }},
+                    legendgroup: "{name}",
+                    showlegend: false,
+                    hovertemplate: "<b>{name}</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                }}"#,
+                name = s.name,
+            ));
+        }
+    }
+
+    let html = format!(
+        concat!(
+            "<!DOCTYPE html>\n",
+            "<html>\n<head>\n<meta charset=\"utf-8\">\n",
+            "<title>{title}</title>\n",
+            "<script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>\n",
+            "<style>\n",
+            "  body {{ margin: 0; padding: 0; background: white; }}\n",
+            "  #plot {{ width: 100vw; height: 100vh; }}\n",
+            "</style>\n</head>\n<body>\n<div id=\"plot\"></div>\n",
+            "<script>\n",
+            "var traces = [{traces}];\n",
+            "var layout = {{\n",
+            "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
+            "  xaxis: {{ title: \"Recall@10\", range: [0.5, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
+            "  yaxis: {{ title: \"Queries per second\", type: \"log\", gridcolor: \"#eeeeee\" }},\n",
+            "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
+            "  hovermode: \"closest\",\n",
+            "  plot_bgcolor: \"white\",\n",
+            "  paper_bgcolor: \"white\"\n",
+            "}};\n",
+            "Plotly.newPlot(\"plot\", traces, layout, {{ responsive: true }});\n",
+            "</script>\n</body>\n</html>",
+        ),
+        title = title,
+        traces = traces,
+    );
+    f.write_all(html.as_bytes())?;
 
     Ok(())
 }
