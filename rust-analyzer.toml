@@ -1,0 +1,8 @@
+# Use clippy for on-save checks (matches pre-commit behavior)
+[check]
+command = "clippy"
+extraArgs = ["--all-targets"]
+
+# Suppress false-positive E0282 from serde proc-macro expansion
+[diagnostics]
+disabled = ["E0282"]

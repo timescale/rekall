@@ -9,9 +9,9 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
-use super::IndexBackend;
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
+use super::IndexBackend;
 
 #[derive(Debug, Deserialize)]
 struct HnswParams {

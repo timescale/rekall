@@ -9,9 +9,9 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
-use super::IndexBackend;
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
+use super::IndexBackend;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct MeerkatParams {
@@ -91,15 +91,15 @@ impl MeerkatBackend {
         if self.params.fastscan == Some(true) {
             opts.push("fastscan = true".to_string());
         }
-        if let Some(eps) = self.params.boundary_epsilon
-            && eps > 0.0
-        {
-            opts.push(format!("boundary_epsilon = {eps}"));
+        if let Some(eps) = self.params.boundary_epsilon {
+            if eps > 0.0 {
+                opts.push(format!("boundary_epsilon = {eps}"));
+            }
         }
-        if let Some(lambda) = self.params.soar_lambda
-            && lambda > 0.0
-        {
-            opts.push(format!("soar_lambda = {lambda}"));
+        if let Some(lambda) = self.params.soar_lambda {
+            if lambda > 0.0 {
+                opts.push(format!("soar_lambda = {lambda}"));
+            }
         }
 
         if opts.is_empty() {

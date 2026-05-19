@@ -1,5 +1,5 @@
 use bytes::{BufMut, BytesMut};
-use postgres_types::{IsNull, ToSql, Type, to_sql_checked};
+use postgres_types::{to_sql_checked, IsNull, ToSql, Type};
 
 /// Wrapper for encoding a float slice as pgvector's binary format.
 /// Binary format: u16 dim + u16 unused(0) + f32[dim] (big-endian)

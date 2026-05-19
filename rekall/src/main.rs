@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use rekall_lib::Agent;
 use rekall_lib::config::BenchmarkConfig;
 use rekall_lib::dataset::hdf5::Hdf5Reader;
-use rekall_lib::output::OutputSink;
 use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
+use rekall_lib::output::OutputSink;
 use rekall_lib::phase::Phase;
+use rekall_lib::Agent;
 
 #[derive(Parser)]
 #[command(name = "rekall", about = "Vector search benchmark tool")]

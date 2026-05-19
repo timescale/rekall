@@ -1,4 +1,4 @@
-use crate::metrics::{IndexBuildResult, RunSummary, SearchResult, compute_pareto};
+use crate::metrics::{compute_pareto, IndexBuildResult, RunSummary, SearchResult};
 use crate::output::OutputSink;
 
 pub fn run(

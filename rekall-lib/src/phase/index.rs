@@ -32,10 +32,10 @@ pub async fn run(
     let mut results = Vec::new();
 
     for idx_config in &config.index {
-        if let Some(name) = filter_name
-            && idx_config.name != name
-        {
-            continue;
+        if let Some(name) = filter_name {
+            if idx_config.name != name {
+                continue;
+            }
         }
 
         let backend = registry
@@ -53,12 +53,12 @@ pub async fn run(
         results.push(result);
     }
 
-    if let Some(name) = filter_name
-        && results.is_empty()
-    {
-        return Err(Error::IndexConfigNotFound {
-            name: name.to_string(),
-        });
+    if let Some(name) = filter_name {
+        if results.is_empty() {
+            return Err(Error::IndexConfigNotFound {
+                name: name.to_string(),
+            });
+        }
     }
 
     Ok(results)

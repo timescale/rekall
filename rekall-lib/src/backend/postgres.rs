@@ -11,8 +11,8 @@ use crate::config::{ConnectionConfig, Metric};
 use crate::error::{Error, Result};
 use crate::progress::{ProgressEvent, ProgressTx};
 
-use super::DataLoader;
 use super::pg_vector_type::lookup_vector_type;
+use super::DataLoader;
 
 /// Shared PostgreSQL connection state for all PG-based index backends.
 /// Holds a persistent client, vector type info, and a prepared query

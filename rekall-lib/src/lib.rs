@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_if)]
+
 pub mod backend;
 pub mod config;
 pub mod dataset;

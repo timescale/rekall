@@ -1,5 +1,5 @@
-use crate::backend::DataLoader;
 use crate::backend::postgres::PgConnection;
+use crate::backend::DataLoader;
 use crate::config::BenchmarkConfig;
 use crate::error::Result;
 

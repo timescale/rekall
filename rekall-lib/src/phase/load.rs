@@ -1,8 +1,8 @@
-use crate::backend::DataLoader;
 use crate::backend::postgres::PgConnection;
+use crate::backend::DataLoader;
 use crate::config::BenchmarkConfig;
-use crate::dataset::DatasetReader;
 use crate::dataset::hdf5::Hdf5Reader;
+use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
 use crate::progress::ProgressTx;
 

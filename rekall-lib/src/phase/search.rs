@@ -5,10 +5,10 @@ use tracing::info;
 
 use crate::backend::BackendRegistry;
 use crate::config::BenchmarkConfig;
-use crate::dataset::DatasetReader;
 use crate::dataset::hdf5::Hdf5Reader;
+use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
-use crate::metrics::{LatencyCollector, SearchResult, compute_recall};
+use crate::metrics::{compute_recall, LatencyCollector, SearchResult};
 use crate::progress::{ProgressEvent, ProgressTx};
 
 pub async fn run(
@@ -37,10 +37,10 @@ pub async fn run(
     let mut all_results = Vec::new();
 
     for sweep in &config.search.sweep {
-        if let Some(name) = filter_index
-            && sweep.index != name
-        {
-            continue;
+        if let Some(name) = filter_index {
+            if sweep.index != name {
+                continue;
+            }
         }
 
         let idx_config = config
