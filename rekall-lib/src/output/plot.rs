@@ -240,6 +240,56 @@ fn draw_html(
         }
     }
 
+    // Global Pareto frontier across all series
+    let all_points: Vec<(f64, f64)> = series
+        .iter()
+        .flat_map(|s| s.points.iter().copied())
+        .collect();
+    let all_results: Vec<SearchResult> = all_points
+        .iter()
+        .map(|&(recall, qps)| SearchResult {
+            index_name: String::new(),
+            index_type: String::new(),
+            search_params: serde_json::json!({}),
+            k: 0,
+            num_queries: 0,
+            num_runs: 0,
+            avg_recall: recall,
+            qps,
+            avg_latency_us: 0.0,
+            p50_latency_us: 0.0,
+            p95_latency_us: 0.0,
+            p99_latency_us: 0.0,
+            p999_latency_us: 0.0,
+        })
+        .collect();
+    let global_pareto = compute_pareto(&all_results);
+    let mut global_pareto_points: Vec<(f64, f64)> = global_pareto
+        .iter()
+        .filter(|p| p.is_pareto)
+        .map(|p| (p.recall, p.qps))
+        .collect();
+    global_pareto_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    if !global_pareto_points.is_empty() {
+        let gp_x: Vec<f64> = global_pareto_points.iter().map(|(r, _)| *r).collect();
+        let gp_y: Vec<f64> = global_pareto_points.iter().map(|(_, q)| *q).collect();
+        if !traces.is_empty() {
+            traces.push(',');
+        }
+        traces.push_str(&format!(
+            r#"{{
+                x: {gp_x:?},
+                y: {gp_y:?},
+                name: "Global Pareto",
+                type: "scatter",
+                mode: "lines",
+                line: {{ color: "black", width: 2, dash: "dash" }},
+                hovertemplate: "<b>Pareto</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+            }}"#,
+        ));
+    }
+
     let x_type = if opts.log_x { "\"log\"" } else { "\"linear\"" };
     let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
 
@@ -401,6 +451,43 @@ where
             }
         }))?;
     }
+
+    // Global Pareto frontier (dashed black line)
+    let all_points: Vec<(f64, f64)> = series
+        .iter()
+        .flat_map(|s| s.points.iter().copied())
+        .collect();
+    let all_results: Vec<SearchResult> = all_points
+        .iter()
+        .map(|&(recall, qps)| SearchResult {
+            index_name: String::new(),
+            index_type: String::new(),
+            search_params: serde_json::json!({}),
+            k: 0,
+            num_queries: 0,
+            num_runs: 0,
+            avg_recall: recall,
+            qps,
+            avg_latency_us: 0.0,
+            p50_latency_us: 0.0,
+            p95_latency_us: 0.0,
+            p99_latency_us: 0.0,
+            p999_latency_us: 0.0,
+        })
+        .collect();
+    let global_pareto = compute_pareto(&all_results);
+    let mut gp_points: Vec<(f64, f64)> = global_pareto
+        .iter()
+        .filter(|p| p.is_pareto)
+        .map(|p| (p.recall, p.qps))
+        .collect();
+    gp_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    let dash_style = ShapeStyle::from(BLACK.mix(0.6)).stroke_width(2);
+    chart
+        .draw_series(LineSeries::new(gp_points.iter().copied(), dash_style))?
+        .label("Global Pareto")
+        .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], dash_style));
 
     chart
         .configure_series_labels()
