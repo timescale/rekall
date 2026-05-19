@@ -108,13 +108,21 @@ enum Command {
         #[arg(required = true)]
         results: Vec<PathBuf>,
 
-        /// Output file (svg or png)
+        /// Output file (svg, png, or html)
         #[arg(short, long, default_value = "plot.svg")]
         output: PathBuf,
 
         /// Plot title
         #[arg(short, long)]
         title: Option<String>,
+
+        /// Use linear X-axis instead of log scale
+        #[arg(long)]
+        linear_x: bool,
+
+        /// Use linear Y-axis instead of log scale
+        #[arg(long)]
+        linear_y: bool,
 
         /// Also export CSV data file
         #[arg(long)]
@@ -274,6 +282,8 @@ async fn main() -> anyhow::Result<()> {
             results,
             output,
             title,
+            linear_x,
+            linear_y,
             csv,
         } => {
             let mut summaries = Vec::new();
@@ -285,7 +295,11 @@ async fn main() -> anyhow::Result<()> {
                 summaries.push(summary);
             }
 
-            rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref())
+            let opts = rekall_lib::output::plot::PlotOptions {
+                log_x: !linear_x,
+                log_y: !linear_y,
+            };
+            rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref(), &opts)
                 .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;
             println!("Plot written to {}", output.display());
 

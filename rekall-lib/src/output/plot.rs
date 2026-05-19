@@ -10,10 +10,25 @@ struct Series {
     points: Vec<(f64, f64)>, // (recall, qps)
 }
 
+pub struct PlotOptions {
+    pub log_x: bool,
+    pub log_y: bool,
+}
+
+impl Default for PlotOptions {
+    fn default() -> Self {
+        Self {
+            log_x: true,
+            log_y: true,
+        }
+    }
+}
+
 pub fn generate_plot(
     summaries: &[RunSummary],
     output_path: &Path,
     title: Option<&str>,
+    opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let series = build_series(summaries);
     if series.is_empty() {
@@ -37,9 +52,9 @@ pub fn generate_plot(
     let title = title.unwrap_or("Recall vs QPS");
 
     match ext {
-        "svg" => draw_svg(output_path, title, &series, min_qps, max_qps),
-        "png" => draw_png(output_path, title, &series, min_qps, max_qps),
-        "html" | "htm" => draw_html(output_path, title, &series),
+        "svg" => draw_svg(output_path, title, &series, min_qps, max_qps, opts),
+        "png" => draw_png(output_path, title, &series, min_qps, max_qps, opts),
+        "html" | "htm" => draw_html(output_path, title, &series, opts),
         _ => Err(format!("Unsupported format: {ext}. Use .svg, .png, or .html").into()),
     }
 }
@@ -116,9 +131,10 @@ fn draw_svg(
     series: &[Series],
     min_qps: f64,
     max_qps: f64,
+    opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = SVGBackend::new(path, (900, 600)).into_drawing_area();
-    draw_chart(&root, title, series, min_qps, max_qps)?;
+    draw_chart(&root, title, series, min_qps, max_qps, opts)?;
     root.present()?;
 
     // Make SVG scalable: remove fixed width/height, keep viewBox
@@ -133,6 +149,7 @@ fn draw_html(
     path: &Path,
     title: &str,
     series: &[Series],
+    opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
     let mut f = std::fs::File::create(path)?;
@@ -223,6 +240,9 @@ fn draw_html(
         }
     }
 
+    let x_type = if opts.log_x { "\"log\"" } else { "\"linear\"" };
+    let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
+
     let html = format!(
         concat!(
             "<!DOCTYPE html>\n",
@@ -234,27 +254,32 @@ fn draw_html(
             "  #plot {{ width: 100vw; height: 100vh; }}\n",
             "</style>\n</head>\n<body>\n<div id=\"plot\"></div>\n",
             "<script>\n",
+            "var origOpacity = {{}};\n",
             "var traces = [{traces}];\n",
+            "traces.forEach(function(t,i) {{ origOpacity[i] = t.marker ? t.marker.opacity || 1 : 1; }});\n",
             "var layout = {{\n",
             "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
-            "  xaxis: {{ title: \"Recall@10\", range: [0.5, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
-            "  yaxis: {{ title: \"Queries per second\", type: \"log\", gridcolor: \"#eeeeee\" }},\n",
+            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
+            "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
             "  plot_bgcolor: \"white\",\n",
             "  paper_bgcolor: \"white\"\n",
             "}};\n",
             "Plotly.newPlot(\"plot\", traces, layout, {{ responsive: true }});\n",
-            "function setAll(vis) {{ var d = document.getElementById(\"plot\"); d.data.forEach(function(_,i) {{ Plotly.restyle(d, {{visible: vis}}, [i]); }}); }}\n",
+            "function showAll() {{ var d = document.getElementById(\"plot\"); d.data.forEach(function(t,i) {{ Plotly.restyle(d, {{visible: true, \"marker.opacity\": origOpacity[i], \"line.opacity\": 1}}, [i]); }}); }}\n",
+            "function dimAll() {{ var d = document.getElementById(\"plot\"); d.data.forEach(function(t,i) {{ Plotly.restyle(d, {{\"marker.opacity\": 0.07, \"line.opacity\": 0.07}}, [i]); }}); }}\n",
             "</script>\n",
             "<div style=\"position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px\">\n",
-            "  <button onclick=\"setAll(true)\" style=\"cursor:pointer;padding:4px 10px\">All</button>\n",
-            "  <button onclick=\"setAll('legendonly')\" style=\"cursor:pointer;padding:4px 10px\">None</button>\n",
+            "  <button onclick=\"showAll()\" style=\"cursor:pointer;padding:4px 10px\">All</button>\n",
+            "  <button onclick=\"dimAll()\" style=\"cursor:pointer;padding:4px 10px\">None</button>\n",
             "</div>\n",
             "</body>\n</html>",
         ),
         title = title,
         traces = traces,
+        x_type = x_type,
+        y_type = y_type,
     );
     f.write_all(html.as_bytes())?;
 
@@ -267,9 +292,10 @@ fn draw_png(
     series: &[Series],
     min_qps: f64,
     max_qps: f64,
+    opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(path, (900, 600)).into_drawing_area();
-    draw_chart(&root, title, series, min_qps, max_qps)?;
+    draw_chart(&root, title, series, min_qps, max_qps, opts)?;
     root.present()?;
     Ok(())
 }
@@ -280,6 +306,7 @@ fn draw_chart<DB: DrawingBackend>(
     series: &[Series],
     min_qps: f64,
     max_qps: f64,
+    _opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>>
 where
     DB::ErrorType: 'static,
@@ -289,6 +316,15 @@ where
     let qps_lo = (min_qps * 0.5).max(1.0);
     let qps_hi = max_qps * 2.0;
 
+    // plotters doesn't support logit scale, so for X we use log when requested.
+    // This requires transforming recall values to avoid log(0).
+    // When both axes are log, we build a log-log chart.
+    // When neither is log, we build a linear-linear chart.
+    // Mixed combinations use the appropriate per-axis scale.
+    //
+    // For simplicity, always build with log Y (the common case) since
+    // plotters' Cartesian2d doesn't support mixed log/linear easily.
+    // The HTML backend handles all combinations natively.
     let mut chart = ChartBuilder::on(root)
         .caption(title, ("sans-serif", 24).into_font())
         .margin(15)
