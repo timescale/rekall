@@ -15,6 +15,7 @@ type = "meerkat"
 name = "mkt-nlist-1000-nosoar"
 [index.params]
 nlist = 1000
+fastscan = true
 
 [search]
 k = 10
