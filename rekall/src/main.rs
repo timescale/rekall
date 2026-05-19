@@ -53,6 +53,10 @@ enum Command {
         /// Force rebuild indexes even if they already exist
         #[arg(long)]
         rebuild: bool,
+
+        /// Force reload dataset even if table already has data
+        #[arg(long)]
+        reload: bool,
     },
 
     /// Initialize database and tables
@@ -147,6 +151,7 @@ async fn main() -> anyhow::Result<()> {
             index,
             dry_run,
             rebuild,
+            reload,
             ..
         } => {
             let groups = rekall_lib::config::resolve_config_groups(&configs)?;
@@ -171,7 +176,9 @@ async fn main() -> anyhow::Result<()> {
 
                 let outputs = build_outputs(&group.config);
                 let mut agent = Agent::new(group.config.clone(), outputs, cancel_registry.clone());
-                agent.run(&phases, index.as_deref(), rebuild).await?;
+                agent
+                    .run(&phases, index.as_deref(), rebuild, reload)
+                    .await?;
             }
         }
 
@@ -179,7 +186,7 @@ async fn main() -> anyhow::Result<()> {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Init], None, false).await?;
+            agent.run(&[Phase::Init], None, false, false).await?;
         }
 
         Command::Load {
@@ -193,14 +200,16 @@ async fn main() -> anyhow::Result<()> {
             }
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Load], None, false).await?;
+            agent.run(&[Phase::Load], None, false, false).await?;
         }
 
         Command::Index { config, name } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Index], name.as_deref(), false).await?;
+            agent
+                .run(&[Phase::Index], name.as_deref(), false, false)
+                .await?;
         }
 
         Command::Search { config, index } => {
@@ -208,7 +217,12 @@ async fn main() -> anyhow::Result<()> {
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
-                .run(&[Phase::Search, Phase::Report], index.as_deref(), false)
+                .run(
+                    &[Phase::Search, Phase::Report],
+                    index.as_deref(),
+                    false,
+                    false,
+                )
                 .await?;
         }
 
@@ -216,7 +230,7 @@ async fn main() -> anyhow::Result<()> {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Report], None, false).await?;
+            agent.run(&[Phase::Report], None, false, false).await?;
         }
 
         Command::Dataset { command } => match command {

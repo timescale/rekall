@@ -12,7 +12,9 @@ pub mod progress;
 use std::sync::Arc;
 use std::time::Instant;
 
+use backend::DataLoader;
 use config::{BenchmarkConfig, CacheMode};
+use dataset::DatasetReader;
 use error::Result;
 use metrics::{IndexBuildResult, PgRuntimeInfo, SearchResult};
 use output::OutputSink;
@@ -83,6 +85,7 @@ impl Agent {
         phases: &[Phase],
         filter_index: Option<&str>,
         rebuild_indexes: bool,
+        reload_data: bool,
     ) -> Result<()> {
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
@@ -107,9 +110,74 @@ impl Agent {
         let has_search = phases.contains(&Phase::Search);
         let interleave = has_index && has_search;
 
+        // Check if table already has the expected data — skip init/load unless --reload
+        let skip_data_phases =
+            if !reload_data && (phases.contains(&Phase::Init) || phases.contains(&Phase::Load)) {
+                let pg = backend::postgres::PgConnection::new(
+                    &self.config.connection,
+                    &self.config.table_name(),
+                    self.config.dataset.dimension,
+                    self.config.dataset.metric,
+                );
+                if let Ok(true) = pg.table_exists().await {
+                    let row_count = pg.row_count().await.unwrap_or(0);
+                    if row_count > 0 {
+                        // Verify against dataset size
+                        let dataset_path = self.config.dataset.resolved_path();
+                        if let Ok(reader) = dataset::hdf5::Hdf5Reader::open(
+                            &dataset_path,
+                            self.config.dataset.metric,
+                            self.config.dataset.dimension,
+                        ) {
+                            let expected = reader.meta().num_vectors;
+                            if row_count == expected {
+                                true
+                            } else {
+                                for output in self.outputs.iter_mut() {
+                                    output.on_progress(&ProgressEvent::Message {
+                                        text: format!(
+                                            "Table '{}' has {row_count} rows but dataset has \
+                                         {expected} vectors. Use --reload to reload.",
+                                            self.config.table_name(),
+                                        ),
+                                    });
+                                }
+                                false
+                            }
+                        } else {
+                            true // can't check dataset, assume table is fine
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
         for &phase in phases {
-            // Skip individual Index/Search phases when interleaving
             if interleave && (phase == Phase::Index || phase == Phase::Search) {
+                continue;
+            }
+
+            if skip_data_phases && (phase == Phase::Init || phase == Phase::Load) {
+                let pg = backend::postgres::PgConnection::new(
+                    &self.config.connection,
+                    &self.config.table_name(),
+                    self.config.dataset.dimension,
+                    self.config.dataset.metric,
+                );
+                let count = pg.row_count().await.unwrap_or(0);
+                for output in self.outputs.iter_mut() {
+                    output.on_progress(&ProgressEvent::Message {
+                        text: format!(
+                            "Table '{}' already has {count} rows, skipping {phase}",
+                            self.config.table_name(),
+                        ),
+                    });
+                }
                 continue;
             }
 
