@@ -164,6 +164,12 @@ fn draw_html(
     use std::io::Write;
     let mut f = std::fs::File::create(path)?;
 
+    let xform_x = if opts.log_x {
+        logit as fn(f64) -> f64
+    } else {
+        (|x| x) as fn(f64) -> f64
+    };
+
     // Build Plotly traces as JSON
     let mut traces = String::new();
     for (i, s) in series.iter().enumerate() {
@@ -204,10 +210,10 @@ fn draw_html(
 
         for &(recall, qps) in &s.points {
             if pareto_set.contains(&recall.to_bits()) {
-                pareto_x.push(recall);
+                pareto_x.push(xform_x(recall));
                 pareto_y.push(qps);
             } else {
-                other_x.push(recall);
+                other_x.push(xform_x(recall));
                 other_y.push(qps);
             }
         }
@@ -282,7 +288,10 @@ fn draw_html(
     global_pareto_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
     if !global_pareto_points.is_empty() {
-        let gp_x: Vec<f64> = global_pareto_points.iter().map(|(r, _)| *r).collect();
+        let gp_x: Vec<f64> = global_pareto_points
+            .iter()
+            .map(|(r, _)| xform_x(*r))
+            .collect();
         let gp_y: Vec<f64> = global_pareto_points.iter().map(|(_, q)| *q).collect();
         if !traces.is_empty() {
             traces.push(',');
@@ -300,19 +309,40 @@ fn draw_html(
         ));
     }
 
-    let x_type = if opts.log_x { "\"log\"" } else { "\"linear\"" };
     let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
 
-    // For log axes, Plotly interprets range as log10 values
     let min_r = if opts.min_recall > 0.0 {
         opts.min_recall
     } else {
         0.5
     };
-    let x_range = if opts.log_x {
-        format!("range: [{:.6}, {:.6}],", min_r.log10(), 0.0_f64)
+
+    fn logit(p: f64) -> f64 {
+        (p.clamp(0.001, 0.999) / (1.0 - p.clamp(0.001, 0.999))).ln()
+    }
+
+    // Build x-axis config
+    let x_axis_config = if opts.log_x {
+        let tick_vals: Vec<f64> = [
+            0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.925, 0.95, 0.975, 0.99, 0.995, 0.999,
+        ]
+        .iter()
+        .filter(|&&v| v >= min_r)
+        .map(|&v| logit(v))
+        .collect();
+        let tick_text: Vec<String> = [
+            0.5, 0.6, 0.7, 0.8, 0.85, 0.9, 0.925, 0.95, 0.975, 0.99, 0.995, 0.999,
+        ]
+        .iter()
+        .filter(|&&v| v >= min_r)
+        .map(|v| format!("{v}"))
+        .collect();
+        format!(
+            "tickmode: \"array\", tickvals: {:?}, ticktext: {:?}, range: [{}, {}], gridcolor: \"#eeeeee\"",
+            tick_vals, tick_text, logit(min_r), logit(0.999),
+        )
     } else {
-        format!("range: [{min_r}, 1.0],")
+        format!("range: [{min_r}, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\"",)
     };
 
     let html = format!(
@@ -329,7 +359,7 @@ fn draw_html(
             "var traces = [{traces}];\n",
             "var layout = {{\n",
             "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
-            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, {x_range} tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
+            "  xaxis: {{ title: \"Recall@10\", {x_axis_config} }},\n",
             "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
@@ -348,9 +378,8 @@ fn draw_html(
         ),
         title = title,
         traces = traces,
-        x_type = x_type,
+        x_axis_config = x_axis_config,
         y_type = y_type,
-        x_range = x_range,
     );
     f.write_all(html.as_bytes())?;
 
