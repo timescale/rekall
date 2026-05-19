@@ -115,3 +115,159 @@ pub fn compute_pareto(results: &[SearchResult]) -> Vec<ParetoPoint> {
 
     points
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn recall_perfect() {
+        let result = vec![1, 2, 3, 4, 5];
+        let gt = vec![1, 2, 3, 4, 5];
+        assert_eq!(compute_recall(&result, &gt, 5), 1.0);
+    }
+
+    #[test]
+    fn recall_none() {
+        let result = vec![6, 7, 8, 9, 10];
+        let gt = vec![1, 2, 3, 4, 5];
+        assert_eq!(compute_recall(&result, &gt, 5), 0.0);
+    }
+
+    #[test]
+    fn recall_partial() {
+        let result = vec![1, 2, 6, 7, 8];
+        let gt = vec![1, 2, 3, 4, 5];
+        assert_eq!(compute_recall(&result, &gt, 5), 0.4);
+    }
+
+    #[test]
+    fn recall_uses_k_not_vec_len() {
+        let result = vec![1, 2, 3, 4, 5, 6, 7];
+        let gt = vec![1, 2, 3, 10, 20, 30, 40];
+        assert_eq!(compute_recall(&result, &gt, 3), 1.0);
+    }
+
+    #[test]
+    fn recall_order_independent() {
+        let result = vec![5, 3, 1, 4, 2];
+        let gt = vec![1, 2, 3, 4, 5];
+        assert_eq!(compute_recall(&result, &gt, 5), 1.0);
+    }
+
+    #[test]
+    fn latency_collector_basic() {
+        let mut c = LatencyCollector::new();
+        c.record(100);
+        c.record(200);
+        c.record(300);
+        assert_eq!(c.count(), 3);
+        let mean = c.mean_us();
+        assert!((mean - 200.0).abs() < 5.0);
+    }
+
+    #[test]
+    fn latency_collector_percentiles() {
+        let mut c = LatencyCollector::new();
+        for i in 1..=1000 {
+            c.record(i);
+        }
+        let p50 = c.percentile_us(50.0);
+        assert!(p50 >= 490.0 && p50 <= 510.0);
+        let p99 = c.percentile_us(99.0);
+        assert!(p99 >= 985.0 && p99 <= 1000.0);
+    }
+
+    #[test]
+    fn latency_collector_reset() {
+        let mut c = LatencyCollector::new();
+        c.record(100);
+        assert_eq!(c.count(), 1);
+        c.reset();
+        assert_eq!(c.count(), 0);
+    }
+
+    fn make_search_result(name: &str, recall: f64, qps: f64) -> SearchResult {
+        SearchResult {
+            index_name: name.to_string(),
+            index_type: "test".to_string(),
+            search_params: serde_json::json!({}),
+            k: 10,
+            num_queries: 100,
+            num_runs: 1,
+            avg_recall: recall,
+            qps,
+            avg_latency_us: 1e6 / qps,
+            p50_latency_us: 0.0,
+            p95_latency_us: 0.0,
+            p99_latency_us: 0.0,
+            p999_latency_us: 0.0,
+        }
+    }
+
+    #[test]
+    fn pareto_empty() {
+        let pareto = compute_pareto(&[]);
+        assert!(pareto.is_empty());
+    }
+
+    #[test]
+    fn pareto_single() {
+        let results = vec![make_search_result("a", 0.9, 1000.0)];
+        let pareto = compute_pareto(&results);
+        assert_eq!(pareto.len(), 1);
+        assert!(pareto[0].is_pareto);
+    }
+
+    #[test]
+    fn pareto_dominated() {
+        // b dominates a (higher recall AND higher QPS)
+        let results = vec![
+            make_search_result("a", 0.8, 500.0),
+            make_search_result("b", 0.9, 1000.0),
+        ];
+        let pareto = compute_pareto(&results);
+        let pareto_points: Vec<_> =
+            pareto.iter().filter(|p| p.is_pareto).collect();
+        assert_eq!(pareto_points.len(), 1);
+        assert_eq!(pareto_points[0].index_name, "b");
+    }
+
+    #[test]
+    fn pareto_tradeoff() {
+        // a has higher QPS, b has higher recall — both on frontier
+        let results = vec![
+            make_search_result("a", 0.8, 2000.0),
+            make_search_result("b", 0.95, 500.0),
+        ];
+        let pareto = compute_pareto(&results);
+        let pareto_names: Vec<_> = pareto
+            .iter()
+            .filter(|p| p.is_pareto)
+            .map(|p| p.index_name.as_str())
+            .collect();
+        assert_eq!(pareto_names.len(), 2);
+        assert!(pareto_names.contains(&"a"));
+        assert!(pareto_names.contains(&"b"));
+    }
+
+    #[test]
+    fn pareto_frontier_correct() {
+        let results = vec![
+            make_search_result("a", 0.7, 3000.0),
+            make_search_result("b", 0.8, 2000.0),
+            make_search_result("c", 0.85, 1500.0), // dominated by b+d
+            make_search_result("d", 0.9, 1800.0),
+            make_search_result("e", 0.95, 500.0),
+        ];
+        let pareto = compute_pareto(&results);
+        let frontier: Vec<_> = pareto
+            .iter()
+            .filter(|p| p.is_pareto)
+            .map(|p| p.index_name.as_str())
+            .collect();
+        assert!(frontier.contains(&"a"));
+        assert!(frontier.contains(&"d"));
+        assert!(frontier.contains(&"e"));
+    }
+}

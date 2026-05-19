@@ -426,3 +426,119 @@ impl DataLoader for PgConnection {
         Ok(loaded)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn copy_header_format() {
+        let hdr = copy_header();
+        assert_eq!(&hdr[..11], b"PGCOPY\n\xff\r\n\0");
+        assert_eq!(hdr.len(), 19); // signature(11) + flags(4) + ext(4)
+    }
+
+    #[test]
+    fn copy_trailer_format() {
+        let trailer = copy_trailer();
+        assert_eq!(trailer, vec![0xFF, 0xFF]); // -1 as i16 big-endian
+    }
+
+    #[test]
+    fn encode_row_field_count() {
+        let mut buf = Vec::new();
+        encode_copy_row(&mut buf, 42, &[1.0, 2.0, 3.0]);
+        // First 2 bytes: field count = 2
+        assert_eq!(&buf[..2], &[0, 2]);
+    }
+
+    #[test]
+    fn encode_row_id_field() {
+        let mut buf = Vec::new();
+        encode_copy_row(&mut buf, 12345, &[1.0]);
+        // After field_count(2): id field len(4) = 8, then id(8)
+        let id_len = i32::from_be_bytes(buf[2..6].try_into().unwrap());
+        assert_eq!(id_len, 8);
+        let id = i64::from_be_bytes(buf[6..14].try_into().unwrap());
+        assert_eq!(id, 12345);
+    }
+
+    #[test]
+    fn encode_row_vector_field() {
+        let vec = [1.5_f32, -2.5, 3.0];
+        let mut buf = Vec::new();
+        encode_copy_row(&mut buf, 0, &vec);
+
+        // Vector field starts at offset 14 (2+4+8)
+        let vec_offset = 14;
+        let vec_len =
+            i32::from_be_bytes(buf[vec_offset..vec_offset + 4].try_into().unwrap());
+        assert_eq!(vec_len, 2 + 2 + 3 * 4); // dim + unused + 3 floats = 16
+
+        let dim = u16::from_be_bytes(
+            buf[vec_offset + 4..vec_offset + 6].try_into().unwrap(),
+        );
+        assert_eq!(dim, 3);
+
+        let unused = u16::from_be_bytes(
+            buf[vec_offset + 6..vec_offset + 8].try_into().unwrap(),
+        );
+        assert_eq!(unused, 0);
+
+        for (i, &expected) in vec.iter().enumerate() {
+            let off = vec_offset + 8 + i * 4;
+            let val = f32::from_be_bytes(buf[off..off + 4].try_into().unwrap());
+            assert_eq!(val, expected);
+        }
+    }
+
+    #[test]
+    fn encode_row_total_size() {
+        let dim = 768;
+        let vector = vec![0.0_f32; dim];
+        let mut buf = Vec::new();
+        encode_copy_row(&mut buf, 0, &vector);
+        let expected = 2 + (4 + 8) + (4 + 2 + 2 + dim * 4);
+        assert_eq!(buf.len(), expected);
+    }
+
+    #[test]
+    fn toml_value_to_sql_types() {
+        assert_eq!(
+            toml_value_to_sql(&toml::Value::Integer(42)),
+            "42"
+        );
+        assert_eq!(
+            toml_value_to_sql(&toml::Value::Float(3.14)),
+            "3.14"
+        );
+        assert_eq!(
+            toml_value_to_sql(&toml::Value::Boolean(true)),
+            "true"
+        );
+        assert_eq!(
+            toml_value_to_sql(&toml::Value::String("hello".into())),
+            "'hello'"
+        );
+    }
+
+    #[test]
+    fn index_sql_name_sanitizes() {
+        let pg = PgConnection::new(
+            &ConnectionConfig {
+                dsn: String::new(),
+            },
+            "t",
+            1,
+            Metric::Angular,
+        );
+        assert_eq!(
+            pg.index_sql_name("mkt-nlist-1000"),
+            "idx_rekall_mkt_nlist_1000"
+        );
+        assert_eq!(
+            pg.index_sql_name("hnsw-m16"),
+            "idx_rekall_hnsw_m16"
+        );
+    }
+}

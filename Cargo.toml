@@ -27,6 +27,7 @@ byteorder = "1"
 bytes = "1"
 futures-util = "0.3"
 shellexpand = "3"
+tempfile = "3"
 
 [workspace.package]
 version = "0.1.0"

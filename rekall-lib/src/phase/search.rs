@@ -198,3 +198,69 @@ fn expand_sweep_params(
 
     combos
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn expand_empty_params() {
+        let params = HashMap::new();
+        let combos = expand_sweep_params(&params);
+        assert_eq!(combos.len(), 1);
+        assert!(combos[0].is_empty());
+    }
+
+    #[test]
+    fn expand_single_param() {
+        let mut params = HashMap::new();
+        params.insert(
+            "mkt.nprobe".to_string(),
+            vec![
+                toml::Value::Integer(5),
+                toml::Value::Integer(10),
+                toml::Value::Integer(20),
+            ],
+        );
+        let combos = expand_sweep_params(&params);
+        assert_eq!(combos.len(), 3);
+        let values: Vec<i64> = combos
+            .iter()
+            .map(|c| c["mkt.nprobe"].as_integer().unwrap())
+            .collect();
+        assert!(values.contains(&5));
+        assert!(values.contains(&10));
+        assert!(values.contains(&20));
+    }
+
+    #[test]
+    fn expand_cartesian_product() {
+        let mut params = HashMap::new();
+        params.insert(
+            "a".to_string(),
+            vec![toml::Value::Integer(1), toml::Value::Integer(2)],
+        );
+        params.insert(
+            "b".to_string(),
+            vec![
+                toml::Value::Integer(10),
+                toml::Value::Integer(20),
+                toml::Value::Integer(30),
+            ],
+        );
+        let combos = expand_sweep_params(&params);
+        assert_eq!(combos.len(), 6); // 2 * 3
+    }
+
+    #[test]
+    fn expand_single_value() {
+        let mut params = HashMap::new();
+        params.insert(
+            "x".to_string(),
+            vec![toml::Value::Integer(42)],
+        );
+        let combos = expand_sweep_params(&params);
+        assert_eq!(combos.len(), 1);
+        assert_eq!(combos[0]["x"].as_integer().unwrap(), 42);
+    }
+}

@@ -53,3 +53,45 @@ impl std::str::FromStr for Phase {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn phase_display() {
+        assert_eq!(Phase::Init.to_string(), "init");
+        assert_eq!(Phase::Search.to_string(), "search");
+        assert_eq!(Phase::Report.to_string(), "report");
+    }
+
+    #[test]
+    fn phase_from_str() {
+        assert_eq!("init".parse::<Phase>().unwrap(), Phase::Init);
+        assert_eq!("LOAD".parse::<Phase>().unwrap(), Phase::Load);
+        assert_eq!("Index".parse::<Phase>().unwrap(), Phase::Index);
+    }
+
+    #[test]
+    fn phase_from_str_invalid() {
+        let err = "foo".parse::<Phase>().unwrap_err();
+        assert!(err.contains("Unknown phase"));
+    }
+
+    #[test]
+    fn phase_all() {
+        let all = Phase::all();
+        assert_eq!(all.len(), 5);
+        assert_eq!(all[0], Phase::Init);
+        assert_eq!(all[4], Phase::Report);
+    }
+
+    #[test]
+    fn phase_roundtrip() {
+        for phase in Phase::all() {
+            let s = phase.to_string();
+            let parsed: Phase = s.parse().unwrap();
+            assert_eq!(*phase, parsed);
+        }
+    }
+}
