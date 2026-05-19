@@ -2,14 +2,16 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
+use postgres_types::Type;
 use serde::{Deserialize, Serialize};
-use tokio_postgres::Client;
+use tokio_postgres::{Client, Statement};
 use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
+use super::pg_vector_type::{lookup_vector_type, PgVector};
 use super::postgres::PgConnection;
 use super::IndexBackend;
 
@@ -36,6 +38,7 @@ struct MeerkatParams {
 pub struct MeerkatBackend {
     pg: PgConnection,
     client: Client,
+    query_stmt: Statement,
     name: String,
     params: MeerkatParams,
 }
@@ -58,9 +61,33 @@ impl MeerkatBackend {
         let pg = PgConnection::new(conn, table, dim, metric);
         let client = pg.connect().await?;
 
+        let vec_type = lookup_vector_type(&client).await.map_err(|e| {
+            crate::error::Error::Config(format!(
+                "Cannot find pgvector 'vector' type: {e}"
+            ))
+        })?;
+
+        let order_op = match metric {
+            Metric::Angular => "OPERATOR(mkt.<=>)",
+            Metric::Euclidean => "OPERATOR(mkt.<->)",
+        };
+
+        let sql = format!(
+            "SELECT id FROM {table} ORDER BY v {order_op} $1 LIMIT $2"
+        );
+        let query_stmt = client
+            .prepare_typed(&sql, &[vec_type, Type::INT8])
+            .await
+            .map_err(|e| {
+                crate::error::Error::Config(format!(
+                    "Cannot prepare meerkat query: {e}"
+                ))
+            })?;
+
         Ok(Self {
             pg,
             client,
+            query_stmt,
             name: idx.name.clone(),
             params,
         })
@@ -106,13 +133,6 @@ impl MeerkatBackend {
             String::new()
         } else {
             format!(" WITH ({})", opts.join(", "))
-        }
-    }
-
-    fn order_operator(&self) -> &str {
-        match self.pg.metric {
-            Metric::Angular => "OPERATOR(mkt.<=>)",
-            Metric::Euclidean => "OPERATOR(mkt.<->)",
         }
     }
 }
@@ -228,24 +248,11 @@ impl IndexBackend for MeerkatBackend {
     }
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
-        let vec_lit = format!(
-            "'[{}]'::vector",
-            vector
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(",")
-        );
-
-        let sql = format!(
-            "SELECT id FROM {} ORDER BY v {} {} LIMIT {}",
-            self.pg.table_name,
-            self.order_operator(),
-            vec_lit,
-            k,
-        );
-
-        let rows = self.client.query(&sql, &[]).await?;
+        let k_i64 = k as i64;
+        let rows = self
+            .client
+            .query(&self.query_stmt, &[&PgVector(vector), &k_i64])
+            .await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 }

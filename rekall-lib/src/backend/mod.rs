@@ -1,4 +1,5 @@
 pub mod meerkat;
+pub mod pg_vector_type;
 pub mod pgvector_hnsw;
 pub mod postgres;
 
