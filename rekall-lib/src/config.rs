@@ -78,6 +78,8 @@ pub struct IndexConfig {
     pub name: String,
     #[serde(default = "default_toml_table")]
     pub params: toml::Value,
+    #[serde(default)]
+    pub gucs: HashMap<String, toml::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

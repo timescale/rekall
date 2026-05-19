@@ -67,6 +67,17 @@ pub async fn run(
             });
         }
 
+        // Validate default GUCs from index config
+        let default_gucs_for_validation: HashMap<String, Vec<toml::Value>> = idx_config
+            .gucs
+            .iter()
+            .map(|(k, v)| (k.clone(), vec![v.clone()]))
+            .collect();
+        if !default_gucs_for_validation.is_empty() {
+            backend
+                .validate_search_params(&default_gucs_for_validation)
+                .await?;
+        }
         backend.validate_search_params(&sweep.params).await?;
 
         let param_combos = expand_sweep_params(&sweep.params);
@@ -79,6 +90,8 @@ pub async fn run(
                 params: params_json.clone(),
             });
 
+            // Apply default GUCs from index config first, then sweep overrides
+            backend.set_search_params(&idx_config.gucs).await?;
             backend.set_search_params(params).await?;
 
             // Warmup

@@ -15,7 +15,10 @@ type = "meerkat"
 name = "mkt-nlist-1000-nosoar"
 [index.params]
 nlist = 1000
+centroid_compression = false
 fastscan = true
+[index.gucs]
+"mkt.fastscan_bits" = 16
 
 [search]
 k = 10

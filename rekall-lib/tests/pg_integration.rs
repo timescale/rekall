@@ -182,6 +182,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
             ef_construction = 16
         })
         .unwrap(),
+        gucs: HashMap::new(),
     };
 
     let registry = BackendRegistry::new();
@@ -251,6 +252,7 @@ async fn backend_meerkat_lifecycle() {
             nlist = 4
         })
         .unwrap(),
+        gucs: HashMap::new(),
     };
 
     let registry = BackendRegistry::new();
