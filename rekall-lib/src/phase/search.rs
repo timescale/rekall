@@ -51,6 +51,24 @@ pub async fn run(
                 name: sweep.index.clone(),
             })?;
 
+        // Disable all other rekall indexes, enable only the active one
+        let mut pg_mgmt = crate::backend::postgres::PgConnection::new(
+            &config.connection,
+            &config.table_name(),
+            config.dataset.dimension,
+            config.dataset.metric,
+        );
+        pg_mgmt.connect("<=>", None).await?;
+        let active_idx = pg_mgmt.index_sql_name(&sweep.index);
+        let all_indexes = pg_mgmt.list_rekall_indexes().await?;
+        for idx_sql in &all_indexes {
+            if *idx_sql == active_idx {
+                pg_mgmt.enable_index(idx_sql).await?;
+            } else {
+                pg_mgmt.disable_index(idx_sql).await?;
+            }
+        }
+
         let backend = registry
             .create(
                 &config.connection,
@@ -202,6 +220,18 @@ pub async fn run(
 
             all_results.push(result);
         }
+    }
+
+    // Re-enable all indexes when done
+    let mut pg_cleanup = crate::backend::postgres::PgConnection::new(
+        &config.connection,
+        &config.table_name(),
+        config.dataset.dimension,
+        config.dataset.metric,
+    );
+    pg_cleanup.connect("<=>", None).await?;
+    for idx_sql in pg_cleanup.list_rekall_indexes().await? {
+        let _ = pg_cleanup.enable_index(&idx_sql).await;
     }
 
     Ok(all_results)
