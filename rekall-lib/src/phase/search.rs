@@ -153,12 +153,14 @@ pub async fn run(
 
             let mut best_collector = LatencyCollector::new();
             let mut best_avg = f64::MAX;
+            let mut best_wall_secs = 0.0;
             let mut total_recall = 0.0;
 
             for run in 0..config.search.runs {
                 let mut collector = LatencyCollector::new();
                 let mut run_recall = 0.0;
 
+                let wall_start = Instant::now();
                 for qi in 0..num_queries {
                     let q = queries.row(qi).to_vec();
                     let gt = ground_truth.row(qi).to_vec();
@@ -173,6 +175,7 @@ pub async fn run(
                         run_recall += compute_recall(&result_ids, &gt, k);
                     }
                 }
+                let wall_secs = wall_start.elapsed().as_secs_f64();
 
                 if run == 0 {
                     total_recall = run_recall / num_queries as f64;
@@ -182,11 +185,17 @@ pub async fn run(
                 if avg < best_avg {
                     best_avg = avg;
                     best_collector = collector;
+                    best_wall_secs = wall_secs;
                 }
             }
 
             let qps = if best_avg > 0.0 {
                 1_000_000.0 / best_avg
+            } else {
+                0.0
+            };
+            let qps_wall = if best_wall_secs > 0.0 {
+                num_queries as f64 / best_wall_secs
             } else {
                 0.0
             };
@@ -205,6 +214,8 @@ pub async fn run(
                 p95_latency_us: best_collector.percentile_us(95.0),
                 p99_latency_us: best_collector.percentile_us(99.0),
                 p999_latency_us: best_collector.percentile_us(99.9),
+                wall_time_secs: best_wall_secs,
+                qps_wall,
             };
 
             let _ = progress.send(ProgressEvent::SearchEnd {

@@ -154,6 +154,8 @@ impl OutputSink for StdoutSink {
             recall: String,
             #[tabled(rename = "QPS")]
             qps: String,
+            #[tabled(rename = "QPS(wall)")]
+            qps_wall: String,
             #[tabled(rename = "Avg (us)")]
             avg_us: String,
             #[tabled(rename = "p50 (us)")]
@@ -170,6 +172,7 @@ impl OutputSink for StdoutSink {
                 params: r.search_params.to_string(),
                 recall: format!("{:.4}", r.avg_recall),
                 qps: format!("{:.0}", r.qps),
+                qps_wall: format!("{:.0}", r.qps_wall),
                 avg_us: format!("{:.0}", r.avg_latency_us),
                 p50_us: format!("{:.0}", r.p50_latency_us),
                 p99_us: format!("{:.0}", r.p99_latency_us),

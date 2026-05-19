@@ -19,6 +19,8 @@ pub struct SearchResult {
     pub p95_latency_us: f64,
     pub p99_latency_us: f64,
     pub p999_latency_us: f64,
+    pub wall_time_secs: f64,
+    pub qps_wall: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -226,6 +228,8 @@ mod tests {
             p95_latency_us: 0.0,
             p99_latency_us: 0.0,
             p999_latency_us: 0.0,
+            wall_time_secs: 100.0 / qps,
+            qps_wall: qps,
         }
     }
 

@@ -190,6 +190,8 @@ fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
             p95_latency_us: 0.0,
             p99_latency_us: 0.0,
             p999_latency_us: 0.0,
+            wall_time_secs: 0.0,
+            qps_wall: qps,
         })
         .collect();
     let pareto = compute_pareto(&results);
