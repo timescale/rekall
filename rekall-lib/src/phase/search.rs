@@ -37,10 +37,10 @@ pub async fn run(
     let mut all_results = Vec::new();
 
     for sweep in &config.search.sweep {
-        if let Some(name) = filter_index {
-            if sweep.index != name {
-                continue;
-            }
+        if let Some(name) = filter_index
+            && sweep.index != name
+        {
+            continue;
         }
 
         let idx_config = config

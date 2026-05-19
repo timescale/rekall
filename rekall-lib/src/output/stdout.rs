@@ -10,6 +10,12 @@ pub struct StdoutSink {
     progress_bar: Option<indicatif::ProgressBar>,
 }
 
+impl Default for StdoutSink {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StdoutSink {
     pub fn new() -> Self {
         Self { progress_bar: None }

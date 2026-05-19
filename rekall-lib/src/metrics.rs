@@ -58,6 +58,12 @@ pub struct LatencyCollector {
     histogram: Histogram<u64>,
 }
 
+impl Default for LatencyCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LatencyCollector {
     pub fn new() -> Self {
         Self {

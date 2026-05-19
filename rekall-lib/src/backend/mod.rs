@@ -45,6 +45,7 @@ pub trait IndexBackend: Send + Sync {
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>>;
 }
 
+#[derive(Default)]
 pub struct BackendRegistry;
 
 impl BackendRegistry {
