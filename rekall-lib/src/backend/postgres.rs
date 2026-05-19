@@ -469,7 +469,10 @@ mod tests {
     #[test]
     fn toml_value_to_sql_types() {
         assert_eq!(toml_value_to_sql(&toml::Value::Integer(42)), "42");
-        assert_eq!(toml_value_to_sql(&toml::Value::Float(1.5)), "1.5");
+        #[allow(clippy::approx_constant)]
+        {
+            assert_eq!(toml_value_to_sql(&toml::Value::Float(3.14)), "3.14");
+        }
         assert_eq!(toml_value_to_sql(&toml::Value::Boolean(true)), "true");
         assert_eq!(
             toml_value_to_sql(&toml::Value::String("hello".into())),
