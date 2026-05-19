@@ -135,7 +135,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             ..
         } => {
-            let cfg = BenchmarkConfig::from_file(&config)?;
+            let cfg = BenchmarkConfig::from_path(&config)?;
 
             if dry_run {
                 print_dry_run(&cfg, phase.as_deref(), index.as_deref());
@@ -154,7 +154,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Init { config } => {
-            let cfg = BenchmarkConfig::from_file(&config)?;
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs);
             agent.run(&[Phase::Init], None).await?;
@@ -165,7 +165,7 @@ async fn main() -> anyhow::Result<()> {
             parallelism,
             ..
         } => {
-            let mut cfg = BenchmarkConfig::from_file(&config)?;
+            let mut cfg = BenchmarkConfig::from_path(&config)?;
             if let Some(p) = parallelism {
                 cfg.load.parallelism = p;
             }
@@ -175,14 +175,14 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Index { config, name } => {
-            let cfg = BenchmarkConfig::from_file(&config)?;
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs);
             agent.run(&[Phase::Index], name.as_deref()).await?;
         }
 
         Command::Search { config, index } => {
-            let cfg = BenchmarkConfig::from_file(&config)?;
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs);
             agent
@@ -191,7 +191,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Report { config } => {
-            let cfg = BenchmarkConfig::from_file(&config)?;
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs);
             agent.run(&[Phase::Report], None).await?;
@@ -217,7 +217,7 @@ async fn main() -> anyhow::Result<()> {
 
         Command::Config { config } => {
             if let Some(path) = config {
-                let cfg = BenchmarkConfig::from_file(&path)?;
+                let cfg = BenchmarkConfig::from_path(&path)?;
                 let toml_str = toml::to_string_pretty(&cfg).unwrap();
                 println!("# Effective config: {}", path.display());
                 let local = path.with_file_name(format!(
@@ -307,7 +307,7 @@ fn show_all_configs() {
         ));
         let has_local = local.exists();
 
-        match BenchmarkConfig::from_file(path) {
+        match BenchmarkConfig::from_path(path) {
             Ok(cfg) => {
                 let local_marker = if has_local { " (+local)" } else { "" };
                 println!("{}{local_marker}", path.display());

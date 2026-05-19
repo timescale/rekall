@@ -162,11 +162,24 @@ pub struct BenchmarkConfig {
 }
 
 impl BenchmarkConfig {
-    /// Load config from a TOML file. If a `.local.toml` sibling exists
-    /// (e.g., `cohere-1m.local.toml` for `cohere-1m.toml`), it is merged
-    /// on top — local values override the base. This lets you keep
-    /// temporary overrides (different GUC values, fewer queries, etc.)
-    /// out of version control.
+    /// Load config from a file or directory.
+    ///
+    /// **File mode**: loads the TOML file, merging any `.local.toml` sibling.
+    ///
+    /// **Directory mode**: loads `base.toml` from the directory for dataset,
+    /// connection, and search defaults. Then loads every other `*.toml` file
+    /// in the directory (sorted by name) and appends their `[[index]]` and
+    /// `[[search.sweep]]` entries. Files named `*.local.toml` are also
+    /// included (they're gitignored, not committed). This lets you organize
+    /// config variants as separate files in a directory.
+    pub fn from_path(path: &Path) -> Result<Self> {
+        if path.is_dir() {
+            Self::from_directory(path)
+        } else {
+            Self::from_file(path)
+        }
+    }
+
     pub fn from_file(path: &Path) -> Result<Self> {
         let content = std::fs::read_to_string(path).map_err(|e| {
             Error::Config(format!("Cannot read config file '{}': {e}", path.display()))
@@ -195,6 +208,75 @@ impl BenchmarkConfig {
         let config: Self = base
             .try_into()
             .map_err(|e| Error::Config(format!("Invalid merged config: {e}")))?;
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn from_directory(dir: &Path) -> Result<Self> {
+        let base_path = dir.join("base.toml");
+        if !base_path.exists() {
+            return Err(Error::Config(format!(
+                "Directory '{}' has no base.toml. \
+                 Create base.toml with [dataset], [connection], and [search] sections.",
+                dir.display()
+            )));
+        }
+
+        let mut config = Self::from_file(&base_path)?;
+
+        let mut index_files: Vec<_> = std::fs::read_dir(dir)
+            .map_err(|e| Error::Config(format!("Cannot read directory '{}': {e}", dir.display())))?
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| {
+                p.extension().is_some_and(|e| e == "toml")
+                    && p.file_name().unwrap_or_default().to_string_lossy() != "base.toml"
+                    && !p
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .starts_with("base.")
+            })
+            .collect();
+        index_files.sort();
+
+        for index_file in &index_files {
+            let content = std::fs::read_to_string(index_file).map_err(|e| {
+                Error::Config(format!(
+                    "Cannot read index config '{}': {e}",
+                    index_file.display()
+                ))
+            })?;
+
+            #[derive(Deserialize)]
+            struct IndexFragment {
+                #[serde(default)]
+                index: Vec<IndexConfig>,
+                #[serde(default)]
+                search: Option<SearchFragment>,
+            }
+
+            #[derive(Deserialize)]
+            struct SearchFragment {
+                #[serde(default)]
+                sweep: Vec<SweepConfig>,
+            }
+
+            let fragment: IndexFragment = toml::from_str(&content).map_err(|e| {
+                Error::Config(format!(
+                    "Invalid index config '{}': {e}",
+                    index_file.display()
+                ))
+            })?;
+
+            config.index.extend(fragment.index);
+            if let Some(search) = fragment.search {
+                config.search.sweep.extend(search.sweep);
+            }
+
+            tracing::info!("Loaded index config from {}", index_file.display());
+        }
+
         config.validate()?;
         Ok(config)
     }
