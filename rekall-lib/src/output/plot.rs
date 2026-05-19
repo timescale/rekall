@@ -119,6 +119,12 @@ fn draw_svg(
     let root = SVGBackend::new(path, (900, 600)).into_drawing_area();
     draw_chart(&root, title, series, min_qps, max_qps)?;
     root.present()?;
+
+    // Make SVG scalable: remove fixed width/height, keep viewBox
+    let content = std::fs::read_to_string(path)?;
+    let patched = content.replacen("width=\"900\" height=\"600\" viewBox", "viewBox", 1);
+    std::fs::write(path, patched)?;
+
     Ok(())
 }
 
