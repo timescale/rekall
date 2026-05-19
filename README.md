@@ -15,109 +15,62 @@ In approximate nearest neighbor (ANN) search, **recall** is the metric that
 measures exactly that: how many of the *true* nearest neighbors did you actually
 find? Total recall means you found them all.
 
-## Why Not ann-benchmarks?
-
-[ann-benchmarks](https://github.com/erikbern/ann-benchmarks) is the standard
-ANN benchmark suite but has limitations at scale:
-
-- **Memory**: loads entire datasets into Python/NumPy before passing to
-  algorithms. A 100M-vector dataset at 768 dimensions needs ~286 GB of RAM
-  just for the array.
-- **Monolithic runs**: rebuilds everything end-to-end. Loading 100M vectors
-  into PostgreSQL takes hours; you don't want to redo it for each index config.
-- **Docker-only**: forces algorithm isolation via Docker containers, which adds
-  overhead and limits access to host resources.
-
-Rekall fixes these by operating in **independent phases** with **streaming
-data loading** and **shared tables across index types**.
-
 ## Key Features
 
 - **Phase-based execution**: init, load, index, search, and report run
-  independently. Load a dataset once, then benchmark multiple index types
-  against it.
-- **Memory-bounded loading**: streams HDF5 data in chunks via parallel COPY
-  BINARY. Loading 100M vectors uses ~600 MB of working memory, not 286 GB.
-- **Resumable loads**: tracks progress in a metadata table. If loading
-  crashes at row 50M, it picks up where it left off.
-- **Pareto exploration**: sweeps index build parameters and query-time
-  parameters to map the recall-vs-QPS frontier, similar to ann-benchmarks.
-- **Shared data, multiple indexes**: PostgreSQL-based indexes share the same
-  loaded table. Compare Meerkat vs pgvector HNSW without loading twice.
-- **Pluggable output**: stdout tables, JSON export, and (future) PostgreSQL
-  result storage for historical comparison.
-- **Actionable errors**: every failure tells you what went wrong and which
-  command to run to fix it.
+  independently. Load a dataset once, then benchmark multiple index types.
+- **Memory-bounded loading**: streams HDF5 data in chunks via COPY BINARY.
+  Loading 100M vectors uses ~150 MB per stream, not 286 GB.
+- **Multi-config exploration**: define multiple index configs and sweep them
+  in one run. Indexes are built once and reused via enable/disable switching.
+- **Directory-based config groups**: organize configs in directories, run
+  them individually or with shell globs.
+- **Local overrides**: `*.local.toml` files override base configs without
+  being committed to the repo.
+- **Prepared statements**: binary vector encoding with prepared queries for
+  minimal measurement overhead.
+- **Full traceability**: every run captures the effective config, PG version,
+  settings, and extension versions in both stdout and JSON output.
 
-## Usage
+## Quick Start
 
 ```bash
+# Build
+cargo build --release
+
 # Inspect a dataset
-rekall dataset info cohere-wikipedia-22-12-1M-angular.hdf5
+rekall dataset info data/cohere-wikipedia-22-12-1M-angular.hdf5
 
-# Run a full benchmark
-rekall run cohere-1m.toml
+# Run a benchmark
+rekall run examples/cohere-1m.toml
 
-# Run individual phases
-rekall init cohere-1m.toml
-rekall load cohere-1m.toml --parallelism 4
-rekall index cohere-1m.toml --name mkt-nlist-1000
-rekall search cohere-1m.toml
-rekall report cohere-1m.toml
+# Run from a config directory
+rekall run configs/cohere-1m/
+
+# Run only specific configs (shell glob)
+rekall run configs/cohere-1m/mkt-*.toml
+
+# Run multiple groups
+rekall run configs/group1/ configs/group2/mkt-*.toml
+
+# Show effective merged config
+rekall config examples/cohere-1m.toml
+
+# List all configs
+rekall config
+
+# Skip rebuilding existing indexes
+rekall run configs/cohere-1m/
+
+# Force rebuild
+rekall run configs/cohere-1m/ --rebuild
 ```
 
-## Configuration
+## Documentation
 
-Benchmarks are defined in TOML config files:
-
-```toml
-[dataset]
-name = "cohere-1m"
-path = "~/data/cohere-wikipedia-22-12-1M-angular.hdf5"
-metric = "angular"
-dimension = 768
-
-[connection]
-dsn = "host=/tmp port=5432 dbname=postgres"
-
-[load]
-table = "cohere_1m"
-parallelism = 4
-chunk_size = 50000
-
-[[index]]
-type = "meerkat"
-name = "mkt-nlist-1000"
-[index.params]
-nlist = 1000
-fan_out = 32
-
-[[index]]
-type = "pgvector-hnsw"
-name = "hnsw-m16"
-[index.params]
-m = 16
-ef_construction = 200
-
-[search]
-k = 10
-runs = 3
-warmup = 100
-
-[[search.sweep]]
-index = "mkt-nlist-1000"
-[search.sweep.params]
-nprobe = [5, 10, 20, 40, 80]
-
-[[search.sweep]]
-index = "hnsw-m16"
-[search.sweep.params]
-ef_search = [10, 20, 40, 80, 200, 400]
-```
-
-## Roadmap
-
-See [DESIGN.md](DESIGN.md) for the full architecture and implementation plan.
+- [Configuration Guide](docs/configuration.md) — config files, local
+  overrides, directory groups, GUC defaults
+- [DESIGN.md](DESIGN.md) — architecture, traits, data flow, roadmap
 
 ## License
 
