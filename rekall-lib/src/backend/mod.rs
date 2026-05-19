@@ -40,6 +40,12 @@ pub trait IndexBackend: Send + Sync {
     }
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>>;
+
+    /// Validate that the query plan uses the expected index.
+    /// PG backends should override this. Default is a no-op for remote backends.
+    async fn validate_query_plan(&self, _sample_vector: &[f32], _k: usize) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[derive(Default)]

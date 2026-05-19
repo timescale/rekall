@@ -215,4 +215,11 @@ impl IndexBackend for MeerkatBackend {
             .await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
+
+    async fn validate_query_plan(&self, sample_vector: &[f32], k: usize) -> Result<()> {
+        self.pg
+            .validate_query_plan(&self.name, sample_vector, k)
+            .await?;
+        Ok(())
+    }
 }

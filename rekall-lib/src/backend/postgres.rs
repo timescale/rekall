@@ -25,6 +25,7 @@ pub struct PgConnection {
     pub metric: Metric,
     client: Option<Client>,
     pub query_stmt: Option<Statement>,
+    order_operator: Option<String>,
 }
 
 impl PgConnection {
@@ -36,6 +37,7 @@ impl PgConnection {
             metric,
             client: None,
             query_stmt: None,
+            order_operator: None,
         }
     }
 
@@ -88,6 +90,7 @@ impl PgConnection {
 
         self.client = Some(client);
         self.query_stmt = Some(stmt);
+        self.order_operator = Some(order_operator.to_string());
         Ok(())
     }
 
@@ -257,6 +260,68 @@ impl PgConnection {
             settings,
             extensions,
         })
+    }
+
+    /// Run EXPLAIN on the query with a sample vector and verify the plan
+    /// uses the expected index. Returns an error (stopping the benchmark)
+    /// if a Seq Scan or wrong index is detected.
+    pub async fn validate_query_plan(
+        &self,
+        expected_index: &str,
+        sample_vector: &[f32],
+        k: usize,
+    ) -> Result<String> {
+        let client = self.client();
+        let order_op = self
+            .order_operator
+            .as_deref()
+            .expect("PgConnection::connect() not called");
+
+        let vec_lit = format!(
+            "'[{}]'::vector",
+            sample_vector
+                .iter()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+
+        let explain_sql = format!(
+            "EXPLAIN (FORMAT TEXT) SELECT id FROM {} ORDER BY v {} {} LIMIT {}",
+            self.table_name, order_op, vec_lit, k,
+        );
+
+        let rows = client
+            .query(&explain_sql, &[])
+            .await
+            .map_err(|e| Error::Config(format!("EXPLAIN failed: {e}")))?;
+
+        let plan_text = rows
+            .iter()
+            .map(|r| r.get::<_, String>(0))
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let expected_idx_sql = self.index_sql_name(expected_index);
+
+        if !plan_text.contains(&expected_idx_sql) {
+            if plan_text.contains("Seq Scan") {
+                return Err(Error::Config(format!(
+                    "Query plan uses Seq Scan instead of index \
+                     '{expected_idx_sql}'. The index may not exist, is \
+                     disabled, or the operator doesn't match.\n\
+                     Plan:\n{plan_text}"
+                )));
+            }
+            return Err(Error::Config(format!(
+                "Query plan does not use expected index '{expected_idx_sql}'. \
+                 Another index may be active.\n\
+                 Plan:\n{plan_text}"
+            )));
+        }
+
+        tracing::debug!("Query plan validated: using {expected_idx_sql}");
+        Ok(plan_text)
     }
 
     /// Disable an index so the planner won't use it.

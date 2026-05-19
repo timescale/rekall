@@ -80,6 +80,14 @@ pub async fn run(
         }
         backend.validate_search_params(&sweep.params).await?;
 
+        // Validate query plan uses the expected index
+        backend
+            .validate_query_plan(&queries.row(0).to_vec(), k)
+            .await?;
+        let _ = progress.send(ProgressEvent::Message {
+            text: format!("Query plan validated for '{}'", sweep.index),
+        });
+
         let param_combos = expand_sweep_params(&sweep.params);
 
         for params in &param_combos {
