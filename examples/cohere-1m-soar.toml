@@ -1,11 +1,11 @@
 [dataset]
 name = "cohere-1m"
-path = "~/ClaudeWorkspace/ann-benchmarks/data/cohere-wikipedia-22-12-1M-angular.hdf5"
+path = "data/cohere-wikipedia-22-12-1M-angular.hdf5"
 metric = "angular"
 dimension = 768
 
 [connection]
-dsn = "host=/home/enordstr/ClaudeWorkspace/pg/run/unix-sock port=5434 dbname=postgres"
+dsn = "host=localhost port=5432 dbname=postgres"
 
 [load]
 table = "cohere_1m"
