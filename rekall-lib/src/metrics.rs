@@ -19,7 +19,9 @@ pub struct SearchResult {
     pub p95_latency_us: f64,
     pub p99_latency_us: f64,
     pub p999_latency_us: f64,
+    #[serde(default)]
     pub wall_time_secs: f64,
+    #[serde(default)]
     pub qps_wall: f64,
 }
 
