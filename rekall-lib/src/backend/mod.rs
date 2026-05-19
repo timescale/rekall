@@ -46,6 +46,7 @@ pub trait IndexBackend: Send + Sync {
 pub struct BackendRegistry;
 
 impl BackendRegistry {
+    #[must_use]
     pub fn new() -> Self {
         Self
     }
