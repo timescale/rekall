@@ -2,16 +2,14 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use postgres_types::Type;
 use serde::Deserialize;
-use tokio_postgres::{Client, Statement};
 use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
-use super::pg_vector_type::{lookup_vector_type, PgVector};
+use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
 use super::IndexBackend;
 
@@ -32,8 +30,6 @@ fn default_ef_construction() -> u32 {
 
 pub struct PgvectorHnswBackend {
     pg: PgConnection,
-    client: Client,
-    query_stmt: Statement,
     name: String,
     params: HnswParams,
 }
@@ -54,36 +50,16 @@ impl PgvectorHnswBackend {
                 ))
             })?;
 
-        let pg = PgConnection::new(conn, table, dim, metric);
-        let client = pg.connect().await?;
-
-        let vec_type = lookup_vector_type(&client).await.map_err(|e| {
-            crate::error::Error::Config(format!(
-                "Cannot find pgvector 'vector' type: {e}"
-            ))
-        })?;
-
         let order_op = match metric {
             Metric::Angular => "<=>",
             Metric::Euclidean => "<->",
         };
 
-        let sql = format!(
-            "SELECT id FROM {table} ORDER BY v {order_op} $1 LIMIT $2"
-        );
-        let query_stmt = client
-            .prepare_typed(&sql, &[vec_type, Type::INT8])
-            .await
-            .map_err(|e| {
-                crate::error::Error::Config(format!(
-                    "Cannot prepare pgvector query: {e}"
-                ))
-            })?;
+        let mut pg = PgConnection::new(conn, table, dim, metric);
+        pg.connect(order_op).await?;
 
         Ok(Self {
             pg,
-            client,
-            query_stmt,
             name: idx.name.clone(),
             params,
         })
@@ -108,6 +84,7 @@ impl IndexBackend for PgvectorHnswBackend {
     }
 
     async fn build_index(&self) -> Result<IndexBuildResult> {
+        let client = self.pg.client();
         let idx_name = self.pg.index_sql_name(&self.name);
 
         let sql = format!(
@@ -121,7 +98,7 @@ impl IndexBackend for PgvectorHnswBackend {
 
         info!("Building pgvector HNSW index: {sql}");
         let start = Instant::now();
-        self.client.execute(&sql, &[]).await?;
+        client.execute(&sql, &[]).await?;
         let build_time = start.elapsed();
 
         let size = self.index_size().await?;
@@ -140,7 +117,8 @@ impl IndexBackend for PgvectorHnswBackend {
 
     async fn drop_index(&self) -> Result<()> {
         let idx_name = self.pg.index_sql_name(&self.name);
-        self.client
+        self.pg
+            .client()
             .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
             .await?;
         Ok(())
@@ -149,7 +127,8 @@ impl IndexBackend for PgvectorHnswBackend {
     async fn index_size(&self) -> Result<u64> {
         let idx_name = self.pg.index_sql_name(&self.name);
         let row = self
-            .client
+            .pg
+            .client()
             .query_one(
                 &format!("SELECT pg_relation_size('{idx_name}')"),
                 &[],
@@ -162,7 +141,8 @@ impl IndexBackend for PgvectorHnswBackend {
     async fn index_exists(&self) -> Result<bool> {
         let idx_name = self.pg.index_sql_name(&self.name);
         let row = self
-            .client
+            .pg
+            .client()
             .query_one(
                 "SELECT EXISTS(
                     SELECT 1 FROM pg_indexes WHERE indexname = $1
@@ -183,7 +163,8 @@ impl IndexBackend for PgvectorHnswBackend {
                 toml::Value::Float(f) => f.to_string(),
                 _ => ef.to_string(),
             };
-            self.client
+            self.pg
+                .client()
                 .execute(&format!("SET hnsw.ef_search = {val}"), &[])
                 .await?;
         }
@@ -194,8 +175,9 @@ impl IndexBackend for PgvectorHnswBackend {
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
         let k_i64 = k as i64;
         let rows = self
-            .client
-            .query(&self.query_stmt, &[&PgVector(vector), &k_i64])
+            .pg
+            .client()
+            .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64])
             .await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }

@@ -41,7 +41,7 @@ pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64>
             "Table has {existing} rows but expected {total}. \
              Truncating and reloading."
         );
-        let client = pg.connect().await?;
+        let client = pg.open_connection().await?;
         client
             .execute(
                 &format!("TRUNCATE {} RESTART IDENTITY", pg.table_name),

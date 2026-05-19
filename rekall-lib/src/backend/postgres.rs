@@ -2,20 +2,27 @@ use std::time::Instant;
 
 use async_trait::async_trait;
 use byteorder::{BigEndian, WriteBytesExt};
-use tokio_postgres::{Client, NoTls};
+use postgres_types::Type;
+use tokio_postgres::{Client, NoTls, Statement};
 use tracing::{debug, info};
 
 use crate::config::{ConnectionConfig, Metric};
 use crate::error::{Error, Result};
 use crate::progress::{ProgressEvent, ProgressTx};
 
+use super::pg_vector_type::lookup_vector_type;
 use super::DataLoader;
 
+/// Shared PostgreSQL connection state for all PG-based index backends.
+/// Holds a persistent client, vector type info, and a prepared query
+/// statement so that concrete backends don't duplicate this setup.
 pub struct PgConnection {
     dsn: String,
     pub table_name: String,
     pub dimension: u32,
     pub metric: Metric,
+    client: Option<Client>,
+    pub query_stmt: Option<Statement>,
 }
 
 impl PgConnection {
@@ -30,10 +37,13 @@ impl PgConnection {
             table_name: table_name.to_string(),
             dimension,
             metric,
+            client: None,
+            query_stmt: None,
         }
     }
 
-    pub async fn connect(&self) -> Result<Client> {
+    /// Open a new connection (used for loading and DDL before connect() is called).
+    pub async fn open_connection(&self) -> Result<Client> {
         let (client, connection) =
             tokio_postgres::connect(&self.dsn, NoTls)
                 .await
@@ -49,6 +59,46 @@ impl PgConnection {
         });
 
         Ok(client)
+    }
+
+    /// Connect and prepare a query statement for the given order operator.
+    /// Call this once during backend creation; then use client() and
+    /// query_stmt() for all subsequent operations.
+    pub async fn connect(&mut self, order_operator: &str) -> Result<()> {
+        let client = self.open_connection().await?;
+
+        let vec_type = lookup_vector_type(&client).await.map_err(|e| {
+            Error::Config(format!(
+                "Cannot find pgvector 'vector' type: {e}"
+            ))
+        })?;
+
+        let sql = format!(
+            "SELECT id FROM {} ORDER BY v {} $1 LIMIT $2",
+            self.table_name, order_operator,
+        );
+        let stmt = client
+            .prepare_typed(&sql, &[vec_type, Type::INT8])
+            .await
+            .map_err(|e| {
+                Error::Config(format!("Cannot prepare query: {e}"))
+            })?;
+
+        self.client = Some(client);
+        self.query_stmt = Some(stmt);
+        Ok(())
+    }
+
+    pub fn client(&self) -> &Client {
+        self.client
+            .as_ref()
+            .expect("PgConnection::connect() not called")
+    }
+
+    pub fn query_stmt(&self) -> &Statement {
+        self.query_stmt
+            .as_ref()
+            .expect("PgConnection::connect() not called")
     }
 
     pub fn index_sql_name(&self, index_name: &str) -> String {
@@ -94,7 +144,7 @@ fn copy_trailer() -> Vec<u8> {
 #[async_trait]
 impl DataLoader for PgConnection {
     async fn table_exists(&self) -> Result<bool> {
-        let client = self.connect().await?;
+        let client = self.open_connection().await?;
         let row = client
             .query_one(
                 "SELECT EXISTS(
@@ -108,7 +158,7 @@ impl DataLoader for PgConnection {
     }
 
     async fn row_count(&self) -> Result<u64> {
-        let client = self.connect().await?;
+        let client = self.open_connection().await?;
         let row = client
             .query_one(
                 &format!("SELECT count(*) FROM {}", self.table_name),
@@ -120,7 +170,7 @@ impl DataLoader for PgConnection {
     }
 
     async fn create_table(&self) -> Result<()> {
-        let client = self.connect().await?;
+        let client = self.open_connection().await?;
 
         client
             .execute("CREATE EXTENSION IF NOT EXISTS vector", &[])
@@ -169,7 +219,7 @@ impl DataLoader for PgConnection {
     }
 
     async fn create_meta_tables(&self) -> Result<()> {
-        let client = self.connect().await?;
+        let client = self.open_connection().await?;
 
         client
             .execute(
@@ -203,7 +253,7 @@ impl DataLoader for PgConnection {
         chunk_rx: &mut tokio::sync::mpsc::Receiver<Result<crate::dataset::VectorChunk>>,
         progress: &ProgressTx,
     ) -> Result<u64> {
-        let client = self.connect().await?;
+        let client = self.open_connection().await?;
 
         let copy_stmt = format!(
             "COPY {} (id, v) FROM STDIN WITH (FORMAT BINARY)",
