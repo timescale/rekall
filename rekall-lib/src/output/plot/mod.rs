@@ -11,6 +11,7 @@ pub struct PlotOptions {
     pub log_y: bool,
     pub pareto_only: bool,
     pub min_recall: f64,
+    pub use_wall_qps: bool,
 }
 
 impl Default for PlotOptions {
@@ -20,6 +21,7 @@ impl Default for PlotOptions {
             log_y: true,
             pareto_only: false,
             min_recall: 0.0,
+            use_wall_qps: false,
         }
     }
 }
@@ -122,10 +124,15 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
     let mut by_index: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
     for summary in summaries {
         for r in &summary.search_results {
+            let qps = if opts.use_wall_qps && r.qps_wall > 0.0 {
+                r.qps_wall
+            } else {
+                r.qps
+            };
             by_index
                 .entry(r.index_name.clone())
                 .or_default()
-                .push((r.avg_recall, r.qps));
+                .push((r.avg_recall, qps));
         }
     }
 

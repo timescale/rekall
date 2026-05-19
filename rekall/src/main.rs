@@ -132,6 +132,10 @@ enum Command {
         #[arg(long)]
         min_recall: Option<f64>,
 
+        /// QPS method: "mean" (1M/avg_latency, default) or "wall" (queries/wall_time, matches ann-benchmarks)
+        #[arg(long, default_value = "mean")]
+        qps_method: String,
+
         /// Also export CSV data file
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -294,8 +298,10 @@ async fn main() -> anyhow::Result<()> {
             linear_y,
             pareto_only,
             min_recall,
+            qps_method,
             csv,
         } => {
+            let use_wall = qps_method == "wall";
             let mut summaries = Vec::new();
             for path in &results {
                 let content = std::fs::read_to_string(path)
@@ -310,6 +316,7 @@ async fn main() -> anyhow::Result<()> {
                 log_y: !linear_y,
                 pareto_only,
                 min_recall: min_recall.unwrap_or(0.0),
+                use_wall_qps: use_wall,
             };
             rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref(), &opts)
                 .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;
