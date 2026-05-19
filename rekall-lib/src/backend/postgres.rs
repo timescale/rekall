@@ -219,7 +219,34 @@ impl PgConnection {
             let setting: String = row.get(1);
             let unit: Option<String> = row.get(2);
             let value = match unit {
-                Some(u) if !u.is_empty() => format!("{setting}{u}"),
+                Some(u) if !u.is_empty() => {
+                    // Convert to human-readable: e.g., 524288 * 8kB = 4GB
+                    if let Ok(num) = setting.parse::<i64>() {
+                        let bytes = match u.as_str() {
+                            "kB" => num * 1024,
+                            "8kB" => num * 8 * 1024,
+                            "MB" => num * 1024 * 1024,
+                            "s" | "ms" | "min" => {
+                                // Time units: just format with unit
+                                settings.insert(name, format!("{setting} {u}"));
+                                continue;
+                            }
+                            _ => {
+                                settings.insert(name, format!("{setting} {u}"));
+                                continue;
+                            }
+                        };
+                        if bytes >= 1024 * 1024 * 1024 {
+                            format!("{} GB", bytes / (1024 * 1024 * 1024))
+                        } else if bytes >= 1024 * 1024 {
+                            format!("{} MB", bytes / (1024 * 1024))
+                        } else {
+                            format!("{} kB", bytes / 1024)
+                        }
+                    } else {
+                        format!("{setting} {u}")
+                    }
+                }
                 _ => setting,
             };
             settings.insert(name, value);
