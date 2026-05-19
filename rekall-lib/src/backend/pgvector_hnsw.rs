@@ -56,7 +56,7 @@ impl PgvectorHnswBackend {
         };
 
         let mut pg = PgConnection::new(conn, table, dim, metric);
-        pg.connect(order_op).await?;
+        pg.connect(order_op, None).await?;
 
         Ok(Self {
             pg,
@@ -157,19 +157,14 @@ impl IndexBackend for PgvectorHnswBackend {
         &self,
         params: &HashMap<String, toml::Value>,
     ) -> Result<()> {
-        if let Some(ef) = params.get("ef_search") {
-            let val = match ef {
-                toml::Value::Integer(i) => i.to_string(),
-                toml::Value::Float(f) => f.to_string(),
-                _ => ef.to_string(),
-            };
-            self.pg
-                .client()
-                .execute(&format!("SET hnsw.ef_search = {val}"), &[])
-                .await?;
-        }
+        self.pg.set_gucs(params).await
+    }
 
-        Ok(())
+    async fn validate_search_params(
+        &self,
+        params: &HashMap<String, Vec<toml::Value>>,
+    ) -> Result<()> {
+        self.pg.validate_gucs(params).await
     }
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {

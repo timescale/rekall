@@ -26,10 +26,21 @@ pub trait IndexBackend: Send + Sync {
 
     async fn index_exists(&self) -> Result<bool>;
 
+    /// Set search-time parameters. For PG backends, this sets GUCs
+    /// via PgConnection::set_gucs(). Remote backends override this
+    /// with their own parameter-setting mechanism.
     async fn set_search_params(
         &self,
         params: &HashMap<String, toml::Value>,
     ) -> Result<()>;
+
+    /// Validate that search param names are valid before starting a sweep.
+    async fn validate_search_params(
+        &self,
+        _params: &HashMap<String, Vec<toml::Value>>,
+    ) -> Result<()> {
+        Ok(())
+    }
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>>;
 }

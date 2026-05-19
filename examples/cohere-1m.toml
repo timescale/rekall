@@ -36,12 +36,12 @@ warmup = 100
 [[search.sweep]]
 index = "mkt-nlist-1000"
 [search.sweep.params]
-nprobe = [5, 10, 20, 40, 80]
+"mkt.nprobe" = [5, 10, 20, 40, 80]
 
 [[search.sweep]]
 index = "hnsw-m16"
 [search.sweep.params]
-ef_search = [10, 20, 40, 80, 200, 400]
+"hnsw.ef_search" = [10, 20, 40, 80, 200, 400]
 
 [output]
 format = ["table", "json"]

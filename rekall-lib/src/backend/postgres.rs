@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -64,8 +65,21 @@ impl PgConnection {
     /// Connect and prepare a query statement for the given order operator.
     /// Call this once during backend creation; then use client() and
     /// query_stmt() for all subsequent operations.
-    pub async fn connect(&mut self, order_operator: &str) -> Result<()> {
+    pub async fn connect(
+        &mut self,
+        order_operator: &str,
+        extension: Option<&str>,
+    ) -> Result<()> {
         let client = self.open_connection().await?;
+
+        if let Some(ext) = extension {
+            client
+                .execute(&format!("LOAD '{ext}'"), &[])
+                .await
+                .map_err(|_| Error::ExtensionMissing {
+                    extension: ext.to_string(),
+                })?;
+        }
 
         let vec_type = lookup_vector_type(&client).await.map_err(|e| {
             Error::Config(format!(
@@ -101,8 +115,98 @@ impl PgConnection {
             .expect("PgConnection::connect() not called")
     }
 
+    /// Validate that all GUC names in the param map exist.
+    /// Call this once before starting a sweep to fail fast on typos.
+    /// Validate GUC names. PG allows setting arbitrary dotted-name GUCs
+    /// (custom GUCs from extensions), so we validate by attempting a SET
+    /// with the first value in each sweep. A non-dotted name that doesn't
+    /// exist will error; dotted names always succeed as custom GUCs.
+    /// We warn if a dotted name isn't a registered GUC (might be a typo).
+    pub async fn validate_gucs(
+        &self,
+        params: &HashMap<String, Vec<toml::Value>>,
+    ) -> Result<()> {
+        let client = self.client();
+        for (key, values) in params {
+            if values.is_empty() {
+                return Err(Error::Config(format!(
+                    "Sweep param '{key}' has no values"
+                )));
+            }
+
+            let test_val = toml_value_to_sql(&values[0]);
+            if let Err(e) = client
+                .execute(
+                    &format!("SET \"{key}\" = {test_val}"),
+                    &[],
+                )
+                .await
+            {
+                return Err(Error::Config(format!(
+                    "Cannot set GUC '{key}' = {test_val}: {e}. \
+                     Check that the parameter name is correct."
+                )));
+            }
+
+            // For dotted names (custom GUCs), check if it's actually
+            // registered by looking in pg_settings. Warn if not found
+            // (might be a typo like mkt.nprob instead of mkt.nprobe).
+            if key.contains('.') {
+                let row = client
+                    .query_one(
+                        "SELECT EXISTS(
+                            SELECT 1 FROM pg_settings WHERE name = $1
+                        )",
+                        &[key],
+                    )
+                    .await?;
+                let exists: bool = row.get(0);
+                if !exists {
+                    tracing::warn!(
+                        "GUC '{key}' is not a registered parameter \
+                         (not in pg_settings). It will be treated as a \
+                         custom GUC. If this is a typo, check the \
+                         parameter name."
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Set GUCs from a param map. Keys are GUC names (e.g., "mkt.nprobe"),
+    /// values are the settings. Issues `SET key = value` for each entry.
+    pub async fn set_gucs(
+        &self,
+        params: &HashMap<String, toml::Value>,
+    ) -> Result<()> {
+        let client = self.client();
+        for (key, value) in params {
+            let val_str = toml_value_to_sql(value);
+            client
+                .execute(&format!("SET \"{key}\" = {val_str}"), &[])
+                .await
+                .map_err(|e| {
+                    Error::Config(format!(
+                        "Failed to SET {key} = {val_str}: {e}"
+                    ))
+                })?;
+        }
+        Ok(())
+    }
+
     pub fn index_sql_name(&self, index_name: &str) -> String {
         format!("idx_rekall_{}", index_name.replace('-', "_"))
+    }
+}
+
+fn toml_value_to_sql(v: &toml::Value) -> String {
+    match v {
+        toml::Value::Integer(i) => i.to_string(),
+        toml::Value::Float(f) => f.to_string(),
+        toml::Value::Boolean(b) => b.to_string(),
+        toml::Value::String(s) => format!("'{s}'"),
+        _ => v.to_string(),
     }
 }
 

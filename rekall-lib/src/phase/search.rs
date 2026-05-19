@@ -65,6 +65,8 @@ pub async fn run(
             });
         }
 
+        backend.validate_search_params(&sweep.params).await?;
+
         let param_combos = expand_sweep_params(&sweep.params);
 
         for params in &param_combos {

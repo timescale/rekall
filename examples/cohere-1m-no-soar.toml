@@ -25,7 +25,7 @@ num_queries = 2000
 [[search.sweep]]
 index = "mkt-nlist-1000-nosoar"
 [search.sweep.params]
-nprobe = [5, 10, 20, 40, 80]
+"mkt.nprobe" = [5, 10, 20, 40, 80]
 
 [output]
 format = ["table", "json"]

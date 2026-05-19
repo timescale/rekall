@@ -60,7 +60,7 @@ impl MeerkatBackend {
         };
 
         let mut pg = PgConnection::new(conn, table, dim, metric);
-        pg.connect(order_op).await?;
+        pg.connect(order_op, Some("meerkat")).await?;
 
         Ok(Self {
             pg,
@@ -205,30 +205,16 @@ impl IndexBackend for MeerkatBackend {
         &self,
         params: &HashMap<String, toml::Value>,
     ) -> Result<()> {
-        let client = self.pg.client();
-
-        if let Some(nprobe) = params.get("nprobe") {
-            client
-                .execute(
-                    &format!("SET mkt.nprobe = {}", toml_to_sql(nprobe)),
-                    &[],
-                )
-                .await?;
-        }
-        if let Some(bits) = params.get("fastscan_bits") {
-            client
-                .execute(
-                    &format!(
-                        "SET mkt.fastscan_bits = {}",
-                        toml_to_sql(bits)
-                    ),
-                    &[],
-                )
-                .await?;
-        }
-
-        Ok(())
+        self.pg.set_gucs(params).await
     }
+
+    async fn validate_search_params(
+        &self,
+        params: &HashMap<String, Vec<toml::Value>>,
+    ) -> Result<()> {
+        self.pg.validate_gucs(params).await
+    }
+
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
         let k_i64 = k as i64;
@@ -241,12 +227,3 @@ impl IndexBackend for MeerkatBackend {
     }
 }
 
-fn toml_to_sql(v: &toml::Value) -> String {
-    match v {
-        toml::Value::Integer(i) => i.to_string(),
-        toml::Value::Float(f) => f.to_string(),
-        toml::Value::Boolean(b) => b.to_string(),
-        toml::Value::String(s) => format!("'{s}'"),
-        _ => v.to_string(),
-    }
-}
