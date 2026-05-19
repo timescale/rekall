@@ -3,3 +3,5 @@ results/
 *.local.toml
 /data/
 /configs/
+plot.html
+plot.svg
