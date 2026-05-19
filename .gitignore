@@ -2,3 +2,4 @@
 results/
 *.local.toml
 /data/
+/configs/
