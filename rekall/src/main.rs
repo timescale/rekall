@@ -2,13 +2,13 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
+use rekall_lib::Agent;
 use rekall_lib::config::BenchmarkConfig;
 use rekall_lib::dataset::hdf5::Hdf5Reader;
+use rekall_lib::output::OutputSink;
 use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
-use rekall_lib::output::OutputSink;
 use rekall_lib::phase::Phase;
-use rekall_lib::Agent;
 
 #[derive(Parser)]
 #[command(name = "rekall", about = "Vector search benchmark tool")]
@@ -46,9 +46,7 @@ enum Command {
     },
 
     /// Initialize database and tables
-    Init {
-        config: PathBuf,
-    },
+    Init { config: PathBuf },
 
     /// Load dataset into database
     Load {
@@ -82,9 +80,7 @@ enum Command {
     },
 
     /// Generate report from results
-    Report {
-        config: PathBuf,
-    },
+    Report { config: PathBuf },
 
     /// Dataset utilities
     Dataset {
@@ -134,8 +130,7 @@ async fn main() -> anyhow::Result<()> {
     };
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| filter.into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()),
         )
         .with_target(false)
         .init();
@@ -173,7 +168,11 @@ async fn main() -> anyhow::Result<()> {
             agent.run(&[Phase::Init], None).await?;
         }
 
-        Command::Load { config, parallelism, .. } => {
+        Command::Load {
+            config,
+            parallelism,
+            ..
+        } => {
             let mut cfg = BenchmarkConfig::from_file(&config)?;
             if let Some(p) = parallelism {
                 cfg.load.parallelism = p;
@@ -212,18 +211,16 @@ async fn main() -> anyhow::Result<()> {
                 println!("Dataset: {}", path.display());
                 println!("{info}");
             }
-            DatasetCommand::Validate { path } => {
-                match Hdf5Reader::info(&path) {
-                    Ok(info) => {
-                        println!("Dataset: {} (valid)", path.display());
-                        println!("{info}");
-                    }
-                    Err(e) => {
-                        eprintln!("Validation failed: {e}");
-                        std::process::exit(1);
-                    }
+            DatasetCommand::Validate { path } => match Hdf5Reader::info(&path) {
+                Ok(info) => {
+                    println!("Dataset: {} (valid)", path.display());
+                    println!("{info}");
                 }
-            }
+                Err(e) => {
+                    eprintln!("Validation failed: {e}");
+                    std::process::exit(1);
+                }
+            },
         },
 
         Command::Config { command } => match command {
@@ -259,11 +256,7 @@ fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {
     outputs
 }
 
-fn print_dry_run(
-    cfg: &BenchmarkConfig,
-    phase: Option<&str>,
-    index: Option<&str>,
-) {
+fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>) {
     println!("Dry run for dataset '{}'", cfg.dataset.name);
     println!("  Table: {}", cfg.table_name());
     println!("  Connection: {}", cfg.connection.dsn);

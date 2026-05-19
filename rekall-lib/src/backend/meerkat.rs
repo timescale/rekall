@@ -9,9 +9,9 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
+use super::IndexBackend;
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
-use super::IndexBackend;
 
 #[derive(Debug, Serialize, Deserialize)]
 struct MeerkatParams {
@@ -48,10 +48,7 @@ impl MeerkatBackend {
         idx: &IndexConfig,
     ) -> Result<Self> {
         let params: MeerkatParams = idx.params.clone().try_into().map_err(|e| {
-            crate::error::Error::Config(format!(
-                "Invalid meerkat params for '{}': {e}",
-                idx.name
-            ))
+            crate::error::Error::Config(format!("Invalid meerkat params for '{}': {e}", idx.name))
         })?;
 
         let order_op = match metric {
@@ -177,10 +174,7 @@ impl IndexBackend for MeerkatBackend {
         let row = self
             .pg
             .client()
-            .query_one(
-                &format!("SELECT pg_relation_size('{idx_name}')"),
-                &[],
-            )
+            .query_one(&format!("SELECT pg_relation_size('{idx_name}')"), &[])
             .await?;
         let size: i64 = row.get(0);
         Ok(size as u64)
@@ -201,10 +195,7 @@ impl IndexBackend for MeerkatBackend {
         Ok(row.get(0))
     }
 
-    async fn set_search_params(
-        &self,
-        params: &HashMap<String, toml::Value>,
-    ) -> Result<()> {
+    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
         self.pg.set_gucs(params).await
     }
 
@@ -214,7 +205,6 @@ impl IndexBackend for MeerkatBackend {
     ) -> Result<()> {
         self.pg.validate_gucs(params).await
     }
-
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
         let k_i64 = k as i64;
@@ -226,4 +216,3 @@ impl IndexBackend for MeerkatBackend {
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 }
-

@@ -5,10 +5,10 @@ use tracing::info;
 
 use crate::backend::BackendRegistry;
 use crate::config::BenchmarkConfig;
-use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
+use crate::dataset::hdf5::Hdf5Reader;
 use crate::error::{Error, Result};
-use crate::metrics::{compute_recall, LatencyCollector, SearchResult};
+use crate::metrics::{LatencyCollector, SearchResult, compute_recall};
 use crate::progress::{ProgressEvent, ProgressTx};
 
 pub async fn run(
@@ -51,13 +51,15 @@ pub async fn run(
                 name: sweep.index.clone(),
             })?;
 
-        let backend = registry.create(
-            &config.connection,
-            &config.table_name(),
-            config.dataset.dimension,
-            config.dataset.metric,
-            idx_config,
-        ).await?;
+        let backend = registry
+            .create(
+                &config.connection,
+                &config.table_name(),
+                config.dataset.dimension,
+                config.dataset.metric,
+                idx_config,
+            )
+            .await?;
 
         if !backend.index_exists().await? {
             return Err(Error::IndexNotFound {
@@ -255,10 +257,7 @@ mod tests {
     #[test]
     fn expand_single_value() {
         let mut params = HashMap::new();
-        params.insert(
-            "x".to_string(),
-            vec![toml::Value::Integer(42)],
-        );
+        params.insert("x".to_string(), vec![toml::Value::Integer(42)]);
         let combos = expand_sweep_params(&params);
         assert_eq!(combos.len(), 1);
         assert_eq!(combos[0]["x"].as_integer().unwrap(), 42);

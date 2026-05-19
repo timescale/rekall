@@ -23,9 +23,7 @@ macro_rules! require_pg {
         match test_dsn() {
             Some(dsn) => dsn,
             None => {
-                eprintln!(
-                    "Skipping PG test: REKALL_TEST_DSN not set"
-                );
+                eprintln!("Skipping PG test: REKALL_TEST_DSN not set");
                 return;
             }
         }
@@ -82,10 +80,7 @@ async fn pg_create_meta_tables() {
         .await
         .unwrap();
     client
-        .execute(
-            "DROP TABLE IF EXISTS _rekall_load_progress CASCADE",
-            &[],
-        )
+        .execute("DROP TABLE IF EXISTS _rekall_load_progress CASCADE", &[])
         .await
         .unwrap();
 }
@@ -105,9 +100,7 @@ async fn pg_guc_validation_bad_name() {
     let client = pg.open_connection().await.unwrap();
 
     // A non-dotted name that doesn't exist should fail on SET
-    let result = client
-        .execute("SET nonexistent_guc = 1", &[])
-        .await;
+    let result = client.execute("SET nonexistent_guc = 1", &[]).await;
     assert!(result.is_err());
 }
 
@@ -122,10 +115,7 @@ async fn pg_guc_set_builtin() {
     );
 
     let client = pg.open_connection().await.unwrap();
-    client
-        .execute("SET work_mem = '64MB'", &[])
-        .await
-        .unwrap();
+    client.execute("SET work_mem = '64MB'", &[]).await.unwrap();
 }
 
 #[tokio::test]
@@ -147,14 +137,9 @@ async fn pg_guc_meerkat_after_load() {
     // LOAD registers meerkat GUCs
     client.execute("LOAD 'meerkat'", &[]).await.unwrap();
     // Now mkt.nprobe should be settable
-    client
-        .execute("SET mkt.nprobe = 10", &[])
-        .await
-        .unwrap();
+    client.execute("SET mkt.nprobe = 10", &[]).await.unwrap();
     // Invalid meerkat GUC should fail
-    let result = client
-        .execute("SET mkt.nonexistent = 1", &[])
-        .await;
+    let result = client.execute("SET mkt.nonexistent = 1", &[]).await;
     assert!(result.is_err());
 }
 
@@ -182,9 +167,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
         let v = format!("[{}, {}, {}]", i as f32, (i * 2) as f32, (i * 3) as f32);
         client
             .execute(
-                &format!(
-                    "INSERT INTO {table} (v) VALUES ('{v}'::vector)"
-                ),
+                &format!("INSERT INTO {table} (v) VALUES ('{v}'::vector)"),
                 &[],
             )
             .await
@@ -216,10 +199,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
 
     // Set search params
     let mut search_params = HashMap::new();
-    search_params.insert(
-        "hnsw.ef_search".to_string(),
-        toml::Value::Integer(10),
-    );
+    search_params.insert("hnsw.ef_search".to_string(), toml::Value::Integer(10));
     backend.set_search_params(&search_params).await.unwrap();
 
     // Query
@@ -257,9 +237,7 @@ async fn backend_meerkat_lifecycle() {
         let v = format!("[{}, {}, {}]", i as f32, (i * 2) as f32, (i * 3) as f32);
         client
             .execute(
-                &format!(
-                    "INSERT INTO {table} (v) VALUES ('{v}'::vector)"
-                ),
+                &format!("INSERT INTO {table} (v) VALUES ('{v}'::vector)"),
                 &[],
             )
             .await
@@ -287,10 +265,7 @@ async fn backend_meerkat_lifecycle() {
     assert!(build_result.index_size_bytes > 0);
 
     let mut search_params = HashMap::new();
-    search_params.insert(
-        "mkt.nprobe".to_string(),
-        toml::Value::Integer(2),
-    );
+    search_params.insert("mkt.nprobe".to_string(), toml::Value::Integer(2));
     backend.set_search_params(&search_params).await.unwrap();
 
     let results = backend.query(&[0.0, 0.0, 0.0], 5).await.unwrap();

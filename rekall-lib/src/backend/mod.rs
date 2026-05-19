@@ -29,10 +29,7 @@ pub trait IndexBackend: Send + Sync {
     /// Set search-time parameters. For PG backends, this sets GUCs
     /// via PgConnection::set_gucs(). Remote backends override this
     /// with their own parameter-setting mechanism.
-    async fn set_search_params(
-        &self,
-        params: &HashMap<String, toml::Value>,
-    ) -> Result<()>;
+    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()>;
 
     /// Validate that search param names are valid before starting a sweep.
     async fn validate_search_params(
@@ -68,7 +65,11 @@ impl BackendRegistry {
             )),
             "pgvector-hnsw" => Ok(Box::new(
                 pgvector_hnsw::PgvectorHnswBackend::create(
-                    conn, table, dimension, metric, index_config,
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
                 )
                 .await?,
             )),

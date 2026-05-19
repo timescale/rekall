@@ -33,10 +33,7 @@ impl OutputSink for JsonSink {
                     println!("  Results written to {}", self.path.display());
                 }
                 Err(e) => {
-                    eprintln!(
-                        "  Failed to write results to {}: {e}",
-                        self.path.display()
-                    );
+                    eprintln!("  Failed to write results to {}: {e}", self.path.display());
                 }
             },
             Err(e) => {

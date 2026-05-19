@@ -40,10 +40,7 @@ impl Hdf5Reader {
         if train_shape.len() != 2 {
             return Err(Error::Hdf5 {
                 path: path.to_path_buf(),
-                detail: format!(
-                    "'train' has {}-d shape, expected 2-d",
-                    train_shape.len()
-                ),
+                detail: format!("'train' has {}-d shape, expected 2-d", train_shape.len()),
             });
         }
 
@@ -102,7 +99,11 @@ impl Hdf5Reader {
         let gt_k = if has_neighbors {
             let n = file.dataset("neighbors").unwrap();
             let s = n.shape();
-            if s.len() == 2 { Some(s[1] as u32) } else { None }
+            if s.len() == 2 {
+                Some(s[1] as u32)
+            } else {
+                None
+            }
         } else {
             None
         };
@@ -140,9 +141,12 @@ pub struct DatasetInfo {
 impl std::fmt::Display for DatasetInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size_mb = self.file_size_bytes as f64 / (1024.0 * 1024.0);
-        let train_size_mb =
-            self.num_train as f64 * self.dimension as f64 * 4.0 / (1024.0 * 1024.0);
-        writeln!(f, "  Vectors:      {:>12} ({:.0} MB as f32)", self.num_train, train_size_mb)?;
+        let train_size_mb = self.num_train as f64 * self.dimension as f64 * 4.0 / (1024.0 * 1024.0);
+        writeln!(
+            f,
+            "  Vectors:      {:>12} ({:.0} MB as f32)",
+            self.num_train, train_size_mb
+        )?;
         writeln!(f, "  Queries:      {:>12}", self.num_test)?;
         writeln!(f, "  Dimension:    {:>12}", self.dimension)?;
         writeln!(
@@ -194,14 +198,10 @@ impl Iterator for ChunkIter {
             })?;
 
             let selection = ndarray::s![self.pos as usize..chunk_end as usize, ..];
-            let data: Array2<f32> =
-                train.read_slice_2d(selection).map_err(|e| Error::Hdf5 {
-                    path: self.path.clone(),
-                    detail: format!(
-                        "failed to read rows {}..{}: {e}",
-                        self.pos, chunk_end
-                    ),
-                })?;
+            let data: Array2<f32> = train.read_slice_2d(selection).map_err(|e| Error::Hdf5 {
+                path: self.path.clone(),
+                detail: format!("failed to read rows {}..{}: {e}", self.pos, chunk_end),
+            })?;
 
             assert_eq!(data.shape(), &[n_rows, self.dim as usize]);
 
@@ -279,9 +279,7 @@ impl DatasetReader for Hdf5Reader {
         })?;
         let neighbors = file.dataset("neighbors").map_err(|e| Error::Hdf5 {
             path: self.path.clone(),
-            detail: format!(
-                "missing 'neighbors' dataset (no ground truth): {e}"
-            ),
+            detail: format!("missing 'neighbors' dataset (no ground truth): {e}"),
         })?;
 
         let raw: Array2<i32> = neighbors.read_2d().map_err(|e| Error::Hdf5 {

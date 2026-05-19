@@ -20,14 +20,10 @@ pub enum Error {
     #[error("Invalid HDF5 dataset '{path}': {detail}")]
     Hdf5 { path: PathBuf, detail: String },
 
-    #[error(
-        "Table '{table}' does not exist. Run `rekall init <config.toml>` first."
-    )]
+    #[error("Table '{table}' does not exist. Run `rekall init <config.toml>` first.")]
     TableNotFound { table: String },
 
-    #[error(
-        "Table '{table}' has 0 rows. Run `rekall load <config.toml>` first."
-    )]
+    #[error("Table '{table}' has 0 rows. Run `rekall load <config.toml>` first.")]
     TableEmpty { table: String },
 
     #[error(

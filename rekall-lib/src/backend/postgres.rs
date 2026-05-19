@@ -11,8 +11,8 @@ use crate::config::{ConnectionConfig, Metric};
 use crate::error::{Error, Result};
 use crate::progress::{ProgressEvent, ProgressTx};
 
-use super::pg_vector_type::lookup_vector_type;
 use super::DataLoader;
+use super::pg_vector_type::lookup_vector_type;
 
 /// Shared PostgreSQL connection state for all PG-based index backends.
 /// Holds a persistent client, vector type info, and a prepared query
@@ -27,12 +27,7 @@ pub struct PgConnection {
 }
 
 impl PgConnection {
-    pub fn new(
-        conn: &ConnectionConfig,
-        table_name: &str,
-        dimension: u32,
-        metric: Metric,
-    ) -> Self {
+    pub fn new(conn: &ConnectionConfig, table_name: &str, dimension: u32, metric: Metric) -> Self {
         Self {
             dsn: conn.dsn.clone(),
             table_name: table_name.to_string(),
@@ -65,11 +60,7 @@ impl PgConnection {
     /// Connect and prepare a query statement for the given order operator.
     /// Call this once during backend creation; then use client() and
     /// query_stmt() for all subsequent operations.
-    pub async fn connect(
-        &mut self,
-        order_operator: &str,
-        extension: Option<&str>,
-    ) -> Result<()> {
+    pub async fn connect(&mut self, order_operator: &str, extension: Option<&str>) -> Result<()> {
         let client = self.open_connection().await?;
 
         if let Some(ext) = extension {
@@ -81,11 +72,9 @@ impl PgConnection {
                 })?;
         }
 
-        let vec_type = lookup_vector_type(&client).await.map_err(|e| {
-            Error::Config(format!(
-                "Cannot find pgvector 'vector' type: {e}"
-            ))
-        })?;
+        let vec_type = lookup_vector_type(&client)
+            .await
+            .map_err(|e| Error::Config(format!("Cannot find pgvector 'vector' type: {e}")))?;
 
         let sql = format!(
             "SELECT id FROM {} ORDER BY v {} $1 LIMIT $2",
@@ -94,9 +83,7 @@ impl PgConnection {
         let stmt = client
             .prepare_typed(&sql, &[vec_type, Type::INT8])
             .await
-            .map_err(|e| {
-                Error::Config(format!("Cannot prepare query: {e}"))
-            })?;
+            .map_err(|e| Error::Config(format!("Cannot prepare query: {e}")))?;
 
         self.client = Some(client);
         self.query_stmt = Some(stmt);
@@ -122,24 +109,16 @@ impl PgConnection {
     /// with the first value in each sweep. A non-dotted name that doesn't
     /// exist will error; dotted names always succeed as custom GUCs.
     /// We warn if a dotted name isn't a registered GUC (might be a typo).
-    pub async fn validate_gucs(
-        &self,
-        params: &HashMap<String, Vec<toml::Value>>,
-    ) -> Result<()> {
+    pub async fn validate_gucs(&self, params: &HashMap<String, Vec<toml::Value>>) -> Result<()> {
         let client = self.client();
         for (key, values) in params {
             if values.is_empty() {
-                return Err(Error::Config(format!(
-                    "Sweep param '{key}' has no values"
-                )));
+                return Err(Error::Config(format!("Sweep param '{key}' has no values")));
             }
 
             let test_val = toml_value_to_sql(&values[0]);
             if let Err(e) = client
-                .execute(
-                    &format!("SET \"{key}\" = {test_val}"),
-                    &[],
-                )
+                .execute(&format!("SET \"{key}\" = {test_val}"), &[])
                 .await
             {
                 return Err(Error::Config(format!(
@@ -176,21 +155,14 @@ impl PgConnection {
 
     /// Set GUCs from a param map. Keys are GUC names (e.g., "mkt.nprobe"),
     /// values are the settings. Issues `SET key = value` for each entry.
-    pub async fn set_gucs(
-        &self,
-        params: &HashMap<String, toml::Value>,
-    ) -> Result<()> {
+    pub async fn set_gucs(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
         let client = self.client();
         for (key, value) in params {
             let val_str = toml_value_to_sql(value);
             client
                 .execute(&format!("SET \"{key}\" = {val_str}"), &[])
                 .await
-                .map_err(|e| {
-                    Error::Config(format!(
-                        "Failed to SET {key} = {val_str}: {e}"
-                    ))
-                })?;
+                .map_err(|e| Error::Config(format!("Failed to SET {key} = {val_str}: {e}")))?;
         }
         Ok(())
     }
@@ -264,10 +236,7 @@ impl DataLoader for PgConnection {
     async fn row_count(&self) -> Result<u64> {
         let client = self.open_connection().await?;
         let row = client
-            .query_one(
-                &format!("SELECT count(*) FROM {}", self.table_name),
-                &[],
-            )
+            .query_one(&format!("SELECT count(*) FROM {}", self.table_name), &[])
             .await?;
         let count: i64 = row.get(0);
         Ok(count as u64)
@@ -471,18 +440,13 @@ mod tests {
 
         // Vector field starts at offset 14 (2+4+8)
         let vec_offset = 14;
-        let vec_len =
-            i32::from_be_bytes(buf[vec_offset..vec_offset + 4].try_into().unwrap());
+        let vec_len = i32::from_be_bytes(buf[vec_offset..vec_offset + 4].try_into().unwrap());
         assert_eq!(vec_len, 2 + 2 + 3 * 4); // dim + unused + 3 floats = 16
 
-        let dim = u16::from_be_bytes(
-            buf[vec_offset + 4..vec_offset + 6].try_into().unwrap(),
-        );
+        let dim = u16::from_be_bytes(buf[vec_offset + 4..vec_offset + 6].try_into().unwrap());
         assert_eq!(dim, 3);
 
-        let unused = u16::from_be_bytes(
-            buf[vec_offset + 6..vec_offset + 8].try_into().unwrap(),
-        );
+        let unused = u16::from_be_bytes(buf[vec_offset + 6..vec_offset + 8].try_into().unwrap());
         assert_eq!(unused, 0);
 
         for (i, &expected) in vec.iter().enumerate() {
@@ -504,18 +468,9 @@ mod tests {
 
     #[test]
     fn toml_value_to_sql_types() {
-        assert_eq!(
-            toml_value_to_sql(&toml::Value::Integer(42)),
-            "42"
-        );
-        assert_eq!(
-            toml_value_to_sql(&toml::Value::Float(3.14)),
-            "3.14"
-        );
-        assert_eq!(
-            toml_value_to_sql(&toml::Value::Boolean(true)),
-            "true"
-        );
+        assert_eq!(toml_value_to_sql(&toml::Value::Integer(42)), "42");
+        assert_eq!(toml_value_to_sql(&toml::Value::Float(1.5)), "1.5");
+        assert_eq!(toml_value_to_sql(&toml::Value::Boolean(true)), "true");
         assert_eq!(
             toml_value_to_sql(&toml::Value::String("hello".into())),
             "'hello'"
@@ -525,9 +480,7 @@ mod tests {
     #[test]
     fn index_sql_name_sanitizes() {
         let pg = PgConnection::new(
-            &ConnectionConfig {
-                dsn: String::new(),
-            },
+            &ConnectionConfig { dsn: String::new() },
             "t",
             1,
             Metric::Angular,
@@ -536,9 +489,6 @@ mod tests {
             pg.index_sql_name("mkt-nlist-1000"),
             "idx_rekall_mkt_nlist_1000"
         );
-        assert_eq!(
-            pg.index_sql_name("hnsw-m16"),
-            "idx_rekall_hnsw_m16"
-        );
+        assert_eq!(pg.index_sql_name("hnsw-m16"), "idx_rekall_hnsw_m16");
     }
 }

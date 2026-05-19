@@ -23,10 +23,7 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(
-        config: BenchmarkConfig,
-        outputs: Vec<Box<dyn OutputSink>>,
-    ) -> Self {
+    pub fn new(config: BenchmarkConfig, outputs: Vec<Box<dyn OutputSink>>) -> Self {
         Self {
             config,
             outputs,
@@ -34,11 +31,7 @@ impl Agent {
         }
     }
 
-    pub async fn run(
-        &mut self,
-        phases: &[Phase],
-        filter_index: Option<&str>,
-    ) -> Result<()> {
+    pub async fn run(&mut self, phases: &[Phase], filter_index: Option<&str>) -> Result<()> {
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
 
@@ -58,9 +51,7 @@ impl Agent {
 
                     let config = self.config.clone();
                     let load_handle =
-                        tokio::spawn(async move {
-                            phase::load::run(&config, &tx).await
-                        });
+                        tokio::spawn(async move { phase::load::run(&config, &tx).await });
 
                     // Drain progress events while load runs
                     let outputs = &mut self.outputs;
@@ -73,12 +64,8 @@ impl Agent {
                     load_handle.await.unwrap()?;
                 }
                 Phase::Index => {
-                    let results = phase::index::run(
-                        &self.config,
-                        &self.registry,
-                        filter_index,
-                    )
-                    .await?;
+                    let results =
+                        phase::index::run(&self.config, &self.registry, filter_index).await?;
 
                     for result in &results {
                         for output in self.outputs.iter_mut() {
@@ -95,13 +82,7 @@ impl Agent {
                     let filter = filter_index.map(|s| s.to_string());
 
                     let search_handle = tokio::spawn(async move {
-                        phase::search::run(
-                            &config,
-                            &registry,
-                            &tx,
-                            filter.as_deref(),
-                        )
-                        .await
+                        phase::search::run(&config, &registry, &tx, filter.as_deref()).await
                     });
 
                     let outputs = &mut self.outputs;

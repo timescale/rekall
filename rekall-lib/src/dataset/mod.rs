@@ -22,10 +22,8 @@ pub struct VectorChunk {
 pub trait DatasetReader: Send {
     fn meta(&self) -> &DatasetMeta;
 
-    fn train_chunks(
-        &self,
-        chunk_size: usize,
-    ) -> Box<dyn Iterator<Item = Result<VectorChunk>> + '_>;
+    fn train_chunks(&self, chunk_size: usize)
+    -> Box<dyn Iterator<Item = Result<VectorChunk>> + '_>;
 
     fn train_range(
         &self,

@@ -1,5 +1,5 @@
 use bytes::{BufMut, BytesMut};
-use postgres_types::{to_sql_checked, IsNull, ToSql, Type};
+use postgres_types::{IsNull, ToSql, Type, to_sql_checked};
 
 /// Wrapper for encoding a float slice as pgvector's binary format.
 /// Binary format: u16 dim + u16 unused(0) + f32[dim] (big-endian)
@@ -11,8 +11,7 @@ impl ToSql for PgVector<'_> {
         &self,
         _ty: &Type,
         out: &mut BytesMut,
-    ) -> std::result::Result<IsNull, Box<dyn std::error::Error + Sync + Send>>
-    {
+    ) -> std::result::Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
         let dim = self.0.len() as u16;
         out.put_u16(dim);
         out.put_u16(0); // unused
@@ -97,7 +96,7 @@ mod tests {
 
     #[test]
     fn encode_preserves_float_precision() {
-        let data = [0.123456789_f32, -0.987654321, f32::MIN, f32::MAX];
+        let data = [0.123_456_79_f32, -0.987_654_3, f32::MIN, f32::MAX];
         let v = PgVector(&data);
         let mut buf = BytesMut::new();
         v.to_sql(&Type::BYTEA, &mut buf).unwrap();

@@ -164,12 +164,8 @@ impl BenchmarkConfig {
         let content = std::fs::read_to_string(path).map_err(|e| {
             Error::Config(format!("Cannot read config file '{}': {e}", path.display()))
         })?;
-        let config: Self = toml::from_str(&content).map_err(|e| {
-            Error::Config(format!(
-                "Invalid config file '{}': {e}",
-                path.display()
-            ))
-        })?;
+        let config: Self = toml::from_str(&content)
+            .map_err(|e| Error::Config(format!("Invalid config file '{}': {e}", path.display())))?;
         config.validate()?;
         Ok(config)
     }
@@ -352,8 +348,7 @@ index = "nonexistent"
 
     #[test]
     fn missing_file_error() {
-        let err = BenchmarkConfig::from_file(Path::new("/nonexistent.toml"))
-            .unwrap_err();
+        let err = BenchmarkConfig::from_file(Path::new("/nonexistent.toml")).unwrap_err();
         assert!(err.to_string().contains("Cannot read config file"));
     }
 

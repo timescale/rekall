@@ -179,9 +179,9 @@ mod tests {
             c.record(i);
         }
         let p50 = c.percentile_us(50.0);
-        assert!(p50 >= 490.0 && p50 <= 510.0);
+        assert!((490.0..=510.0).contains(&p50));
         let p99 = c.percentile_us(99.0);
-        assert!(p99 >= 985.0 && p99 <= 1000.0);
+        assert!((985.0..=1000.0).contains(&p99));
     }
 
     #[test]
@@ -233,8 +233,7 @@ mod tests {
             make_search_result("b", 0.9, 1000.0),
         ];
         let pareto = compute_pareto(&results);
-        let pareto_points: Vec<_> =
-            pareto.iter().filter(|p| p.is_pareto).collect();
+        let pareto_points: Vec<_> = pareto.iter().filter(|p| p.is_pareto).collect();
         assert_eq!(pareto_points.len(), 1);
         assert_eq!(pareto_points[0].index_name, "b");
     }

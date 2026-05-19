@@ -9,9 +9,9 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
+use super::IndexBackend;
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
-use super::IndexBackend;
 
 #[derive(Debug, Deserialize)]
 struct HnswParams {
@@ -42,13 +42,12 @@ impl PgvectorHnswBackend {
         metric: Metric,
         idx: &IndexConfig,
     ) -> Result<Self> {
-        let params: HnswParams =
-            idx.params.clone().try_into().map_err(|e| {
-                crate::error::Error::Config(format!(
-                    "Invalid pgvector-hnsw params for '{}': {e}",
-                    idx.name
-                ))
-            })?;
+        let params: HnswParams = idx.params.clone().try_into().map_err(|e| {
+            crate::error::Error::Config(format!(
+                "Invalid pgvector-hnsw params for '{}': {e}",
+                idx.name
+            ))
+        })?;
 
         let order_op = match metric {
             Metric::Angular => "<=>",
@@ -129,10 +128,7 @@ impl IndexBackend for PgvectorHnswBackend {
         let row = self
             .pg
             .client()
-            .query_one(
-                &format!("SELECT pg_relation_size('{idx_name}')"),
-                &[],
-            )
+            .query_one(&format!("SELECT pg_relation_size('{idx_name}')"), &[])
             .await?;
         let size: i64 = row.get(0);
         Ok(size as u64)
@@ -153,10 +149,7 @@ impl IndexBackend for PgvectorHnswBackend {
         Ok(row.get(0))
     }
 
-    async fn set_search_params(
-        &self,
-        params: &HashMap<String, toml::Value>,
-    ) -> Result<()> {
+    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
         self.pg.set_gucs(params).await
     }
 

@@ -71,10 +71,7 @@ impl OutputSink for StdoutSink {
                 index_name,
                 elapsed_secs,
             } => {
-                println!(
-                    "  Index '{index_name}' built in {:.1}s",
-                    elapsed_secs
-                );
+                println!("  Index '{index_name}' built in {:.1}s", elapsed_secs);
             }
             ProgressEvent::SearchStart { index_name, params } => {
                 println!("  Searching '{index_name}' with {params}...");
@@ -84,10 +81,7 @@ impl OutputSink for StdoutSink {
                 recall,
                 qps,
             } => {
-                println!(
-                    "  '{index_name}': recall={:.4} QPS={:.0}",
-                    recall, qps
-                );
+                println!("  '{index_name}': recall={:.4} QPS={:.0}", recall, qps);
             }
             ProgressEvent::Message { text } => {
                 println!("  {text}");

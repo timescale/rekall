@@ -38,13 +38,15 @@ pub async fn run(
             continue;
         }
 
-        let backend = registry.create(
-            &config.connection,
-            &config.table_name(),
-            config.dataset.dimension,
-            config.dataset.metric,
-            idx_config,
-        ).await?;
+        let backend = registry
+            .create(
+                &config.connection,
+                &config.table_name(),
+                config.dataset.dimension,
+                config.dataset.metric,
+                idx_config,
+            )
+            .await?;
 
         backend.drop_index().await?;
         let result = backend.build_index().await?;
