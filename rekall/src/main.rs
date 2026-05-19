@@ -112,8 +112,11 @@ enum DatasetCommand {
 
 #[derive(Subcommand)]
 enum ConfigCommand {
-    /// Show global configuration
-    Show,
+    /// Show effective config (base merged with local overrides)
+    Show {
+        /// Path to benchmark config file
+        config: PathBuf,
+    },
 
     /// Create default configuration
     Init,
@@ -224,9 +227,11 @@ async fn main() -> anyhow::Result<()> {
         },
 
         Command::Config { command } => match command {
-            ConfigCommand::Show => {
-                println!("Global config: ~/.config/rekall/config.toml");
-                println!("(not yet implemented)");
+            ConfigCommand::Show { config } => {
+                let cfg = BenchmarkConfig::from_file(&config)?;
+                let toml_str = toml::to_string_pretty(&cfg).unwrap();
+                println!("# Effective config (base + local overrides)\n");
+                println!("{toml_str}");
             }
             ConfigCommand::Init => {
                 println!("(not yet implemented)");

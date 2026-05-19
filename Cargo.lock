@@ -1251,6 +1251,7 @@ dependencies = [
  "rekall-lib",
  "serde_json",
  "tokio",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]

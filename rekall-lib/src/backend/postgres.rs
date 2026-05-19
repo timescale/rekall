@@ -9,6 +9,7 @@ use tracing::{debug, info};
 
 use crate::config::{ConnectionConfig, Metric};
 use crate::error::{Error, Result};
+use crate::metrics::PgRuntimeInfo;
 use crate::progress::{ProgressEvent, ProgressTx};
 
 use super::pg_vector_type::lookup_vector_type;
@@ -165,6 +166,60 @@ impl PgConnection {
                 .map_err(|e| Error::Config(format!("Failed to SET {key} = {val_str}: {e}")))?;
         }
         Ok(())
+    }
+
+    /// Capture PG runtime environment: version, key settings, extensions.
+    pub async fn runtime_info(&self) -> Result<PgRuntimeInfo> {
+        let client = self.client();
+
+        let version: String = client.query_one("SELECT version()", &[]).await?.get(0);
+
+        let rows = client
+            .query(
+                "SELECT name, setting, unit FROM pg_settings \
+                 WHERE name IN (\
+                     'shared_buffers', 'work_mem', 'effective_cache_size', \
+                     'maintenance_work_mem', 'max_parallel_workers', \
+                     'max_parallel_maintenance_workers', 'random_page_cost', \
+                     'effective_io_concurrency', 'wal_level', \
+                     'max_connections', 'huge_pages'\
+                 ) ORDER BY name",
+                &[],
+            )
+            .await?;
+
+        let mut settings = std::collections::BTreeMap::new();
+        for row in &rows {
+            let name: String = row.get(0);
+            let setting: String = row.get(1);
+            let unit: Option<String> = row.get(2);
+            let value = match unit {
+                Some(u) if !u.is_empty() => format!("{setting}{u}"),
+                _ => setting,
+            };
+            settings.insert(name, value);
+        }
+
+        let ext_rows = client
+            .query(
+                "SELECT extname, extversion FROM pg_extension \
+                 WHERE extname != 'plpgsql' ORDER BY extname",
+                &[],
+            )
+            .await?;
+
+        let mut extensions = std::collections::BTreeMap::new();
+        for row in &ext_rows {
+            let name: String = row.get(0);
+            let ver: String = row.get(1);
+            extensions.insert(name, ver);
+        }
+
+        Ok(PgRuntimeInfo {
+            version,
+            settings,
+            extensions,
+        })
     }
 
     pub fn index_sql_name(&self, index_name: &str) -> String {

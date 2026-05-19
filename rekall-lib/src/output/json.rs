@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::metrics::{IndexBuildResult, ParetoPoint, RunSummary, SearchResult};
+use crate::metrics::{IndexBuildResult, ParetoPoint, PgRuntimeInfo, RunSummary, SearchResult};
 use crate::progress::ProgressEvent;
 
 use super::OutputSink;
@@ -19,6 +19,7 @@ impl OutputSink for JsonSink {
     fn on_phase_start(&mut self, _phase: &str, _detail: &str) {}
     fn on_phase_end(&mut self, _phase: &str, _elapsed_secs: f64) {}
     fn on_progress(&mut self, _event: &ProgressEvent) {}
+    fn on_pg_runtime(&mut self, _info: &PgRuntimeInfo) {}
     fn on_index_built(&mut self, _result: &IndexBuildResult) {}
     fn on_search_result(&mut self, _result: &SearchResult) {}
     fn on_pareto(&mut self, _frontier: &[ParetoPoint]) {}

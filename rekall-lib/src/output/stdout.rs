@@ -1,7 +1,7 @@
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use crate::metrics::{IndexBuildResult, ParetoPoint, RunSummary, SearchResult};
+use crate::metrics::{IndexBuildResult, ParetoPoint, PgRuntimeInfo, RunSummary, SearchResult};
 use crate::progress::ProgressEvent;
 
 use super::OutputSink;
@@ -40,6 +40,21 @@ impl OutputSink for StdoutSink {
     fn on_phase_end(&mut self, phase: &str, elapsed_secs: f64) {
         self.finish_progress();
         println!("  {phase} completed in {:.1}s", elapsed_secs);
+    }
+
+    fn on_pg_runtime(&mut self, info: &PgRuntimeInfo) {
+        println!("\n--- PostgreSQL Runtime ---");
+        println!("  {}", info.version);
+        println!("  Settings:");
+        for (name, value) in &info.settings {
+            println!("    {name:40} = {value}");
+        }
+        if !info.extensions.is_empty() {
+            println!("  Extensions:");
+            for (name, ver) in &info.extensions {
+                println!("    {name:40} {ver}");
+            }
+        }
     }
 
     fn on_progress(&mut self, event: &ProgressEvent) {

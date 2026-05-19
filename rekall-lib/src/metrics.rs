@@ -40,8 +40,17 @@ pub struct ParetoPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PgRuntimeInfo {
+    pub version: String,
+    pub settings: std::collections::BTreeMap<String, String>,
+    pub extensions: std::collections::BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSummary {
     pub dataset: String,
+    pub config: serde_json::Value,
+    pub pg_runtime: Option<PgRuntimeInfo>,
     pub index_builds: Vec<IndexBuildResult>,
     pub search_results: Vec<SearchResult>,
     pub pareto: Vec<ParetoPoint>,

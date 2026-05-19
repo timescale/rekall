@@ -13,7 +13,7 @@ use std::time::Instant;
 
 use config::BenchmarkConfig;
 use error::Result;
-use metrics::{IndexBuildResult, SearchResult};
+use metrics::{IndexBuildResult, PgRuntimeInfo, SearchResult};
 use output::OutputSink;
 use phase::Phase;
 use progress::progress_channel;
@@ -33,9 +33,38 @@ impl Agent {
         }
     }
 
+    /// Capture PG runtime info by connecting to the database.
+    async fn capture_pg_runtime(&self) -> Option<PgRuntimeInfo> {
+        let mut pg = backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        );
+        // Connect without extension loading — just need basic PG info
+        if pg.connect("<=>", None).await.is_err() {
+            return None;
+        }
+        pg.runtime_info().await.ok()
+    }
+
     pub async fn run(&mut self, phases: &[Phase], filter_index: Option<&str>) -> Result<()> {
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
+        let mut pg_runtime: Option<PgRuntimeInfo> = None;
+
+        // Capture PG runtime info at the start if any PG-touching phase is requested
+        if phases
+            .iter()
+            .any(|p| matches!(p, Phase::Init | Phase::Load | Phase::Index | Phase::Search))
+        {
+            pg_runtime = self.capture_pg_runtime().await;
+            if let Some(ref info) = pg_runtime {
+                for output in self.outputs.iter_mut() {
+                    output.on_pg_runtime(info);
+                }
+            }
+        }
 
         for &phase in phases {
             let start = Instant::now();
@@ -55,7 +84,6 @@ impl Agent {
                     let load_handle =
                         tokio::spawn(async move { phase::load::run(&config, &tx).await });
 
-                    // Drain progress events while load runs
                     let outputs = &mut self.outputs;
                     while let Some(event) = rx.recv().await {
                         for output in outputs.iter_mut() {
@@ -103,8 +131,11 @@ impl Agent {
                     search_results.extend(results);
                 }
                 Phase::Report => {
+                    let config_value = serde_json::to_value(&self.config).unwrap_or_default();
                     phase::report::run(
                         &self.config.dataset.name,
+                        config_value,
+                        pg_runtime.clone(),
                         index_builds.clone(),
                         search_results.clone(),
                         &mut self.outputs,
