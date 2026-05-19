@@ -88,10 +88,11 @@ enum Command {
         command: DatasetCommand,
     },
 
-    /// Configuration management
+    /// Show configs. Without arguments, lists all configs found.
+    /// With a path, shows the effective merged config.
     Config {
-        #[command(subcommand)]
-        command: ConfigCommand,
+        /// Path to a specific config file (optional)
+        config: Option<PathBuf>,
     },
 }
 
@@ -108,18 +109,6 @@ enum DatasetCommand {
         /// Path to HDF5 file
         path: PathBuf,
     },
-}
-
-#[derive(Subcommand)]
-enum ConfigCommand {
-    /// Show effective config (base merged with local overrides)
-    Show {
-        /// Path to benchmark config file
-        config: PathBuf,
-    },
-
-    /// Create default configuration
-    Init,
 }
 
 #[tokio::main]
@@ -226,17 +215,24 @@ async fn main() -> anyhow::Result<()> {
             },
         },
 
-        Command::Config { command } => match command {
-            ConfigCommand::Show { config } => {
-                let cfg = BenchmarkConfig::from_file(&config)?;
+        Command::Config { config } => {
+            if let Some(path) = config {
+                let cfg = BenchmarkConfig::from_file(&path)?;
                 let toml_str = toml::to_string_pretty(&cfg).unwrap();
-                println!("# Effective config (base + local overrides)\n");
+                println!("# Effective config: {}", path.display());
+                let local = path.with_file_name(format!(
+                    "{}.local.toml",
+                    path.file_stem().unwrap_or_default().to_string_lossy()
+                ));
+                if local.exists() {
+                    println!("# (merged with {})", local.display());
+                }
+                println!();
                 println!("{toml_str}");
+            } else {
+                show_all_configs();
             }
-            ConfigCommand::Init => {
-                println!("(not yet implemented)");
-            }
-        },
+        }
     }
 
     Ok(())
@@ -259,6 +255,93 @@ fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {
     }
 
     outputs
+}
+
+fn show_all_configs() {
+    let search_dirs = [".", "examples"];
+    let mut found = Vec::new();
+
+    for dir in &search_dirs {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().is_some_and(|e| e == "toml")
+                && !path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .contains(".local.")
+                && !path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .starts_with("Cargo")
+                && !path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .contains("rust-analyzer")
+            {
+                let content = std::fs::read_to_string(&path).unwrap_or_default();
+                if !content.contains("[dataset]") {
+                    continue;
+                }
+                found.push(path);
+            }
+        }
+    }
+
+    found.sort();
+
+    if found.is_empty() {
+        println!("No config files found in . or examples/");
+        return;
+    }
+
+    for path in &found {
+        let local = path.with_file_name(format!(
+            "{}.local.toml",
+            path.file_stem().unwrap_or_default().to_string_lossy()
+        ));
+        let has_local = local.exists();
+
+        match BenchmarkConfig::from_file(path) {
+            Ok(cfg) => {
+                let local_marker = if has_local { " (+local)" } else { "" };
+                println!("{}{local_marker}", path.display());
+                println!(
+                    "  dataset: {} ({}d, {})",
+                    cfg.dataset.name, cfg.dataset.dimension, cfg.dataset.metric
+                );
+                println!("  table: {}", cfg.table_name());
+                println!(
+                    "  indexes: {}",
+                    cfg.index
+                        .iter()
+                        .map(|i| format!("{} ({})", i.name, i.index_type))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                let sweep_points: usize = cfg
+                    .search
+                    .sweep
+                    .iter()
+                    .map(|s| s.params.values().map(|v| v.len()).product::<usize>().max(1))
+                    .sum();
+                println!(
+                    "  search: k={}, {} sweep points",
+                    cfg.search.k, sweep_points
+                );
+                println!();
+            }
+            Err(e) => {
+                println!("{} (ERROR: {e})", path.display());
+                println!();
+            }
+        }
+    }
 }
 
 fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>) {
