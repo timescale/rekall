@@ -82,6 +82,14 @@ pub struct IndexConfig {
     pub gucs: HashMap<String, toml::Value>,
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CacheMode {
+    #[default]
+    Warm,
+    Cold,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchConfig {
     #[serde(default = "default_k")]
@@ -92,6 +100,8 @@ pub struct SearchConfig {
     pub warmup: usize,
     #[serde(default)]
     pub num_queries: Option<usize>,
+    #[serde(default)]
+    pub cache: CacheMode,
     #[serde(default)]
     pub sweep: Vec<SweepConfig>,
 }
@@ -115,6 +125,7 @@ impl Default for SearchConfig {
             runs: default_runs(),
             warmup: default_warmup(),
             num_queries: None,
+            cache: CacheMode::default(),
             sweep: Vec::new(),
         }
     }

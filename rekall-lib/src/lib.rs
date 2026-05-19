@@ -11,7 +11,7 @@ pub mod progress;
 
 use std::time::Instant;
 
-use config::BenchmarkConfig;
+use config::{BenchmarkConfig, CacheMode};
 use error::Result;
 use metrics::{IndexBuildResult, PgRuntimeInfo, SearchResult};
 use output::OutputSink;
@@ -301,6 +301,12 @@ impl Agent {
                 } else {
                     pg_mgmt.disable_index(idx_sql).await?;
                 }
+            }
+
+            // Prewarm in warm mode, evict in cold mode
+            if self.config.search.cache == CacheMode::Warm {
+                pg_mgmt.prewarm(&active_idx).await?;
+                pg_mgmt.prewarm(&self.config.table_name()).await?;
             }
 
             let search_start = Instant::now();

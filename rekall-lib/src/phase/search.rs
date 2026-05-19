@@ -4,7 +4,7 @@ use std::time::Instant;
 use tracing::info;
 
 use crate::backend::BackendRegistry;
-use crate::config::BenchmarkConfig;
+use crate::config::{BenchmarkConfig, CacheMode};
 use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
@@ -102,10 +102,34 @@ pub async fn run(
             backend.set_search_params(&idx_config.gucs).await?;
             backend.set_search_params(params).await?;
 
-            // Warmup
-            for qi in 0..config.search.warmup.min(num_queries) {
-                let q = queries.row(qi).to_vec();
-                let _ = backend.query(&q, k).await?;
+            match config.search.cache {
+                CacheMode::Warm => {
+                    // Warmup queries to fill shared buffers
+                    for qi in 0..config.search.warmup.min(num_queries) {
+                        let q = queries.row(qi).to_vec();
+                        let _ = backend.query(&q, k).await?;
+                    }
+                }
+                CacheMode::Cold => {
+                    // Evict shared buffers before measurement.
+                    // Skip warmup to measure cold-cache performance.
+                    let mut pg_evict = crate::backend::postgres::PgConnection::new(
+                        &config.connection,
+                        &config.table_name(),
+                        config.dataset.dimension,
+                        config.dataset.metric,
+                    );
+                    pg_evict.connect("<=>", None).await?;
+                    let idx_sql = pg_evict.index_sql_name(&sweep.index);
+                    pg_evict
+                        .evict_relation_buffers(&config.table_name())
+                        .await?;
+                    pg_evict.evict_relation_buffers(&idx_sql).await?;
+
+                    let _ = progress.send(ProgressEvent::Message {
+                        text: "Evicted shared buffers (cold mode)".to_string(),
+                    });
+                }
             }
 
             let mut best_collector = LatencyCollector::new();

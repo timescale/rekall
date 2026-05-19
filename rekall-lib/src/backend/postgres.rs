@@ -324,6 +324,76 @@ impl PgConnection {
         Ok(plan_text)
     }
 
+    /// Prewarm a relation into shared buffers using pg_prewarm.
+    /// Limits prewarming to avoid evicting earlier pages when the relation
+    /// is larger than shared_buffers. Prioritizes low-numbered blocks
+    /// (centroids, metadata) which are accessed on every query.
+    pub async fn prewarm(&self, relation: &str) -> Result<()> {
+        let client = self.client();
+        client
+            .execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm", &[])
+            .await?;
+
+        // Get relation size in blocks and shared_buffers size
+        let rel_row = client
+            .query_one(
+                &format!("SELECT pg_relation_size('{relation}') / 8192"),
+                &[],
+            )
+            .await?;
+        let rel_blocks: i64 = rel_row.get(0);
+
+        let buf_row = client
+            .query_one(
+                "SELECT setting::bigint FROM pg_settings \
+                 WHERE name = 'shared_buffers'",
+                &[],
+            )
+            .await?;
+        let shared_buffers_blocks: i64 = buf_row.get(0);
+
+        // Leave headroom: use at most 75% of shared_buffers for this relation
+        let max_blocks = (shared_buffers_blocks * 3 / 4).min(rel_blocks);
+        let last_block = max_blocks - 1;
+
+        let row = client
+            .query_one(
+                &format!("SELECT pg_prewarm('{relation}', 'buffer', 'main', 0, {last_block})"),
+                &[],
+            )
+            .await?;
+        let blocks: i64 = row.get(0);
+        let size_mb = blocks as f64 * 8192.0 / (1024.0 * 1024.0);
+        tracing::info!("Prewarmed '{relation}': {blocks}/{rel_blocks} blocks ({size_mb:.1} MB)");
+        Ok(())
+    }
+
+    /// Evict all shared buffers for a relation using pg_buffercache.
+    pub async fn evict_relation_buffers(&self, relation: &str) -> Result<()> {
+        let client = self.client();
+        client
+            .execute("CREATE EXTENSION IF NOT EXISTS pg_buffercache", &[])
+            .await?;
+
+        // Try pg_buffercache_evict_relation (pg_buffercache 1.5+)
+        let result = client
+            .execute(
+                &format!("SELECT pg_buffercache_evict_relation('{relation}'::regclass)"),
+                &[],
+            )
+            .await;
+
+        if result.is_ok() {
+            tracing::info!("Evicted shared buffers for '{relation}'");
+        } else {
+            tracing::warn!(
+                "pg_buffercache_evict_relation not available for '{relation}'. \
+                 For true cold runs, restart PostgreSQL."
+            );
+        }
+        Ok(())
+    }
+
     /// Disable an index so the planner won't use it.
     pub async fn disable_index(&self, index_sql_name: &str) -> Result<()> {
         let client = self.client();
