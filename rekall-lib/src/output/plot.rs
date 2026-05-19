@@ -13,6 +13,7 @@ struct Series {
 pub struct PlotOptions {
     pub log_x: bool,
     pub log_y: bool,
+    pub pareto_only: bool,
 }
 
 impl Default for PlotOptions {
@@ -20,6 +21,7 @@ impl Default for PlotOptions {
         Self {
             log_x: true,
             log_y: true,
+            pareto_only: false,
         }
     }
 }
@@ -222,7 +224,7 @@ fn draw_html(
         ));
 
         // Non-Pareto points (small hollow markers, no separate legend entry)
-        if !other_x.is_empty() {
+        if !other_x.is_empty() && !opts.pareto_only {
             traces.push(',');
             traces.push_str(&format!(
                 r#"{{
@@ -431,7 +433,9 @@ where
         pareto_points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
 
         // Draw non-Pareto points with thin lines
-        chart.draw_series(LineSeries::new(s.points.iter().copied(), thin_style))?;
+        if !_opts.pareto_only {
+            chart.draw_series(LineSeries::new(s.points.iter().copied(), thin_style))?;
+        }
 
         // Draw Pareto frontier with thick lines
         chart
@@ -439,17 +443,25 @@ where
             .label(&s.name)
             .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], thick_style));
 
-        // Draw markers on all points (filled for Pareto, hollow for non-Pareto)
-        let pareto_set: std::collections::HashSet<u64> =
-            pareto_points.iter().map(|(r, _)| r.to_bits()).collect();
+        // Draw markers
+        if _opts.pareto_only {
+            chart.draw_series(
+                pareto_points
+                    .iter()
+                    .map(|&(x, y)| Circle::new((x, y), 5, thick_style.filled())),
+            )?;
+        } else {
+            let pareto_set: std::collections::HashSet<u64> =
+                pareto_points.iter().map(|(r, _)| r.to_bits()).collect();
 
-        chart.draw_series(s.points.iter().map(|&(x, y)| {
-            if pareto_set.contains(&x.to_bits()) {
-                Circle::new((x, y), 5, thick_style.filled())
-            } else {
-                Circle::new((x, y), 3, thin_style)
-            }
-        }))?;
+            chart.draw_series(s.points.iter().map(|&(x, y)| {
+                if pareto_set.contains(&x.to_bits()) {
+                    Circle::new((x, y), 5, thick_style.filled())
+                } else {
+                    Circle::new((x, y), 3, thin_style)
+                }
+            }))?;
+        }
     }
 
     // Global Pareto frontier (dashed black line)

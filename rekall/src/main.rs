@@ -124,6 +124,10 @@ enum Command {
         #[arg(long)]
         linear_y: bool,
 
+        /// Show only Pareto frontier lines (hide non-optimal points)
+        #[arg(long)]
+        pareto_only: bool,
+
         /// Also export CSV data file
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -284,6 +288,7 @@ async fn main() -> anyhow::Result<()> {
             title,
             linear_x,
             linear_y,
+            pareto_only,
             csv,
         } => {
             let mut summaries = Vec::new();
@@ -298,6 +303,7 @@ async fn main() -> anyhow::Result<()> {
             let opts = rekall_lib::output::plot::PlotOptions {
                 log_x: !linear_x,
                 log_y: !linear_y,
+                pareto_only,
             };
             rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref(), &opts)
                 .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;
