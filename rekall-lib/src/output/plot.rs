@@ -205,16 +205,20 @@ fn draw_html(
 
         let mut pareto_x = Vec::new();
         let mut pareto_y = Vec::new();
+        let mut pareto_recall = Vec::new();
         let mut other_x = Vec::new();
         let mut other_y = Vec::new();
+        let mut other_recall = Vec::new();
 
         for &(recall, qps) in &s.points {
             if pareto_set.contains(&recall.to_bits()) {
                 pareto_x.push(xform_x(recall));
                 pareto_y.push(qps);
+                pareto_recall.push(recall);
             } else {
                 other_x.push(xform_x(recall));
                 other_y.push(qps);
+                other_recall.push(recall);
             }
         }
 
@@ -226,13 +230,14 @@ fn draw_html(
             r#"{{
                 x: {pareto_x:?},
                 y: {pareto_y:?},
+                customdata: {pareto_recall:?},
                 name: "{name}",
                 type: "scatter",
                 mode: "lines+markers",
                 line: {{ color: "{color_str}", width: 3 }},
                 marker: {{ color: "{color_str}", size: 8 }},
                 legendgroup: "{name}",
-                hovertemplate: "<b>{name}</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
             }}"#,
             name = s.name,
         ));
@@ -244,12 +249,13 @@ fn draw_html(
                 r#"{{
                     x: {other_x:?},
                     y: {other_y:?},
+                    customdata: {other_recall:?},
                     type: "scatter",
                     mode: "markers",
                     marker: {{ color: "{color_str}", size: 5, opacity: 0.4 }},
                     legendgroup: "{name}",
                     showlegend: false,
-                    hovertemplate: "<b>{name}</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                    hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
                 }}"#,
                 name = s.name,
             ));
@@ -293,6 +299,7 @@ fn draw_html(
             .map(|(r, _)| xform_x(*r))
             .collect();
         let gp_y: Vec<f64> = global_pareto_points.iter().map(|(_, q)| *q).collect();
+        let gp_recall: Vec<f64> = global_pareto_points.iter().map(|(r, _)| *r).collect();
         if !traces.is_empty() {
             traces.push(',');
         }
@@ -300,11 +307,12 @@ fn draw_html(
             r#"{{
                 x: {gp_x:?},
                 y: {gp_y:?},
+                customdata: {gp_recall:?},
                 name: "Global Pareto",
                 type: "scatter",
                 mode: "lines",
                 line: {{ color: "black", width: 2, dash: "dash" }},
-                hovertemplate: "<b>Pareto</b><br>Recall: %{{x:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                hovertemplate: "<b>Pareto</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
             }}"#,
         ));
     }
