@@ -303,6 +303,18 @@ fn draw_html(
     let x_type = if opts.log_x { "\"log\"" } else { "\"linear\"" };
     let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
 
+    // For log axes, Plotly interprets range as log10 values
+    let min_r = if opts.min_recall > 0.0 {
+        opts.min_recall
+    } else {
+        0.5
+    };
+    let x_range = if opts.log_x {
+        format!("range: [{:.6}, {:.6}],", min_r.log10(), 0.0_f64)
+    } else {
+        format!("range: [{min_r}, 1.0],")
+    };
+
     let html = format!(
         concat!(
             "<!DOCTYPE html>\n",
@@ -317,7 +329,7 @@ fn draw_html(
             "var traces = [{traces}];\n",
             "var layout = {{\n",
             "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
-            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, range: [{min_recall}, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
+            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, {x_range} tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
             "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
@@ -338,11 +350,7 @@ fn draw_html(
         traces = traces,
         x_type = x_type,
         y_type = y_type,
-        min_recall = if opts.min_recall > 0.0 {
-            opts.min_recall
-        } else {
-            0.5
-        },
+        x_range = x_range,
     );
     f.write_all(html.as_bytes())?;
 
