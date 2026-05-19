@@ -24,9 +24,15 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run a full benchmark (all phases)
+    ///
+    /// Accepts one or more paths: files, directories, or globs.
+    /// Directories load base.toml + all index configs inside.
+    /// Individual files are grouped by parent directory.
+    /// Example: rekall run dir1/ dir2/mkt-*.toml
     Run {
-        /// Path to benchmark config file
-        config: PathBuf,
+        /// Config paths (files, directories, or shell globs)
+        #[arg(required = true)]
+        configs: Vec<PathBuf>,
 
         /// Run only a specific phase
         #[arg(long)]
@@ -129,18 +135,13 @@ async fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Command::Run {
-            config,
+            configs,
             phase,
             index,
             dry_run,
             ..
         } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
-
-            if dry_run {
-                print_dry_run(&cfg, phase.as_deref(), index.as_deref());
-                return Ok(());
-            }
+            let groups = rekall_lib::config::resolve_config_groups(&configs)?;
 
             let phases = if let Some(ref p) = phase {
                 vec![p.parse().map_err(|e: String| anyhow::anyhow!(e))?]
@@ -148,9 +149,22 @@ async fn main() -> anyhow::Result<()> {
                 Phase::all().to_vec()
             };
 
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs);
-            agent.run(&phases, index.as_deref()).await?;
+            for group in &groups {
+                if groups.len() > 1 {
+                    println!("\n{}", "=".repeat(60));
+                    println!("=== Group: {} ===", group.name);
+                    println!("{}\n", "=".repeat(60));
+                }
+
+                if dry_run {
+                    print_dry_run(&group.config, phase.as_deref(), index.as_deref());
+                    continue;
+                }
+
+                let outputs = build_outputs(&group.config);
+                let mut agent = Agent::new(group.config.clone(), outputs);
+                agent.run(&phases, index.as_deref()).await?;
+            }
         }
 
         Command::Init { config } => {

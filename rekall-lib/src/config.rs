@@ -281,6 +281,63 @@ impl BenchmarkConfig {
         Ok(config)
     }
 
+    /// Load base.toml from a directory, then only the specified index config files.
+    pub fn from_directory_files(dir: &Path, files: &[PathBuf]) -> Result<Self> {
+        let base_path = dir.join("base.toml");
+        if !base_path.exists() {
+            return Err(Error::Config(format!(
+                "Directory '{}' has no base.toml. \
+                 Create base.toml with [dataset], [connection], and [search] sections.",
+                dir.display()
+            )));
+        }
+
+        let mut config = Self::from_file(&base_path)?;
+
+        let mut sorted_files = files.to_vec();
+        sorted_files.sort();
+
+        for index_file in &sorted_files {
+            let content = std::fs::read_to_string(index_file).map_err(|e| {
+                Error::Config(format!(
+                    "Cannot read index config '{}': {e}",
+                    index_file.display()
+                ))
+            })?;
+
+            #[derive(Deserialize)]
+            struct IndexFragment {
+                #[serde(default)]
+                index: Vec<IndexConfig>,
+                #[serde(default)]
+                search: Option<SearchFragment>,
+            }
+
+            #[derive(Deserialize)]
+            struct SearchFragment {
+                #[serde(default)]
+                sweep: Vec<SweepConfig>,
+            }
+
+            let fragment: IndexFragment = toml::from_str(&content).map_err(|e| {
+                Error::Config(format!(
+                    "Invalid index config '{}': {e}",
+                    index_file.display()
+                ))
+            })?;
+
+            config.index.extend(fragment.index);
+            if let Some(search) = fragment.search {
+                config.search.sweep.extend(search.sweep);
+            }
+
+            tracing::info!("Loaded index config from {}", index_file.display());
+        }
+
+        config.validate()?;
+        Ok(config)
+    }
+
     pub fn table_name(&self) -> String {
         self.load
             .table
@@ -298,6 +355,78 @@ impl BenchmarkConfig {
         }
         Ok(())
     }
+}
+
+/// A named group of configs resolved from CLI paths.
+#[derive(Debug)]
+pub struct ConfigGroup {
+    pub name: String,
+    pub config: BenchmarkConfig,
+}
+
+/// Resolve a list of CLI paths into named config groups.
+///
+/// Rules:
+/// - A directory becomes one group (all *.toml inside it)
+/// - Individual files are grouped by parent directory
+/// - A single file is its own group (named after the file stem)
+pub fn resolve_config_groups(paths: &[PathBuf]) -> Result<Vec<ConfigGroup>> {
+    if paths.is_empty() {
+        return Err(Error::Config("No config paths provided".to_string()));
+    }
+
+    // Single path: simple case
+    if paths.len() == 1 {
+        let path = &paths[0];
+        let name = path
+            .file_stem()
+            .or_else(|| path.file_name())
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let config = BenchmarkConfig::from_path(path)?;
+        return Ok(vec![ConfigGroup { name, config }]);
+    }
+
+    // Multiple paths: group by parent directory
+    let mut dir_groups: std::collections::BTreeMap<PathBuf, Vec<PathBuf>> =
+        std::collections::BTreeMap::new();
+    let mut standalone_dirs: Vec<PathBuf> = Vec::new();
+
+    for path in paths {
+        if path.is_dir() {
+            standalone_dirs.push(path.clone());
+        } else {
+            let parent = path.parent().unwrap_or(Path::new(".")).to_path_buf();
+            dir_groups.entry(parent).or_default().push(path.clone());
+        }
+    }
+
+    let mut groups = Vec::new();
+
+    // Standalone directories: load all configs
+    for dir in &standalone_dirs {
+        let name = dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let config = BenchmarkConfig::from_directory(dir)?;
+        groups.push(ConfigGroup { name, config });
+    }
+
+    // File groups: load base.toml + only specified files
+    for (dir, files) in &dir_groups {
+        let name = dir
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let config = BenchmarkConfig::from_directory_files(dir, files)?;
+        groups.push(ConfigGroup { name, config });
+    }
+
+    Ok(groups)
 }
 
 /// Derive the local config path: `foo.toml` -> `foo.local.toml`
