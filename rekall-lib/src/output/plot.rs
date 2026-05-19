@@ -14,6 +14,7 @@ pub struct PlotOptions {
     pub log_x: bool,
     pub log_y: bool,
     pub pareto_only: bool,
+    pub min_recall: f64,
 }
 
 impl Default for PlotOptions {
@@ -22,6 +23,7 @@ impl Default for PlotOptions {
             log_x: true,
             log_y: true,
             pareto_only: false,
+            min_recall: 0.0,
         }
     }
 }
@@ -32,7 +34,13 @@ pub fn generate_plot(
     title: Option<&str>,
     opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let series = build_series(summaries);
+    let mut series = build_series(summaries);
+    if opts.min_recall > 0.0 {
+        for s in &mut series {
+            s.points.retain(|&(r, _)| r >= opts.min_recall);
+        }
+        series.retain(|s| !s.points.is_empty());
+    }
     if series.is_empty() {
         return Err("No search results to plot".into());
     }
@@ -309,7 +317,7 @@ fn draw_html(
             "var traces = [{traces}];\n",
             "var layout = {{\n",
             "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
-            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
+            "  xaxis: {{ title: \"Recall@10\", type: {x_type}, range: [{min_recall}, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\" }},\n",
             "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
@@ -330,6 +338,11 @@ fn draw_html(
         traces = traces,
         x_type = x_type,
         y_type = y_type,
+        min_recall = if opts.min_recall > 0.0 {
+            opts.min_recall
+        } else {
+            0.5
+        },
     );
     f.write_all(html.as_bytes())?;
 
@@ -381,7 +394,10 @@ where
         .x_label_area_size(40)
         .y_label_area_size(60)
         .right_y_label_area_size(10)
-        .build_cartesian_2d(0.5_f64..1.0_f64, (qps_lo..qps_hi).log_scale())?;
+        .build_cartesian_2d(
+            _opts.min_recall.max(0.5)..1.0_f64,
+            (qps_lo..qps_hi).log_scale(),
+        )?;
 
     chart
         .configure_mesh()

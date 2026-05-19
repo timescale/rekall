@@ -128,6 +128,10 @@ enum Command {
         #[arg(long)]
         pareto_only: bool,
 
+        /// Minimum recall to show on X-axis (e.g., 0.9)
+        #[arg(long)]
+        min_recall: Option<f64>,
+
         /// Also export CSV data file
         #[arg(long)]
         csv: Option<PathBuf>,
@@ -289,6 +293,7 @@ async fn main() -> anyhow::Result<()> {
             linear_x,
             linear_y,
             pareto_only,
+            min_recall,
             csv,
         } => {
             let mut summaries = Vec::new();
@@ -304,6 +309,7 @@ async fn main() -> anyhow::Result<()> {
                 log_x: !linear_x,
                 log_y: !linear_y,
                 pareto_only,
+                min_recall: min_recall.unwrap_or(0.0),
             };
             rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref(), &opts)
                 .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;
