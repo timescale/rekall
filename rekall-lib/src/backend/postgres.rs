@@ -259,6 +259,51 @@ impl PgConnection {
         })
     }
 
+    /// Disable an index so the planner won't use it.
+    pub async fn disable_index(&self, index_sql_name: &str) -> Result<()> {
+        let client = self.client();
+        client
+            .execute(
+                &format!(
+                    "UPDATE pg_index SET indisvalid = false \
+                     WHERE indexrelid = '{index_sql_name}'::regclass"
+                ),
+                &[],
+            )
+            .await?;
+        tracing::debug!("Disabled index {index_sql_name}");
+        Ok(())
+    }
+
+    /// Re-enable a previously disabled index.
+    pub async fn enable_index(&self, index_sql_name: &str) -> Result<()> {
+        let client = self.client();
+        client
+            .execute(
+                &format!(
+                    "UPDATE pg_index SET indisvalid = true \
+                     WHERE indexrelid = '{index_sql_name}'::regclass"
+                ),
+                &[],
+            )
+            .await?;
+        tracing::debug!("Enabled index {index_sql_name}");
+        Ok(())
+    }
+
+    /// Get SQL names of all rekall-managed indexes on this table.
+    pub async fn list_rekall_indexes(&self) -> Result<Vec<String>> {
+        let client = self.client();
+        let rows = client
+            .query(
+                "SELECT indexname FROM pg_indexes \
+                 WHERE tablename = $1 AND indexname LIKE 'idx_rekall_%'",
+                &[&self.table_name],
+            )
+            .await?;
+        Ok(rows.iter().map(|r| r.get::<_, String>(0)).collect())
+    }
+
     pub fn index_sql_name(&self, index_name: &str) -> String {
         format!("idx_rekall_{}", index_name.replace('-', "_"))
     }

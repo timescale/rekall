@@ -46,7 +46,12 @@ impl Agent {
         pg.runtime_info().await.ok()
     }
 
-    pub async fn run(&mut self, phases: &[Phase], filter_index: Option<&str>) -> Result<()> {
+    pub async fn run(
+        &mut self,
+        phases: &[Phase],
+        filter_index: Option<&str>,
+        rebuild_indexes: bool,
+    ) -> Result<()> {
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
         let mut pg_runtime: Option<PgRuntimeInfo> = None;
@@ -81,8 +86,13 @@ impl Agent {
         }
 
         if interleave {
-            self.run_index_search_interleaved(filter_index, &mut index_builds, &mut search_results)
-                .await?;
+            self.run_index_search_interleaved(
+                filter_index,
+                rebuild_indexes,
+                &mut index_builds,
+                &mut search_results,
+            )
+            .await?;
         }
 
         // Always run report at the end if it was requested
@@ -171,28 +181,32 @@ impl Agent {
         Ok(())
     }
 
-    /// Build each index, run its search sweeps, then drop it before
-    /// building the next. This allows multiple configs of the same index
-    /// type to be explored in a single run.
+    /// Build indexes that don't exist yet, then for each index: disable
+    /// all others, run search sweeps, re-enable. Avoids expensive rebuilds
+    /// when indexes already exist.
     async fn run_index_search_interleaved(
         &mut self,
         filter_index: Option<&str>,
+        rebuild: bool,
         index_builds: &mut Vec<IndexBuildResult>,
         search_results: &mut Vec<SearchResult>,
     ) -> Result<()> {
-        for idx_config in &self.config.index.clone() {
-            if let Some(name) = filter_index {
-                if idx_config.name != name {
-                    continue;
+        let index_configs: Vec<_> = self
+            .config
+            .index
+            .iter()
+            .filter(|idx| {
+                if let Some(name) = filter_index {
+                    idx.name == name
+                } else {
+                    true
                 }
-            }
+            })
+            .cloned()
+            .collect();
 
-            // Build
-            let idx_start = Instant::now();
-            for output in self.outputs.iter_mut() {
-                output.on_phase_start("index", &idx_config.name);
-            }
-
+        // Phase 1: Build any indexes that don't exist yet
+        for idx_config in &index_configs {
             let backend = self
                 .registry
                 .create(
@@ -204,72 +218,129 @@ impl Agent {
                 )
                 .await?;
 
-            backend.drop_index().await?;
-            let build_result = backend.build_index().await?;
-            for output in self.outputs.iter_mut() {
-                output.on_index_built(&build_result);
+            let exists = backend.index_exists().await?;
+            if exists && rebuild {
+                backend.drop_index().await?;
+                for output in self.outputs.iter_mut() {
+                    output.on_progress(&ProgressEvent::Message {
+                        text: format!(
+                            "Dropping index '{}' for rebuild (--rebuild)",
+                            idx_config.name,
+                        ),
+                    });
+                }
             }
-            index_builds.push(build_result);
+            if exists && !rebuild {
+                let size = backend.index_size().await.unwrap_or(0);
+                let size_mb = size as f64 / (1024.0 * 1024.0);
+                for output in self.outputs.iter_mut() {
+                    output.on_progress(&ProgressEvent::Message {
+                        text: format!(
+                            "Index '{}' already exists ({:.1} MB), skipping build",
+                            idx_config.name, size_mb,
+                        ),
+                    });
+                }
+            } else {
+                let idx_start = Instant::now();
+                for output in self.outputs.iter_mut() {
+                    output.on_phase_start("index", &idx_config.name);
+                }
 
-            let idx_elapsed = idx_start.elapsed().as_secs_f64();
-            for output in self.outputs.iter_mut() {
-                output.on_phase_end("index", idx_elapsed);
+                let build_result = backend.build_index().await?;
+                for output in self.outputs.iter_mut() {
+                    output.on_index_built(&build_result);
+                }
+                index_builds.push(build_result);
+
+                let idx_elapsed = idx_start.elapsed().as_secs_f64();
+                for output in self.outputs.iter_mut() {
+                    output.on_phase_end("index", idx_elapsed);
+                }
             }
+        }
 
-            // Search sweeps for this index
-            let sweeps: Vec<_> = self
+        // Phase 2: For each index, disable all others, run search, re-enable
+        let pg = backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        );
+        // Connect to manage index enable/disable
+        let mut pg_mgmt = backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        );
+        pg_mgmt.connect("<=>", None).await?;
+
+        let all_index_names: Vec<String> = index_configs
+            .iter()
+            .map(|c| pg.index_sql_name(&c.name))
+            .collect();
+
+        for idx_config in &index_configs {
+            let has_sweeps = self
                 .config
                 .search
                 .sweep
                 .iter()
-                .filter(|s| s.index == idx_config.name)
-                .cloned()
-                .collect();
+                .any(|s| s.index == idx_config.name);
+            if !has_sweeps {
+                continue;
+            }
 
-            if !sweeps.is_empty() {
-                let search_start = Instant::now();
-                for output in self.outputs.iter_mut() {
-                    output.on_phase_start("search", &idx_config.name);
-                }
+            let active_idx = pg.index_sql_name(&idx_config.name);
 
-                let (tx, mut rx) = progress_channel();
-                let config = self.config.clone();
-                let registry = backend::BackendRegistry::new();
-                let idx_name = idx_config.name.clone();
-
-                let search_handle = tokio::spawn(async move {
-                    phase::search::run(&config, &registry, &tx, Some(&idx_name)).await
-                });
-
-                let outputs = &mut self.outputs;
-                while let Some(event) = rx.recv().await {
-                    for output in outputs.iter_mut() {
-                        output.on_progress(&event);
-                    }
-                }
-
-                let results = search_handle.await.unwrap()?;
-                for result in &results {
-                    for output in self.outputs.iter_mut() {
-                        output.on_search_result(result);
-                    }
-                }
-                search_results.extend(results);
-
-                let search_elapsed = search_start.elapsed().as_secs_f64();
-                for output in self.outputs.iter_mut() {
-                    output.on_phase_end("search", search_elapsed);
+            // Disable all other indexes, enable the active one
+            for idx_sql in &all_index_names {
+                if idx_sql == &active_idx {
+                    pg_mgmt.enable_index(idx_sql).await?;
+                } else {
+                    pg_mgmt.disable_index(idx_sql).await?;
                 }
             }
 
-            // Drop index to make room for the next config
-            let _ = backend.drop_index().await;
+            let search_start = Instant::now();
+            for output in self.outputs.iter_mut() {
+                output.on_phase_start("search", &idx_config.name);
+            }
 
-            let _ = &self.outputs.iter_mut().for_each(|o| {
-                o.on_progress(&ProgressEvent::Message {
-                    text: format!("Dropped index '{}' for next config", idx_config.name),
-                });
+            let (tx, mut rx) = progress_channel();
+            let config = self.config.clone();
+            let registry = backend::BackendRegistry::new();
+            let idx_name = idx_config.name.clone();
+
+            let search_handle = tokio::spawn(async move {
+                phase::search::run(&config, &registry, &tx, Some(&idx_name)).await
             });
+
+            let outputs = &mut self.outputs;
+            while let Some(event) = rx.recv().await {
+                for output in outputs.iter_mut() {
+                    output.on_progress(&event);
+                }
+            }
+
+            let results = search_handle.await.unwrap()?;
+            for result in &results {
+                for output in self.outputs.iter_mut() {
+                    output.on_search_result(result);
+                }
+            }
+            search_results.extend(results);
+
+            let search_elapsed = search_start.elapsed().as_secs_f64();
+            for output in self.outputs.iter_mut() {
+                output.on_phase_end("search", search_elapsed);
+            }
+        }
+
+        // Re-enable all indexes when done
+        for idx_sql in &all_index_names {
+            let _ = pg_mgmt.enable_index(idx_sql).await;
         }
 
         Ok(())
