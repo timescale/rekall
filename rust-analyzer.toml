@@ -4,5 +4,6 @@ command = "clippy"
 extraArgs = ["--all-targets"]
 
 # Suppress false-positive E0282 from serde proc-macro expansion
+# and inactive-code warnings on #[cfg(test)] blocks
 [diagnostics]
-disabled = ["E0282"]
+disabled = ["E0282", "inactive-code"]

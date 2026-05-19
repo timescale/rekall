@@ -211,13 +211,9 @@ impl Iterator for ChunkIter {
             })
         })();
 
-        let start_index = self.pos;
         self.pos = chunk_end;
 
-        Some(result.map(|mut v| {
-            v.start_index = start_index;
-            v
-        }))
+        Some(result)
     }
 }
 

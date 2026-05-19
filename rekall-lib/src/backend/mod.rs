@@ -59,20 +59,23 @@ impl BackendRegistry {
         index_config: &IndexConfig,
     ) -> Result<Box<dyn IndexBackend>> {
         match index_config.index_type.as_str() {
-            "meerkat" => Ok(Box::new(
-                meerkat::MeerkatBackend::create(conn, table, dimension, metric, index_config)
-                    .await?,
-            )),
-            "pgvector-hnsw" => Ok(Box::new(
-                pgvector_hnsw::PgvectorHnswBackend::create(
+            "meerkat" => {
+                let backend =
+                    meerkat::MeerkatBackend::create(conn, table, dimension, metric, index_config)
+                        .await?;
+                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+            }
+            "pgvector-hnsw" => {
+                let backend = pgvector_hnsw::PgvectorHnswBackend::create(
                     conn,
                     table,
                     dimension,
                     metric,
                     index_config,
                 )
-                .await?,
-            )),
+                .await?;
+                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+            }
             other => Err(Error::UnknownBackend {
                 backend_type: other.to_string(),
             }),
