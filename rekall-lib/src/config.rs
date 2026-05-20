@@ -143,16 +143,31 @@ pub struct OutputConfig {
     #[serde(default = "default_formats")]
     pub format: Vec<String>,
     pub json_path: Option<String>,
+    #[serde(default = "default_results_dir")]
+    pub results_dir: String,
 }
 
 fn default_formats() -> Vec<String> {
     vec!["table".to_string()]
 }
 
+fn default_results_dir() -> String {
+    "results".to_string()
+}
+
+impl OutputConfig {
+    /// Get the output path for a specific index's results.
+    /// Format: {results_dir}/{index_name}-{timestamp}.json
+    pub fn index_results_path(&self, index_name: &str, timestamp: &str) -> String {
+        format!("{}/{}-{}.json", self.results_dir, index_name, timestamp)
+    }
+}
+
 impl Default for OutputConfig {
     fn default() -> Self {
         Self {
             format: default_formats(),
+            results_dir: default_results_dir(),
             json_path: None,
         }
     }

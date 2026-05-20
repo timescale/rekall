@@ -23,34 +23,87 @@ fn is_completed(
     })
 }
 
-/// Load previously completed results from the output JSON file.
+/// Load previously completed results from per-index result files in results_dir.
+/// Scans for all {index_name}-*.json files and loads the most recent for each index.
 pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
-    let path = config.output.json_path.as_deref().unwrap_or("results.json");
-    let Ok(content) = std::fs::read_to_string(path) else {
+    let dir = &config.output.results_dir;
+    let Ok(entries) = std::fs::read_dir(dir) else {
         return Vec::new();
     };
-    let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) else {
-        return Vec::new();
-    };
-    summary.search_results
+
+    let mut all = Vec::new();
+    let mut seen_indexes: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    // Find the most recent file per index (sorted by name = by timestamp)
+    let mut files: Vec<_> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .collect();
+    files.sort();
+
+    for path in &files {
+        let Ok(content) = std::fs::read_to_string(path) else {
+            continue;
+        };
+        let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) else {
+            continue;
+        };
+        for r in &summary.search_results {
+            seen_indexes
+                .entry(r.index_name.clone())
+                .or_insert_with(|| path.to_string_lossy().to_string());
+        }
+        all.extend(summary.search_results);
+    }
+
+    // Also check legacy json_path
+    if let Some(path) = &config.output.json_path {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) {
+                all.extend(summary.search_results);
+            }
+        }
+    }
+
+    all
 }
 
-/// Save results incrementally to the output JSON file.
-fn save_partial_results(config: &BenchmarkConfig, results: &[SearchResult]) {
-    let path = config.output.json_path.as_deref().unwrap_or("results.json");
-    if let Some(parent) = std::path::Path::new(path).parent() {
+/// Save results for a specific index to its own timestamped file.
+fn save_index_results(
+    config: &BenchmarkConfig,
+    index_name: &str,
+    timestamp: &str,
+    all_results: &[SearchResult],
+) {
+    let index_results: Vec<_> = all_results
+        .iter()
+        .filter(|r| r.index_name == index_name)
+        .cloned()
+        .collect();
+
+    if index_results.is_empty() {
+        return;
+    }
+
+    let path = config.output.index_results_path(index_name, timestamp);
+    if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+
     let summary = crate::metrics::RunSummary {
         dataset: config.dataset.name.clone(),
         config: serde_json::Value::Null,
         pg_runtime: None,
         index_builds: Vec::new(),
-        search_results: results.to_vec(),
-        pareto: crate::metrics::compute_pareto(results),
+        search_results: index_results,
+        pareto: Vec::new(),
     };
+
     if let Ok(json) = serde_json::to_string_pretty(&summary) {
-        let _ = std::fs::write(path, json);
+        let _ = std::fs::write(&path, json);
+        tracing::info!("Results saved to {path}");
     }
 }
 
@@ -79,6 +132,7 @@ pub async fn run(
     let k = config.search.k;
     let existing = load_existing_results(config);
     let mut all_results = existing.clone();
+    let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
 
     for sweep in &config.search.sweep {
         if let Some(name) = filter_index {
@@ -286,8 +340,8 @@ pub async fn run(
 
             all_results.push(result);
 
-            // Save incrementally so progress survives crashes
-            save_partial_results(config, &all_results);
+            // Save incrementally per-index so progress survives crashes
+            save_index_results(config, &sweep.index, &timestamp, &all_results);
         }
     }
 
