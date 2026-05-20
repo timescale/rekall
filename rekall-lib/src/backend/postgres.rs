@@ -489,7 +489,11 @@ impl PgConnection {
     }
 
     pub fn index_sql_name(&self, index_name: &str) -> String {
-        format!("idx_rekall_{}", index_name.replace('-', "_"))
+        format!(
+            "idx_rekall_{}_{}",
+            self.table_name,
+            index_name.replace('-', "_")
+        )
     }
 }
 
@@ -822,8 +826,8 @@ mod tests {
         );
         assert_eq!(
             pg.index_sql_name("mkt-nlist-1000"),
-            "idx_rekall_mkt_nlist_1000"
+            "idx_rekall_t_mkt_nlist_1000"
         );
-        assert_eq!(pg.index_sql_name("hnsw-m16"), "idx_rekall_hnsw_m16");
+        assert_eq!(pg.index_sql_name("hnsw-m16"), "idx_rekall_t_hnsw_m16");
     }
 }
