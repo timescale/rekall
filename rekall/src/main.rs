@@ -178,6 +178,7 @@ async fn main() -> anyhow::Result<()> {
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()),
         )
         .with_target(false)
+        .with_timer(tracing_subscriber::fmt::time::LocalTime::rfc_3339())
         .init();
 
     let cancel_registry = new_cancel_registry();
