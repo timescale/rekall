@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::metrics::{compute_pareto, RunSummary, SearchResult};
+use crate::metrics::{RunSummary, SearchResult};
 
 mod gnuplot;
 mod html;
@@ -161,16 +161,15 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
             continue;
         }
 
-        let pareto = compute_pareto_for_points(&points);
-        let pareto_set: std::collections::HashSet<u64> =
-            pareto.iter().map(|(r, _)| r.to_bits()).collect();
+        let pareto_points = compute_pareto_for_points(&points);
+        let pareto_set: std::collections::HashSet<(u64, u64)> = pareto_points
+            .iter()
+            .map(|(r, q)| (r.to_bits(), q.to_bits()))
+            .collect();
 
-        let mut pareto_points = Vec::new();
         let mut other_points = Vec::new();
         for &(recall, qps) in &points {
-            if pareto_set.contains(&recall.to_bits()) {
-                pareto_points.push((recall, qps));
-            } else {
+            if !pareto_set.contains(&(recall.to_bits(), qps.to_bits())) {
                 other_points.push((recall, qps));
             }
         }
@@ -188,35 +187,27 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
     }
 }
 
+/// Compute Pareto frontier using the same greedy algorithm as ann-benchmarks:
+/// sort by QPS descending, greedily include points that improve recall.
+/// This produces a clean monotonically decreasing frontier.
 fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
-    let results: Vec<SearchResult> = points
-        .iter()
-        .map(|&(recall, qps)| SearchResult {
-            index_name: String::new(),
-            index_type: String::new(),
-            search_params: serde_json::json!({}),
-            k: 0,
-            num_queries: 0,
-            num_runs: 0,
-            avg_recall: recall,
-            qps,
-            avg_latency_us: 0.0,
-            p50_latency_us: 0.0,
-            p95_latency_us: 0.0,
-            p99_latency_us: 0.0,
-            p999_latency_us: 0.0,
-            wall_time_secs: 0.0,
-            qps_wall: qps,
-        })
-        .collect();
-    let pareto = compute_pareto(&results);
-    let mut pts: Vec<(f64, f64)> = pareto
-        .iter()
-        .filter(|p| p.is_pareto)
-        .map(|p| (p.recall, p.qps))
-        .collect();
-    pts.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    pts
+    let mut sorted = points.to_vec();
+    // Sort by QPS descending (highest QPS first)
+    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    let mut frontier = Vec::new();
+    let mut best_recall = f64::NEG_INFINITY;
+
+    for (recall, qps) in sorted {
+        if recall > best_recall {
+            best_recall = recall;
+            frontier.push((recall, qps));
+        }
+    }
+
+    // Sort frontier by recall ascending for plotting
+    frontier.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    frontier
 }
 
 pub(crate) fn logit(p: f64) -> f64 {
