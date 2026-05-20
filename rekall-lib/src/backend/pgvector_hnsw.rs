@@ -145,9 +145,10 @@ impl IndexBackend for PgvectorHnswBackend {
             .client()
             .query_one(
                 "SELECT EXISTS(
-                    SELECT 1 FROM pg_indexes WHERE indexname = $1
+                    SELECT 1 FROM pg_indexes
+                    WHERE tablename = $1 AND indexname = $2
                 )",
-                &[&idx_name],
+                &[&self.pg.table_name, &idx_name],
             )
             .await?;
         Ok(row.get(0))
