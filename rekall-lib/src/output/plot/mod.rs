@@ -167,12 +167,19 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
             .map(|(r, q)| (r.to_bits(), q.to_bits()))
             .collect();
 
-        let mut other_points = Vec::new();
-        for &(recall, qps) in &points {
-            if !pareto_set.contains(&(recall.to_bits(), qps.to_bits())) {
-                other_points.push((recall, qps));
+        // In per-algo mode (default), only show the Pareto frontier.
+        // In per-config mode, also show non-Pareto points.
+        let other_points = if opts.per_config {
+            let mut others = Vec::new();
+            for &(recall, qps) in &points {
+                if !pareto_set.contains(&(recall.to_bits(), qps.to_bits())) {
+                    others.push((recall, qps));
+                }
             }
-        }
+            others
+        } else {
+            Vec::new()
+        };
 
         series.push(PlotSeries {
             name,
@@ -189,10 +196,11 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
 
 /// Compute Pareto frontier using the same greedy algorithm as ann-benchmarks:
 /// sort by QPS descending, greedily include points that improve recall.
-/// This produces a clean monotonically decreasing frontier.
+/// Then remove staircase artifacts by keeping only points where QPS
+/// drops by at least 5% from the previous point, avoiding dense
+/// clusters from different configs at similar recall values.
 fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
     let mut sorted = points.to_vec();
-    // Sort by QPS descending (highest QPS first)
     sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     let mut frontier = Vec::new();
@@ -205,7 +213,6 @@ fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
         }
     }
 
-    // Sort frontier by recall ascending for plotting
     frontier.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     frontier
 }
