@@ -59,7 +59,7 @@ impl PgvectorHnswBackend {
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        pg.connect(order_op, None).await?;
+        pg.connect(order_op, Some("vector")).await?;
 
         Ok(Self {
             pg,
