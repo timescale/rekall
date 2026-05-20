@@ -10,6 +10,7 @@ pub struct PlotOptions {
     pub log_x: bool,
     pub log_y: bool,
     pub pareto_only: bool,
+    pub per_config: bool,
     pub min_recall: f64,
     pub use_wall_qps: bool,
 }
@@ -20,6 +21,7 @@ impl Default for PlotOptions {
             log_x: true,
             log_y: true,
             pareto_only: false,
+            per_config: false,
             min_recall: 0.0,
             use_wall_qps: false,
         }
@@ -120,8 +122,21 @@ pub fn export_csv(
     Ok(())
 }
 
+fn group_label(r: &SearchResult, per_config: bool) -> String {
+    if per_config {
+        r.index_name.clone()
+    } else {
+        // Group by algo family — use index_type, with a readable name
+        match r.index_type.as_str() {
+            "meerkat" => "Meerkat".to_string(),
+            "pgvector-hnsw" => "pgvector HNSW".to_string(),
+            other => other.to_string(),
+        }
+    }
+}
+
 fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) -> PlotData {
-    let mut by_index: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
+    let mut by_group: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
     for summary in summaries {
         for r in &summary.search_results {
             let qps = if opts.use_wall_qps && r.qps_wall > 0.0 {
@@ -129,17 +144,15 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
             } else {
                 r.qps
             };
-            by_index
-                .entry(r.index_name.clone())
-                .or_default()
-                .push((r.avg_recall, qps));
+            let label = group_label(r, opts.per_config);
+            by_group.entry(label).or_default().push((r.avg_recall, qps));
         }
     }
 
     let mut all_points = Vec::new();
     let mut series = Vec::new();
 
-    for (name, mut points) in by_index {
+    for (name, mut points) in by_group {
         points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
         if opts.min_recall > 0.0 {
             points.retain(|&(r, _)| r >= opts.min_recall);

@@ -128,6 +128,10 @@ enum Command {
         #[arg(long)]
         pareto_only: bool,
 
+        /// Show one line per config instead of one line per algorithm
+        #[arg(long)]
+        per_config: bool,
+
         /// Minimum recall to show on X-axis (e.g., 0.9)
         #[arg(long)]
         min_recall: Option<f64>,
@@ -298,6 +302,7 @@ async fn main() -> anyhow::Result<()> {
             linear_x,
             linear_y,
             pareto_only,
+            per_config,
             min_recall,
             qps_method,
             csv,
@@ -316,6 +321,7 @@ async fn main() -> anyhow::Result<()> {
                 log_x: !linear_x,
                 log_y: !linear_y,
                 pareto_only,
+                per_config,
                 min_recall: min_recall.unwrap_or(0.0),
                 use_wall_qps: use_wall,
             };
