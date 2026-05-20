@@ -405,8 +405,8 @@ impl Agent {
 
             // Prewarm in warm mode, evict in cold mode
             if self.config.search.cache == CacheMode::Warm {
-                pg_mgmt.prewarm(&active_idx).await?;
                 pg_mgmt.prewarm(&self.config.table_name()).await?;
+                pg_mgmt.prewarm(&active_idx).await?;
             }
 
             let search_start = Instant::now();
