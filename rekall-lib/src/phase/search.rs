@@ -11,6 +11,49 @@ use crate::error::{Error, Result};
 use crate::metrics::{compute_recall, LatencyCollector, SearchResult};
 use crate::progress::{ProgressEvent, ProgressTx};
 
+/// Check if a result already exists for this index + params combination.
+fn is_completed(
+    existing: &[SearchResult],
+    index_name: &str,
+    params: &HashMap<String, toml::Value>,
+) -> bool {
+    existing.iter().any(|r| {
+        r.index_name == index_name
+            && r.search_params == serde_json::to_value(params).unwrap_or_default()
+    })
+}
+
+/// Load previously completed results from the output JSON file.
+pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
+    let path = config.output.json_path.as_deref().unwrap_or("results.json");
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) else {
+        return Vec::new();
+    };
+    summary.search_results
+}
+
+/// Save results incrementally to the output JSON file.
+fn save_partial_results(config: &BenchmarkConfig, results: &[SearchResult]) {
+    let path = config.output.json_path.as_deref().unwrap_or("results.json");
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let summary = crate::metrics::RunSummary {
+        dataset: config.dataset.name.clone(),
+        config: serde_json::Value::Null,
+        pg_runtime: None,
+        index_builds: Vec::new(),
+        search_results: results.to_vec(),
+        pareto: crate::metrics::compute_pareto(results),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&summary) {
+        let _ = std::fs::write(path, json);
+    }
+}
+
 pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
@@ -34,7 +77,8 @@ pub async fn run(
         .min(queries.nrows());
 
     let k = config.search.k;
-    let mut all_results = Vec::new();
+    let existing = load_existing_results(config);
+    let mut all_results = existing.clone();
 
     for sweep in &config.search.sweep {
         if let Some(name) = filter_index {
@@ -111,6 +155,17 @@ pub async fn run(
 
         for params in &param_combos {
             let params_json = serde_json::to_value(params).unwrap_or_default();
+
+            // Skip if already completed in a previous run
+            if is_completed(&all_results, &sweep.index, params) {
+                let _ = progress.send(ProgressEvent::Message {
+                    text: format!(
+                        "Skipping '{}' {} (already completed)",
+                        sweep.index, params_json
+                    ),
+                });
+                continue;
+            }
 
             let _ = progress.send(ProgressEvent::SearchStart {
                 index_name: sweep.index.clone(),
@@ -230,6 +285,9 @@ pub async fn run(
             );
 
             all_results.push(result);
+
+            // Save incrementally so progress survives crashes
+            save_partial_results(config, &all_results);
         }
     }
 
