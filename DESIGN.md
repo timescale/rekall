@@ -241,6 +241,12 @@ Commands validate preconditions and give actionable guidance:
 3. VectorChord backend
 4. S3 dataset support (object_store crate)
 5. Index build progress monitoring
+6. Per-dataset PG instances — each dataset/benchmark runs in its own
+   database cluster (via pgmanager) for full isolation: no shared_buffers
+   contention, no stale indexes, ability to run benchmarks in parallel.
+   Rekall would manage instance lifecycle: create, configure
+   (shared_buffers, maintenance_work_mem), load extensions, load data,
+   run benchmarks, tear down.
 
 ### Phase 3: Agent + Results DB
 
