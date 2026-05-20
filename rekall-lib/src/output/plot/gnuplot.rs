@@ -86,13 +86,6 @@ pub fn render(
         }
     }
 
-    // Global Pareto
-    writeln!(f, "$global_pareto << EOD")?;
-    for &(recall, qps) in &data.global_pareto {
-        writeln!(f, "{recall} {qps}")?;
-    }
-    writeln!(f, "EOD")?;
-
     writeln!(f)?;
 
     // Plot commands
@@ -113,12 +106,6 @@ pub fn render(
             name = s.name,
         ));
     }
-
-    // Global Pareto frontier
-    plot_cmds.push(
-        "$global_pareto using 1:2 with lines lw 1.5 dt 2 lc rgb '#000000' title 'Global Pareto'"
-            .to_string(),
-    );
 
     writeln!(f, "plot \\")?;
     for (i, cmd) in plot_cmds.iter().enumerate() {

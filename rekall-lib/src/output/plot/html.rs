@@ -68,30 +68,6 @@ pub fn render(
         }
     }
 
-    // Global Pareto
-    if !data.global_pareto.is_empty() {
-        let gp_x: Vec<f64> = data
-            .global_pareto
-            .iter()
-            .map(|&(r, _)| xform_x(r))
-            .collect();
-        let gp_y: Vec<f64> = data.global_pareto.iter().map(|&(_, q)| q).collect();
-        let gp_recall: Vec<f64> = data.global_pareto.iter().map(|&(r, _)| r).collect();
-        traces.push(',');
-        traces.push_str(&format!(
-            r#"{{
-                x: {gp_x:?},
-                y: {gp_y:?},
-                customdata: {gp_recall:?},
-                name: "Global Pareto",
-                type: "scatter",
-                mode: "lines",
-                line: {{ color: "black", width: 2, dash: "dash" }},
-                hovertemplate: "<b>Pareto</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
-            }}"#,
-        ));
-    }
-
     let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
     let min_r = if opts.min_recall > 0.0 {
         opts.min_recall

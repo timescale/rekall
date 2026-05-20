@@ -31,12 +31,13 @@ impl Default for PlotOptions {
 pub struct PlotData {
     pub title: String,
     pub series: Vec<PlotSeries>,
-    pub global_pareto: Vec<(f64, f64)>,
 }
 
 pub struct PlotSeries {
     pub name: String,
+    /// Pareto frontier points for this series (always shown as the main line)
     pub pareto_points: Vec<(f64, f64)>,
+    /// Non-Pareto points (only shown with --per-config)
     pub other_points: Vec<(f64, f64)>,
 }
 
@@ -149,7 +150,6 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
         }
     }
 
-    let mut all_points = Vec::new();
     let mut series = Vec::new();
 
     for (name, mut points) in by_group {
@@ -160,8 +160,6 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
         if points.is_empty() {
             continue;
         }
-
-        all_points.extend(points.iter().copied());
 
         let pareto = compute_pareto_for_points(&points);
         let pareto_set: std::collections::HashSet<u64> =
@@ -184,12 +182,9 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
         });
     }
 
-    let global_pareto = compute_pareto_for_points(&all_points);
-
     PlotData {
         title: title.to_string(),
         series,
-        global_pareto,
     }
 }
 
