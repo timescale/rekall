@@ -694,7 +694,16 @@ iam_instance_profile = "rekall-profile"
                 println!("               --stack-name rekall-iam \\");
                 println!("               --capabilities CAPABILITY_NAMED_IAM");
             }
-            println!("   This creates the IAM role and instance profile (one-time).");
+            println!("   This creates the IAM role, instance profile, and operator user.");
+            println!("   Note the operator access key and secret from the stack outputs.");
+            println!();
+            step += 1;
+
+            println!("{step}. Configure the operator credentials on your machine:");
+            println!("   aws configure --profile rekall");
+            println!("   (enter the access key ID and secret from the stack outputs)");
+            println!("   Then export AWS_PROFILE=rekall before running rekall infra commands,");
+            println!("   or set it in your shell profile.");
             println!();
             step += 1;
 

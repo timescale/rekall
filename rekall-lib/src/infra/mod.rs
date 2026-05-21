@@ -350,12 +350,66 @@ resource "aws_iam_instance_profile" "rekall" {{
   role = aws_iam_role.rekall.name
 }}
 
+# IAM user for running rekall infra commands (minimal EC2 permissions)
+resource "aws_iam_user" "rekall_operator" {{
+  name = "rekall-operator"
+}}
+
+resource "aws_iam_user_policy" "rekall_operator" {{
+  name = "rekall-operator-ec2"
+  user = aws_iam_user.rekall_operator.name
+
+  policy = jsonencode({{
+    Version = "2012-10-17"
+    Statement = [
+      {{
+        Effect = "Allow"
+        Action = [
+          "ec2:RunInstances",
+          "ec2:TerminateInstances",
+          "ec2:DescribeInstances",
+          "ec2:DescribeImages",
+          "ec2:CreateSecurityGroup",
+          "ec2:DeleteSecurityGroup",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:DescribeSecurityGroups",
+          "ec2:ImportKeyPair",
+          "ec2:DeleteKeyPair",
+          "ec2:CreateTags"
+        ]
+        Resource = "*"
+      }},
+      {{
+        Effect = "Allow"
+        Action = "iam:PassRole"
+        Resource = aws_iam_role.rekall.arn
+      }}
+    ]
+  }})
+}}
+
+resource "aws_iam_access_key" "rekall_operator" {{
+  user = aws_iam_user.rekall_operator.name
+}}
+
 output "instance_profile_name" {{
   value = aws_iam_instance_profile.rekall.name
 }}
 
 output "role_arn" {{
   value = aws_iam_role.rekall.arn
+}}
+
+output "operator_access_key_id" {{
+  value = aws_iam_access_key.rekall_operator.id
+}}
+
+output "operator_secret_access_key" {{
+  value     = aws_iam_access_key.rekall_operator.secret
+  sensitive = true
 }}
 "#
     )
@@ -426,11 +480,53 @@ Resources:
       Roles:
         - !Ref RekallRole
 
+  # IAM user for running rekall infra commands (minimal EC2 permissions)
+  RekallOperator:
+    Type: AWS::IAM::User
+    DeletionPolicy: Delete
+    Properties:
+      UserName: rekall-operator
+      Policies:
+        - PolicyName: rekall-operator-ec2
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ec2:RunInstances"
+                  - "ec2:TerminateInstances"
+                  - "ec2:DescribeInstances"
+                  - "ec2:DescribeImages"
+                  - "ec2:CreateSecurityGroup"
+                  - "ec2:DeleteSecurityGroup"
+                  - "ec2:AuthorizeSecurityGroupIngress"
+                  - "ec2:AuthorizeSecurityGroupEgress"
+                  - "ec2:RevokeSecurityGroupIngress"
+                  - "ec2:RevokeSecurityGroupEgress"
+                  - "ec2:DescribeSecurityGroups"
+                  - "ec2:ImportKeyPair"
+                  - "ec2:DeleteKeyPair"
+                  - "ec2:CreateTags"
+                Resource: "*"
+              - Effect: Allow
+                Action: "iam:PassRole"
+                Resource: !GetAtt RekallRole.Arn
+
+  RekallOperatorAccessKey:
+    Type: AWS::IAM::AccessKey
+    DeletionPolicy: Delete
+    Properties:
+      UserName: !Ref RekallOperator
+
 Outputs:
   InstanceProfileName:
     Value: !Ref RekallInstanceProfile
   RoleArn:
     Value: !GetAtt RekallRole.Arn
+  OperatorAccessKeyId:
+    Value: !Ref RekallOperatorAccessKey
+  OperatorSecretAccessKey:
+    Value: !GetAtt RekallOperatorAccessKey.SecretAccessKey
 "#
     )
 }
