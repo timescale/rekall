@@ -32,7 +32,8 @@ find? Total recall means you found them all.
 - **Full traceability**: every run captures the effective config, PG version,
   settings, and extension versions in both stdout and JSON output.
 - **Cloud infrastructure**: provision AWS EC2 instances with PostgreSQL,
-  extensions, and rekall pre-installed via `rekall infra up`.
+  extensions, and rekall pre-installed via `rekall infra up`. Two
+  backends: AWS CLI (default, no extra dependencies) or Terraform.
 
 ## Quick Start
 

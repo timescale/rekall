@@ -7,11 +7,13 @@ benchmark environments.
 
 ## Prerequisites
 
-Install on your local machine:
-
-- **Terraform** (>= 1.5): https://developer.hashicorp.com/terraform/install
 - **AWS credentials**: run `aws configure` or set `AWS_ACCESS_KEY_ID` and
   `AWS_SECRET_ACCESS_KEY` environment variables
+- **AWS CLI**: installed and on PATH (used by the default `aws` backend)
+
+If using the Terraform backend (`provider = "terraform"`), you also need:
+
+- **Terraform** (>= 1.5): https://developer.hashicorp.com/terraform/install
 
 ## What Gets Provisioned
 
@@ -61,9 +63,9 @@ rekall infra init -c examples/cloud-benchmark.toml
 
 This generates:
 
-1. **IAM template** (`rekall-iam.tf`) — Terraform HCL for the IAM role,
-   S3 read policy, and instance profile. Use `--cloudformation` for a
-   CloudFormation YAML template instead.
+1. **IAM template** (`rekall-iam.yaml`) — CloudFormation template for the
+   IAM role, S3 read policy, and instance profile. Use `--terraform` for
+   Terraform HCL instead.
 
 2. **Deploy key** — if the config references private GitHub repos
    (`git@github.com:...`), an ed25519 key pair is generated and the
@@ -184,7 +186,7 @@ huge_pages = "try"          # add extra settings
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `provider` | `"aws"` | Cloud provider |
+| `provider` | `"aws"` | Backend: `"aws"` (AWS CLI) or `"terraform"` |
 | `region` | `"us-east-1"` | AWS region |
 | `instance_type` | `"r7g.2xlarge"` | EC2 instance type |
 | `disk_size_gb` | `100` | Root EBS volume size (gp3) |
@@ -194,7 +196,7 @@ huge_pages = "try"          # add extra settings
 | `pg_port` | `5432` | PostgreSQL listen port |
 | `extensions` | `[]` | Extensions to install |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
-| `ssh_key` | (required) | Path to your SSH private key |
+| `ssh_key` | (required) | Path to your SSH public key |
 | `iam_instance_profile` | (required) | Pre-created IAM instance profile name |
 | `s3_bucket` | (all) | S3 bucket for IAM policy scoping |
 
@@ -210,16 +212,17 @@ is uploaded to AWS. The private key never leaves your machine.
 ```toml
 # In .local.toml (never committed)
 [infra]
-ssh_key = "~/.ssh/id_ed25519"
+ssh_key = "~/.ssh/id_ed25519.pub"
 ```
 
-### 2. Deploy key (auto-generated)
+### 2. Deploy keys (auto-generated, per-repo)
 
-An ephemeral key pair for instances to access private GitHub repos. Rekall
-generates it per `name_prefix` and stores it in
-`.rekall/infra/{name_prefix}/deploy-key/`. The private key is uploaded to
-instances via SCP over SSH (encrypted, never in Terraform state or
-instance metadata).
+Ephemeral key pairs for instances to access private GitHub repos. Rekall
+generates one per repo and stores them in
+`.rekall/infra/{name_prefix}/deploy-keys/`. The private keys are uploaded
+to instances via SCP over SSH (encrypted, never in provider state or
+instance metadata). Each `git clone` uses `GIT_SSH_COMMAND` to select
+the correct key.
 
 The deploy key persists across `infra up`/`down` cycles so you don't need
 to re-add it to GitHub. Regenerate with `rekall infra deploy-key --regenerate`
@@ -295,12 +298,50 @@ compute-heavy workloads like index builds and distance computations.
 The `g` suffix indicates Graviton; rekall automatically selects the
 matching ARM Ubuntu AMI.
 
-## Terraform State
+## Backends
 
-Terraform state is stored locally in `.rekall/infra/{name_prefix}/terraform/`.
-This directory is gitignored. If the state is lost (e.g., you delete
-`.rekall/`), you'll need to manually terminate the EC2 instance via the
-AWS console.
+Rekall supports two backends for provisioning EC2 instances. Both
+produce the same result; they differ in dependencies and state
+management.
+
+### AWS CLI backend (default)
+
+```toml
+[infra]
+provider = "aws"
+```
+
+Uses the `aws` CLI directly (`aws ec2 run-instances`, etc.). No
+Terraform needed. State is a simple JSON file at
+`.rekall/infra/{name_prefix}/aws-state.json` tracking the instance ID,
+security group, and key pair.
+
+**Requires:** AWS CLI (`aws`) on PATH.
+
+**Teardown:** `rekall infra down` terminates the instance, deletes the
+security group and key pair, and removes the state file. If the state
+file is lost, terminate the instance manually in the AWS console.
+
+### Terraform backend
+
+```toml
+[infra]
+provider = "terraform"
+```
+
+Uses Terraform for provisioning. HCL files are embedded in the rekall
+binary and written to `.rekall/infra/{name_prefix}/terraform/` at
+runtime. Terraform manages its own state file (`terraform.tfstate`).
+
+**Requires:** Terraform (>= 1.5) on PATH.
+
+**Advantages over AWS CLI backend:**
+- Idempotent — `infra up` is safe to run repeatedly
+- Richer state tracking — handles partial failures better
+- SSH provisioners built into Terraform's apply step
+
+**Teardown:** `rekall infra down` runs `terraform destroy`. If the state
+is lost, terminate the instance manually in the AWS console.
 
 ## CLI Reference
 
@@ -326,7 +367,10 @@ rekall infra iam-policy [-c config.toml]   # print IAM template
 
 ## Troubleshooting
 
-**Terraform not found**: Install from
+**AWS CLI not found**: Install from
+https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
+
+**Terraform not found** (terraform backend only): Install from
 https://developer.hashicorp.com/terraform/install
 
 **AWS credentials not configured**: Run `aws configure` or set
@@ -336,7 +380,7 @@ https://developer.hashicorp.com/terraform/install
 instructions to apply the IAM template.
 
 **SSH key not found**: Set `[infra].ssh_key` in your `.local.toml` to the
-path of your SSH private key.
+path of your SSH public key (e.g., `~/.ssh/id_ed25519.pub`).
 
 **Deploy key not generated**: Run `rekall infra init` or
 `rekall infra deploy-key`.
@@ -350,8 +394,13 @@ ssh -i ~/.ssh/id_ed25519 ubuntu@<ip>
 sudo cat /var/log/rekall-setup.log
 ```
 
-**Private repo clone failed**: Verify the deploy key's public key is
-added to the GitHub repo and has read access.
+**Private repo clone failed**: Verify each repo's deploy key is added
+to the correct GitHub repo. Each repo needs its own unique deploy key
+(GitHub doesn't allow sharing keys across repos).
 
 **S3 access denied**: Check that the IAM role has the correct S3
 permissions and the bucket policy allows the role (for cross-account).
+
+**Security group already exists** (aws backend): A previous `infra down`
+may have failed partially. Delete the security group manually:
+`aws ec2 delete-security-group --group-name rekall-sg`
