@@ -59,7 +59,12 @@ impl PgvectorHnswBackend {
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        pg.connect(order_op, Some("vector")).await?;
+        pg.connect_with_setup(
+            order_op,
+            Some("vector"),
+            &["CREATE EXTENSION IF NOT EXISTS vector"],
+        )
+        .await?;
 
         Ok(Self {
             pg,

@@ -71,15 +71,35 @@ impl PgConnection {
     /// Call this once during backend creation; then use client() and
     /// query_stmt() for all subsequent operations.
     pub async fn connect(&mut self, order_operator: &str, extension: Option<&str>) -> Result<()> {
+        self.connect_with_setup(order_operator, extension, &[])
+            .await
+    }
+
+    pub async fn connect_with_setup(
+        &mut self,
+        order_operator: &str,
+        extension: Option<&str>,
+        setup_sqls: &[&str],
+    ) -> Result<()> {
         let client = self.open_connection().await?;
 
         if let Some(ext) = extension {
             client
                 .execute(&format!("LOAD '{ext}'"), &[])
                 .await
-                .map_err(|_| Error::ExtensionMissing {
-                    extension: ext.to_string(),
+                .map_err(|e| {
+                    tracing::error!("LOAD '{ext}' failed: {e}");
+                    Error::ExtensionMissing {
+                        extension: ext.to_string(),
+                    }
                 })?;
+        }
+
+        for sql in setup_sqls {
+            client
+                .execute(*sql, &[])
+                .await
+                .map_err(|e| Error::Config(format!("Setup SQL failed: {e}\n  SQL: {sql}")))?;
         }
 
         let vec_type = lookup_vector_type(&client)
@@ -93,7 +113,12 @@ impl PgConnection {
         let stmt = client
             .prepare_typed(&sql, &[vec_type, Type::INT8])
             .await
-            .map_err(|e| Error::Config(format!("Cannot prepare query: {e}")))?;
+            .map_err(|e| {
+                Error::Config(format!(
+                    "Cannot prepare query: {e}\n  SQL: {sql}\n  \
+                     Hint: is the extension loaded and the operator available?"
+                ))
+            })?;
 
         // Register cancel token for Ctrl+C handling
         if let Some(ref registry) = self.cancel_registry {
