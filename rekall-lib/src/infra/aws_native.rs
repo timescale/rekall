@@ -168,9 +168,9 @@ date
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(Error::TerraformFailed {
-                command: args.first().unwrap_or(&"aws").to_string(),
-                detail: stderr.to_string(),
+            return Err(Error::AwsCliFailed {
+                command: format!("aws {}", args.join(" ")),
+                detail: stderr.trim().to_string(),
             });
         }
 
@@ -551,9 +551,21 @@ impl InfraBackend for AwsNativeBackend {
         info!("Key pair: {key_name}");
 
         let user_data = self.generate_user_data();
-        let (instance_id, public_ip) = self.run_instance(&ami_id, &sg_id, &key_name, &user_data)?;
+        let run_result = self.run_instance(&ami_id, &sg_id, &key_name, &user_data);
+
+        let (instance_id, public_ip) = match run_result {
+            Ok(r) => r,
+            Err(e) => {
+                tracing::warn!("Instance launch failed, cleaning up resources");
+                let _ = self.delete_security_group(&sg_id);
+                let _ = self.delete_key_pair(&key_name);
+                return Err(e);
+            }
+        };
         info!("Instance: {instance_id} at {public_ip}");
 
+        // Save state immediately so `infra down` can clean up if
+        // subsequent steps (SSH provisioning) fail
         let state = AwsState {
             instance_id: instance_id.clone(),
             security_group_id: sg_id,

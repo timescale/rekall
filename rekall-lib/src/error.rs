@@ -65,6 +65,9 @@ pub enum Error {
     #[error("Terraform {command} failed: {detail}")]
     TerraformFailed { command: String, detail: String },
 
+    #[error("AWS CLI failed: {command}\n{detail}")]
+    AwsCliFailed { command: String, detail: String },
+
     #[error("No infrastructure running. Run `rekall infra up` first.")]
     InfraNotRunning,
 
