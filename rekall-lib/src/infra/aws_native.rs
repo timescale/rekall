@@ -21,6 +21,15 @@ struct AwsState {
     pg_port: u16,
 }
 
+#[derive(Debug)]
+pub struct DiscoveredInstance {
+    pub instance_id: String,
+    pub instance_type: String,
+    pub public_ip: Option<String>,
+    pub state: String,
+    pub suite: String,
+}
+
 pub struct AwsNativeBackend {
     state_dir: PathBuf,
     config: InfraConfig,
@@ -238,6 +247,9 @@ date
             .ok_or_else(|| Error::Config("Failed to create security group".to_string()))?
             .to_string();
 
+        // Tag security group
+        self.tag_resource(&sg_id, name_prefix)?;
+
         // SSH ingress
         self.run_aws_json(&[
             "ec2",
@@ -312,7 +324,7 @@ date
 
         let user_data_b64 = base64_encode(user_data.as_bytes());
         let tag_spec = format!(
-            "ResourceType=instance,Tags=[{{Key=Name,Value={}-benchmark}}]",
+            "ResourceType=instance,Tags=[{{Key=Name,Value={0}-benchmark}},{{Key=rekall:suite,Value={0}}}]",
             self.config.name_prefix
         );
         let block_device = format!(
@@ -421,6 +433,66 @@ date
         info!("Deleting key pair {key_name}");
         let _ = self.run_aws_json(&["ec2", "delete-key-pair", "--key-name", key_name]);
         Ok(())
+    }
+
+    fn tag_resource(&self, resource_id: &str, name_prefix: &str) -> Result<()> {
+        let _ = self.run_aws_json(&[
+            "ec2",
+            "create-tags",
+            "--resources",
+            resource_id,
+            "--tags",
+            &format!("Key=rekall:suite,Value={name_prefix}"),
+        ]);
+        Ok(())
+    }
+
+    /// Discover all rekall instances in the configured region by tag.
+    pub fn discover_instances(&self) -> Result<Vec<DiscoveredInstance>> {
+        let result = self.run_aws_json(&[
+            "ec2",
+            "describe-instances",
+            "--filters",
+            "Name=tag-key,Values=rekall:suite",
+            "Name=instance-state-name,Values=running,stopped,pending",
+            "--query",
+            "Reservations[].Instances[].[InstanceId,InstanceType,PublicIpAddress,State.Name,Tags[?Key==`rekall:suite`].Value|[0]]",
+        ])?;
+
+        let mut instances = Vec::new();
+        if let Some(arr) = result.as_array() {
+            for item in arr {
+                if let Some(fields) = item.as_array() {
+                    instances.push(DiscoveredInstance {
+                        instance_id: fields
+                            .first()
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        instance_type: fields
+                            .get(1)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        public_ip: fields
+                            .get(2)
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        state: fields
+                            .get(3)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        suite: fields
+                            .get(4)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                    });
+                }
+            }
+        }
+        Ok(instances)
     }
 
     fn describe_instance(&self, instance_id: &str) -> Result<Option<serde_json::Value>> {

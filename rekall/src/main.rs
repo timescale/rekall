@@ -212,9 +212,14 @@ enum InfraCommand {
         name: Option<String>,
     },
 
-    /// List all provisioned instances
+    /// List all provisioned instances.
+    /// Shows both locally tracked and AWS-discovered instances.
     #[command(alias = "ls")]
-    List,
+    List {
+        /// AWS region to scan (default: us-east-1)
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
+    },
 
     /// SSH into a benchmark instance
     Ssh {
@@ -793,19 +798,36 @@ iam_instance_profile = "rekall-profile"
 
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
             let output = mgr.up()?;
+            let ssh_cmd = mgr.ssh_command()?;
+
+            let summary = format!(
+                "Instance ready:\n\
+                 \n\
+                 IP:            {}\n\
+                 Instance:      {} ({})\n\
+                 DSN:           {}\n\
+                 IAM profile:   {}\n\
+                 \n\
+                 SSH:  {ssh_cmd}\n\
+                 DSN:  rekall infra dsn -n {}\n",
+                output.public_ip,
+                output.instance_id,
+                output.instance_type,
+                output.dsn,
+                output.iam_profile,
+                infra_cfg.name_prefix,
+            );
 
             println!();
-            println!("Instance ready:");
-            println!("  IP:            {}", output.public_ip);
-            println!(
-                "  Instance:      {} ({})",
-                output.instance_id, output.instance_type
-            );
-            println!("  DSN:           {}", output.dsn);
-            println!("  IAM role:      {}", output.iam_profile);
-            println!();
-            println!("SSH:  {}", mgr.ssh_command()?);
-            println!("DSN:  rekall infra dsn");
+            print!("{summary}");
+
+            let info_path = format!(".rekall/infra/{}/instance.txt", infra_cfg.name_prefix);
+            if let Err(e) = std::fs::write(&info_path, &summary) {
+                tracing::warn!("Could not save instance info: {e}");
+            } else {
+                println!();
+                println!("Instance info saved to {info_path}");
+            }
         }
 
         InfraCommand::Down { config, name } => {
@@ -847,16 +869,22 @@ iam_instance_profile = "rekall-profile"
             }
         }
 
-        InfraCommand::List => {
-            let instances = rekall_lib::infra::list_instances()?;
+        InfraCommand::List { region } => {
+            // Discover from AWS tags (works across machines)
+            let instances = rekall_lib::infra::list_instances_aws(&region)?;
+
             if instances.is_empty() {
-                println!("No instances provisioned.");
+                println!("No rekall instances found in {region}.");
                 println!(
                     "Run `rekall infra init -c examples/cloud-benchmark.toml` to get started."
                 );
                 return Ok(());
             }
 
+            println!(
+                "{:<20} {:<10} {:<16} {:<14} {:<12}",
+                "SUITE", "STATE", "IP", "TYPE", "INSTANCE"
+            );
             for inst in &instances {
                 let state = if inst.status.running {
                     "running"
@@ -865,10 +893,10 @@ iam_instance_profile = "rekall-profile"
                 };
                 let ip = inst.status.public_ip.as_deref().unwrap_or("-");
                 let itype = inst.status.instance_type.as_deref().unwrap_or("-");
-                let pg = if inst.status.pg_ready { "ready" } else { "-" };
+                let id = inst.status.instance_id.as_deref().unwrap_or("-");
                 println!(
-                    "{:<20} {:<10} {:<16} {:<14} pg: {}",
-                    inst.name, state, ip, itype, pg
+                    "{:<20} {:<10} {:<16} {:<14} {:<12}",
+                    inst.name, state, ip, itype, id
                 );
             }
         }

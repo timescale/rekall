@@ -432,7 +432,8 @@ pub struct InfraInstance {
     pub status: InfraStatus,
 }
 
-pub fn list_instances() -> Result<Vec<InfraInstance>> {
+/// List instances from local state files.
+pub fn list_instances_local() -> Result<Vec<InfraInstance>> {
     let names = state::list_infra_names()?;
     let mut instances = Vec::new();
 
@@ -447,6 +448,32 @@ pub fn list_instances() -> Result<Vec<InfraInstance>> {
     }
 
     Ok(instances)
+}
+
+/// Discover all rekall instances in AWS by tag, regardless of local state.
+pub fn list_instances_aws(region: &str) -> Result<Vec<InfraInstance>> {
+    let config = InfraConfig {
+        region: region.to_string(),
+        ..Default::default()
+    };
+    let backend = AwsNativeBackend::new(std::env::current_dir().unwrap_or_default(), &config);
+    let discovered = backend.discover_instances()?;
+
+    Ok(discovered
+        .into_iter()
+        .map(|d| InfraInstance {
+            name: d.suite.clone(),
+            status: InfraStatus {
+                running: d.state == "running",
+                public_ip: d.public_ip,
+                instance_id: Some(d.instance_id),
+                instance_type: Some(d.instance_type),
+                dsn: None,
+                iam_profile: None,
+                pg_ready: false,
+            },
+        })
+        .collect())
 }
 
 pub fn iam_terraform_template(config: &InfraConfig) -> String {
