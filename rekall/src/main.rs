@@ -221,6 +221,36 @@ enum InfraCommand {
         region: String,
     },
 
+    /// Run a benchmark on a remote instance.
+    /// Uploads configs, ensures dataset is available, and starts
+    /// rekall in a tmux session.
+    #[command(name = "run")]
+    RemoteRun {
+        /// Infra config file
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Benchmark config paths (files or directories) to upload and run
+        #[arg(required = true)]
+        benchmarks: Vec<PathBuf>,
+
+        /// tmux session name (default: rekall)
+        #[arg(short, long, default_value = "rekall")]
+        session: String,
+
+        /// Additional flags to pass to rekall run (e.g., --rebuild)
+        #[arg(long)]
+        rebuild: bool,
+
+        /// S3 path for the dataset (downloaded on instance if not present)
+        #[arg(long)]
+        s3_dataset: Option<String>,
+    },
+
     /// Attach to the tmux session on a benchmark instance.
     /// Creates a new session if one doesn't exist.
     Attach {
@@ -905,6 +935,187 @@ iam_instance_profile = "rekall-profile"
             }
         }
 
+        InfraCommand::RemoteRun {
+            config,
+            name,
+            benchmarks,
+            session,
+            rebuild,
+            s3_dataset,
+        } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let status = mgr.status()?;
+            if !status.running {
+                return Err(anyhow::anyhow!(
+                    "Instance not running. Run `rekall infra up` first."
+                ));
+            }
+            let ip = status
+                .public_ip
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("No public IP for instance"))?;
+            let (_, ssh_priv) = infra_cfg
+                .require_ssh_key()
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+            let ssh_target = format!("ubuntu@{ip}");
+            let ssh_args = |extra: &[&str]| -> std::process::Command {
+                let mut cmd = std::process::Command::new("ssh");
+                cmd.args([
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-i",
+                    &ssh_priv,
+                    &ssh_target,
+                ]);
+                cmd.args(extra);
+                cmd
+            };
+
+            // Create remote benchmark directory
+            let remote_dir = "~/benchmarks";
+            let run_status = ssh_args(&[&format!("mkdir -p {remote_dir}")]).status()?;
+            if !run_status.success() {
+                return Err(anyhow::anyhow!(
+                    "Failed to create remote benchmark directory"
+                ));
+            }
+
+            // Upload benchmark configs
+            println!("Uploading benchmark configs...");
+            for bench_path in &benchmarks {
+                let scp_status = if bench_path.is_dir() {
+                    std::process::Command::new("scp")
+                        .args([
+                            "-o",
+                            "StrictHostKeyChecking=no",
+                            "-i",
+                            &ssh_priv,
+                            "-r",
+                            bench_path.to_str().unwrap(),
+                            &format!("{ssh_target}:{remote_dir}/"),
+                        ])
+                        .status()?
+                } else {
+                    std::process::Command::new("scp")
+                        .args([
+                            "-o",
+                            "StrictHostKeyChecking=no",
+                            "-i",
+                            &ssh_priv,
+                            bench_path.to_str().unwrap(),
+                            &format!("{ssh_target}:{remote_dir}/"),
+                        ])
+                        .status()?
+                };
+                if !scp_status.success() {
+                    return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
+                }
+
+                // Upload .local.toml if exists
+                if bench_path.is_dir() {
+                    // For directories, local overrides are inside already
+                } else {
+                    let stem = bench_path.file_stem().unwrap_or_default().to_string_lossy();
+                    let parent = bench_path.parent().unwrap_or(std::path::Path::new("."));
+                    let local_path = parent.join(format!("{stem}.local.toml"));
+                    if local_path.exists() {
+                        let _ = std::process::Command::new("scp")
+                            .args([
+                                "-o",
+                                "StrictHostKeyChecking=no",
+                                "-i",
+                                &ssh_priv,
+                                local_path.to_str().unwrap(),
+                                &format!("{ssh_target}:{remote_dir}/"),
+                            ])
+                            .status();
+                    }
+                }
+            }
+
+            // Generate a .local.toml on the remote with the correct DSN
+            let dsn = "host=localhost port=5432 dbname=rekall user=rekall password=rekall";
+            let remote_local_setup = format!(
+                r#"for base in {remote_dir}/*/base.toml {remote_dir}/*.toml; do
+  [ -f "$base" ] || continue
+  dir=$(dirname "$base")
+  stem=$(basename "$base" .toml)
+  local="$dir/$stem.local.toml"
+  if [ ! -f "$local" ]; then
+    echo '[connection]' > "$local"
+    echo 'dsn = "{dsn}"' >> "$local"
+  fi
+done"#
+            );
+            let _ = ssh_args(&[&remote_local_setup]).status();
+
+            // Download dataset from S3 if specified
+            if let Some(ref s3_path) = s3_dataset {
+                let filename = s3_path.rsplit('/').next().unwrap_or("dataset.hdf5");
+                println!("Ensuring dataset is on instance...");
+                let download_cmd = format!(
+                    "mkdir -p ~/data && [ -f ~/data/{filename} ] && echo 'Dataset already present' || aws s3 cp {s3_path} ~/data/{filename}"
+                );
+                let dl_status = ssh_args(&[&download_cmd]).status()?;
+                if !dl_status.success() {
+                    return Err(anyhow::anyhow!("Failed to download dataset from {s3_path}"));
+                }
+
+                // Update dataset path in uploaded configs
+                let update_cmd = format!(
+                    r#"find {remote_dir} -name '*.toml' -exec grep -l 'path.*=.*data/' {{}} \; | while read f; do
+  sed -i 's|path = ".*data/|path = "~/data/|' "$f"
+done"#
+                );
+                let _ = ssh_args(&[&update_cmd]).status();
+            }
+
+            // Build the remote rekall run command
+            let mut remote_configs: Vec<String> = Vec::new();
+            for bench_path in &benchmarks {
+                let name = bench_path.file_name().unwrap_or_default().to_string_lossy();
+                remote_configs.push(format!("{remote_dir}/{name}"));
+            }
+            let configs_str = remote_configs.join(" ");
+            let rebuild_flag = if rebuild { " --rebuild" } else { "" };
+
+            let run_cmd = format!("cd ~ && rekall run {configs_str}{rebuild_flag}");
+
+            // Launch in tmux
+            println!("Launching benchmark in tmux session '{session}'...");
+            let tmux_cmd = format!(
+                "TERM=xterm-256color tmux new -d -s {session} '{run_cmd}' 2>/dev/null || \
+                 TERM=xterm-256color tmux send-keys -t {session} '{run_cmd}' Enter"
+            );
+            let tmux_status = ssh_args(&["-t", &tmux_cmd]).status()?;
+            if !tmux_status.success() {
+                return Err(anyhow::anyhow!("Failed to start tmux session"));
+            }
+
+            println!();
+            println!("Benchmark started on {} in tmux session '{session}'", ip);
+            println!();
+            println!("To check progress:");
+            println!(
+                "  rekall infra attach -c {}",
+                config
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| format!("-n {}", infra_cfg.name_prefix))
+            );
+            println!();
+            println!("To view results later:");
+            println!(
+                "  rekall infra ssh {} -- cat ~/benchmarks/results/*.json",
+                config
+                    .as_ref()
+                    .map(|p| format!("-c {}", p.display()))
+                    .unwrap_or_else(|| format!("-n {}", infra_cfg.name_prefix))
+            );
+        }
+
         InfraCommand::Attach {
             config,
             name,
@@ -918,12 +1129,12 @@ iam_instance_profile = "rekall-profile"
             if parts.len() < 2 {
                 return Err(anyhow::anyhow!("Invalid SSH command: {cmd}"));
             }
-            // SSH with -t to force tty allocation for tmux
+            // SSH with -t for tty, set TERM for compatibility
             let status = std::process::Command::new(parts[0])
                 .args(&parts[1..])
                 .arg("-t")
                 .arg(format!(
-                    "tmux attach -t {session} 2>/dev/null || tmux new -s {session}"
+                    "TERM=xterm-256color tmux attach -t {session} 2>/dev/null || TERM=xterm-256color tmux new -s {session}"
                 ))
                 .status()?;
 
