@@ -34,6 +34,23 @@ fn default_git_ref() -> String {
     "main".to_string()
 }
 
+fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
+    match (base.as_table_mut(), overlay) {
+        (Some(base_table), toml::Value::Table(overlay_table)) => {
+            for (key, overlay_val) in overlay_table {
+                if let Some(base_val) = base_table.get_mut(&key) {
+                    deep_merge(base_val, overlay_val);
+                } else {
+                    base_table.insert(key, overlay_val);
+                }
+            }
+        }
+        (_, overlay) => {
+            *base = overlay;
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InfraConfig {
     #[serde(default = "default_provider")]
@@ -110,6 +127,30 @@ pub struct GitSourceConfig {
 }
 
 impl InfraConfig {
+    /// Load infra config from a standalone TOML file.
+    /// Supports .local.toml overrides (same as benchmark configs).
+    pub fn from_file(path: &std::path::Path) -> std::result::Result<Self, String> {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| format!("Cannot read '{}': {e}", path.display()))?;
+        let mut base: toml::Value = toml::from_str(&content)
+            .map_err(|e| format!("Invalid TOML '{}': {e}", path.display()))?;
+
+        // Check for .local.toml override
+        let stem = path.file_stem().unwrap_or_default().to_string_lossy();
+        let parent = path.parent().unwrap_or(std::path::Path::new("."));
+        let local_path = parent.join(format!("{stem}.local.toml"));
+        if local_path.exists() {
+            let local_content = std::fs::read_to_string(&local_path)
+                .map_err(|e| format!("Cannot read '{}': {e}", local_path.display()))?;
+            let local: toml::Value = toml::from_str(&local_content)
+                .map_err(|e| format!("Invalid TOML '{}': {e}", local_path.display()))?;
+            deep_merge(&mut base, local);
+        }
+
+        base.try_into()
+            .map_err(|e| format!("Invalid infra config: {e}"))
+    }
+
     pub fn is_graviton(&self) -> bool {
         let ty = &self.instance_type;
         ty.contains("g.") || ty.contains("gd.") || ty.contains("gen.")

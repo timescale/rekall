@@ -718,13 +718,3 @@ Outputs:
 "#
     )
 }
-
-pub fn resolve_infra_dsn(infra: &InfraConfig) -> Option<String> {
-    let mgr = InfraManager::new(infra).ok()?;
-    let status = mgr.status().ok()?;
-    if status.running && status.pg_ready {
-        status.dsn
-    } else {
-        None
-    }
-}

@@ -342,7 +342,7 @@ async fn main() -> anyhow::Result<()> {
             reload,
             ..
         } => {
-            let mut groups = rekall_lib::config::resolve_config_groups(&configs)?;
+            let groups = rekall_lib::config::resolve_config_groups(&configs)?;
 
             let phases = if let Some(ref p) = phase {
                 vec![p.parse().map_err(|e: String| anyhow::anyhow!(e))?]
@@ -351,8 +351,7 @@ async fn main() -> anyhow::Result<()> {
             };
 
             let num_groups = groups.len();
-            for group in &mut groups {
-                resolve_infra_dsn(&mut group.config);
+            for group in &groups {
                 if num_groups > 1 {
                     println!("\n{}", "=".repeat(60));
                     println!("=== Group: {} ===", group.name);
@@ -373,8 +372,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Init { config } => {
-            let mut cfg = BenchmarkConfig::from_path(&config)?;
-            resolve_infra_dsn(&mut cfg);
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Init], None, false, false).await?;
@@ -386,7 +384,6 @@ async fn main() -> anyhow::Result<()> {
             ..
         } => {
             let mut cfg = BenchmarkConfig::from_path(&config)?;
-            resolve_infra_dsn(&mut cfg);
             if let Some(p) = parallelism {
                 cfg.load.parallelism = p;
             }
@@ -396,8 +393,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Index { config, name } => {
-            let mut cfg = BenchmarkConfig::from_path(&config)?;
-            resolve_infra_dsn(&mut cfg);
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
@@ -406,8 +402,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Search { config, index } => {
-            let mut cfg = BenchmarkConfig::from_path(&config)?;
-            resolve_infra_dsn(&mut cfg);
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
@@ -421,8 +416,7 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Report { config } => {
-            let mut cfg = BenchmarkConfig::from_path(&config)?;
-            resolve_infra_dsn(&mut cfg);
+            let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Report], None, false, false).await?;
@@ -624,13 +618,7 @@ fn load_infra_config(
     config: Option<&PathBuf>,
 ) -> anyhow::Result<rekall_lib::infra::config::InfraConfig> {
     if let Some(path) = config {
-        let cfg = BenchmarkConfig::from_path(path)?;
-        cfg.infra.ok_or_else(|| {
-            anyhow::anyhow!(
-                "Config '{}' has no [infra] section. Add an [infra] section or use defaults.",
-                path.display()
-            )
-        })
+        rekall_lib::infra::config::InfraConfig::from_file(path).map_err(|e| anyhow::anyhow!("{e}"))
     } else {
         Ok(rekall_lib::infra::config::InfraConfig::default())
     }
@@ -1009,16 +997,6 @@ iam_instance_profile = "rekall-profile"
     }
 
     Ok(())
-}
-
-/// If [infra] is configured and running, override the connection DSN.
-fn resolve_infra_dsn(config: &mut BenchmarkConfig) {
-    if let Some(ref infra) = config.infra {
-        if let Some(dsn) = rekall_lib::infra::resolve_infra_dsn(infra) {
-            tracing::info!("Using infrastructure DSN: {dsn}");
-            config.connection.dsn = dsn;
-        }
-    }
 }
 
 fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>) {

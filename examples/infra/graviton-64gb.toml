@@ -1,0 +1,14 @@
+# Infra config for a Graviton3 instance with 64 GB RAM.
+#
+# Usage:
+#   rekall infra init -c examples/infra/graviton-64gb.toml
+#   rekall infra up -c examples/infra/graviton-64gb.toml
+#   rekall infra ssh -c examples/infra/graviton-64gb.toml
+
+provider = "aws"
+region = "us-east-1"
+instance_type = "r7g.2xlarge"
+disk_size_gb = 1000
+pg_version = 18
+extensions = ["pgvector", "meerkat"]
+name_prefix = "rekall-64gb"
