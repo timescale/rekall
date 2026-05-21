@@ -221,6 +221,22 @@ enum InfraCommand {
         region: String,
     },
 
+    /// Attach to the tmux session on a benchmark instance.
+    /// Creates a new session if one doesn't exist.
+    Attach {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// tmux session name (default: rekall)
+        #[arg(short, long, default_value = "rekall")]
+        session: String,
+    },
+
     /// SSH into a benchmark instance
     Ssh {
         /// Config file with [infra] section
@@ -899,6 +915,31 @@ iam_instance_profile = "rekall-profile"
                     inst.name, state, ip, itype, id
                 );
             }
+        }
+
+        InfraCommand::Attach {
+            config,
+            name,
+            session,
+        } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let cmd = mgr.ssh_command()?;
+
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.len() < 2 {
+                return Err(anyhow::anyhow!("Invalid SSH command: {cmd}"));
+            }
+            // SSH with -t to force tty allocation for tmux
+            let status = std::process::Command::new(parts[0])
+                .args(&parts[1..])
+                .arg("-t")
+                .arg(format!(
+                    "tmux attach -t {session} 2>/dev/null || tmux new -s {session}"
+                ))
+                .status()?;
+
+            std::process::exit(status.code().unwrap_or(1));
         }
 
         InfraCommand::Ssh { config, name } => {

@@ -13,7 +13,7 @@ apt-get install -y build-essential git curl wget pkg-config \
   tmux htop libhdf5-dev \
   cmake meson ninja-build clang clang-tools gdb valgrind \
   autoconf automake libtool \
-  unzip
+  unzip libopenblas-dev
 
 # AWS CLI v2
 curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
