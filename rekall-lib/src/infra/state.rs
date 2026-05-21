@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use crate::error::{Error, Result};
@@ -21,6 +21,10 @@ impl StateManager {
         Ok(Self {
             base_dir: base.join(name_prefix),
         })
+    }
+
+    pub fn base_dir(&self) -> &Path {
+        &self.base_dir
     }
 
     pub fn ensure_dirs(&self) -> Result<()> {

@@ -110,7 +110,7 @@ pub struct GitSourceConfig {
 }
 
 impl InfraConfig {
-    fn is_graviton(&self) -> bool {
+    pub fn is_graviton(&self) -> bool {
         let ty = &self.instance_type;
         ty.contains("g.") || ty.contains("gd.") || ty.contains("gen.")
     }

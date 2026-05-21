@@ -1,3 +1,4 @@
+mod aws_native;
 mod backend;
 pub mod config;
 mod state;
@@ -9,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use tracing::info;
 
+use aws_native::AwsNativeBackend;
 use backend::InfraBackend;
 use config::InfraConfig;
 use state::StateManager;
@@ -47,7 +49,11 @@ impl InfraManager {
     pub fn new(config: &InfraConfig) -> Result<Self> {
         let state = StateManager::new(&config.name_prefix)?;
         let backend: Box<dyn InfraBackend> = match config.provider.as_str() {
-            "aws" | "terraform" => Box::new(TerraformRunner::new(state.terraform_dir())),
+            "aws" => Box::new(AwsNativeBackend::new(
+                state.base_dir().to_path_buf(),
+                config,
+            )),
+            "terraform" => Box::new(TerraformRunner::new(state.terraform_dir())),
             other => {
                 return Err(Error::Config(format!(
                     "Unknown infra provider '{other}'. Supported: aws, terraform"
