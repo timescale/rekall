@@ -1,3 +1,4 @@
+mod backend;
 pub mod config;
 mod state;
 mod terraform;
@@ -8,10 +9,12 @@ use std::time::{Duration, Instant};
 
 use tracing::info;
 
-use crate::error::{Error, Result};
+use backend::InfraBackend;
 use config::InfraConfig;
 use state::StateManager;
 use terraform::TerraformRunner;
+
+use crate::error::{Error, Result};
 
 #[derive(Debug)]
 pub struct InfraOutput {
@@ -37,41 +40,47 @@ pub struct InfraStatus {
 pub struct InfraManager {
     config: InfraConfig,
     state: StateManager,
-    runner: TerraformRunner,
+    backend: Box<dyn InfraBackend>,
 }
 
 impl InfraManager {
     pub fn new(config: &InfraConfig) -> Result<Self> {
         let state = StateManager::new(&config.name_prefix)?;
-        let runner = TerraformRunner::new(state.terraform_dir());
+        let backend: Box<dyn InfraBackend> = match config.provider.as_str() {
+            "aws" | "terraform" => Box::new(TerraformRunner::new(state.terraform_dir())),
+            other => {
+                return Err(Error::Config(format!(
+                    "Unknown infra provider '{other}'. Supported: aws, terraform"
+                )));
+            }
+        };
         Ok(Self {
             config: config.clone(),
             state,
-            runner,
+            backend,
         })
     }
 
     pub fn up(&self) -> Result<InfraOutput> {
-        let tf_version = TerraformRunner::check_installed()?;
-        info!("Terraform: {tf_version}");
-
         check_aws_credentials()?;
 
         let (ssh_pub_path, ssh_priv_path) = self.config.require_ssh_key().map_err(Error::Config)?;
         if !Path::new(&ssh_pub_path).exists() {
             return Err(Error::Config(format!(
-                "SSH public key not found: {ssh_pub_path}. Check [infra].ssh_key in your .local.toml."
+                "SSH public key not found: {ssh_pub_path}. \
+                 Check [infra].ssh_key in your .local.toml."
             )));
         }
         if !Path::new(&ssh_priv_path).exists() {
             return Err(Error::Config(format!(
-                "SSH private key not found: {ssh_priv_path}. The private key must exist alongside the public key."
+                "SSH private key not found: {ssh_priv_path}. \
+                 The private key must exist alongside the public key."
             )));
         }
 
         if self.config.iam_instance_profile.is_none() {
             return Err(Error::Config(
-                "[infra].iam_instance_profile is required. Run `rekall infra iam-policy` \
+                "[infra].iam_instance_profile is required. Run `rekall infra init` \
                  to generate the IAM template, apply it in your AWS account, then set \
                  iam_instance_profile = \"rekall-profile\" in your .local.toml."
                     .to_string(),
@@ -90,71 +99,45 @@ impl InfraManager {
             }
         }
 
-        TerraformRunner::write_tf_files(&self.state.terraform_dir())?;
-
-        let mut vars = self.config.to_tfvars();
-        let user_pub_key = std::fs::read_to_string(&ssh_pub_path).map_err(|e| {
+        let ssh_pub_key = std::fs::read_to_string(&ssh_pub_path).map_err(|e| {
             Error::Config(format!("Cannot read SSH public key '{ssh_pub_path}': {e}"))
         })?;
-        vars["ssh_public_key"] = serde_json::json!(user_pub_key.trim());
-        vars["ssh_private_key_path"] = serde_json::json!(&ssh_priv_path);
+        let ssh_pub_key = ssh_pub_key.trim();
 
-        let deploy_key_paths = self.state.deploy_key_paths()?;
-        if !deploy_key_paths.is_empty() {
-            let paths: Vec<String> = deploy_key_paths
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            vars["github_ssh_key_paths"] = serde_json::json!(paths);
-        }
-
-        let ip = state::detect_public_ip();
-        match ip {
-            Ok(ref ip) => {
-                vars["ssh_cidr"] = serde_json::json!(format!("{ip}/32"));
+        let ssh_cidr = match state::detect_public_ip() {
+            Ok(ip) => {
                 info!("Detected public IP: {ip}");
+                format!("{ip}/32")
             }
-            Err(ref e) => {
+            Err(e) => {
                 tracing::warn!("Cannot detect public IP ({e}), allowing SSH from 0.0.0.0/0");
-                vars["ssh_cidr"] = serde_json::json!("0.0.0.0/0");
+                "0.0.0.0/0".to_string()
             }
-        }
+        };
 
-        self.runner.write_var_file(&vars)?;
+        let deploy_key_paths: Vec<String> = self
+            .state
+            .deploy_key_paths()?
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
 
-        info!("Running terraform init");
-        self.runner.init()?;
+        let vars = self.config.to_tfvars();
 
-        info!("Running terraform apply (includes provisioning)");
-        self.runner.apply()?;
+        let output = self.backend.up(
+            ssh_pub_key,
+            &ssh_priv_path,
+            &ssh_cidr,
+            &deploy_key_paths,
+            &vars,
+        )?;
 
-        let outputs = self.runner.output()?;
-        let public_ip = outputs
-            .get("public_ip")
-            .ok_or_else(|| Error::TerraformFailed {
-                command: "output".to_string(),
-                detail: "missing public_ip in terraform output".to_string(),
-            })?
-            .clone();
+        info!("Verifying PostgreSQL is ready on {}...", output.public_ip);
+        self.wait_for_pg(&output.public_ip, Duration::from_secs(120))?;
 
-        info!("Verifying PostgreSQL is ready on {public_ip}...");
-        self.wait_for_pg(&public_ip, Duration::from_secs(120))?;
-
-        Ok(InfraOutput {
-            public_ip: public_ip.clone(),
-            instance_id: outputs.get("instance_id").cloned().unwrap_or_default(),
-            instance_type: outputs.get("instance_type").cloned().unwrap_or_default(),
-            dsn: outputs.get("dsn").cloned().unwrap_or_default(),
-            pg_port: outputs.get("pg_port").cloned().unwrap_or_default(),
-            iam_profile: outputs
-                .get("iam_instance_profile")
-                .cloned()
-                .unwrap_or_default(),
-        })
+        Ok(output)
     }
 
-    /// Ensure deploy keys exist for the given repos.
-    /// Returns a list of DeployKey results.
     pub fn ensure_deploy_keys(
         &self,
         repo_names: &[&str],
@@ -173,53 +156,19 @@ impl InfraManager {
     }
 
     pub fn down(&self) -> Result<()> {
-        TerraformRunner::check_installed()?;
-
-        if !self.runner.state_exists() {
-            return Err(Error::InfraNotRunning);
-        }
-
-        info!("Running terraform destroy");
-        self.runner.destroy()?;
-        info!("Infrastructure destroyed");
-        Ok(())
+        self.backend.down()
     }
 
     pub fn status(&self) -> Result<InfraStatus> {
-        if !self.runner.state_exists() {
-            return Ok(InfraStatus {
-                running: false,
-                public_ip: None,
-                instance_id: None,
-                instance_type: None,
-                dsn: None,
-                iam_profile: None,
-                pg_ready: false,
-            });
+        let mut status = self.backend.status()?;
+        if let Some(ref ip) = status.public_ip {
+            status.pg_ready = self.check_pg_ready(ip);
         }
-
-        let outputs = self.runner.output()?;
-        let public_ip = outputs.get("public_ip").cloned();
-
-        let pg_ready = if let Some(ref ip) = public_ip {
-            self.check_pg_ready(ip)
-        } else {
-            false
-        };
-
-        Ok(InfraStatus {
-            running: public_ip.is_some(),
-            public_ip,
-            instance_id: outputs.get("instance_id").cloned(),
-            instance_type: outputs.get("instance_type").cloned(),
-            dsn: outputs.get("dsn").cloned(),
-            iam_profile: outputs.get("iam_instance_profile").cloned(),
-            pg_ready,
-        })
+        Ok(status)
     }
 
     pub fn ssh_command(&self) -> Result<String> {
-        let outputs = self.runner.output()?;
+        let outputs = self.backend.outputs()?;
         let ip = outputs.get("public_ip").ok_or(Error::InfraNotRunning)?;
         let (_, ssh_priv) = self.config.require_ssh_key().map_err(Error::Config)?;
 
@@ -229,7 +178,7 @@ impl InfraManager {
     }
 
     pub fn dsn(&self) -> Result<String> {
-        let outputs = self.runner.output()?;
+        let outputs = self.backend.outputs()?;
         outputs.get("dsn").cloned().ok_or(Error::InfraNotRunning)
     }
 

@@ -2,6 +2,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+use tracing::info;
+
+use super::backend::InfraBackend;
+use super::{InfraOutput, InfraStatus};
 use crate::error::{Error, Result};
 
 pub struct TerraformRunner {
@@ -139,6 +143,30 @@ impl TerraformRunner {
         Ok(())
     }
 
+    fn parse_outputs(raw: &HashMap<String, String>) -> InfraOutput {
+        InfraOutput {
+            public_ip: raw.get("public_ip").cloned().unwrap_or_default(),
+            instance_id: raw.get("instance_id").cloned().unwrap_or_default(),
+            instance_type: raw.get("instance_type").cloned().unwrap_or_default(),
+            dsn: raw.get("dsn").cloned().unwrap_or_default(),
+            pg_port: raw.get("pg_port").cloned().unwrap_or_default(),
+            iam_profile: raw.get("iam_instance_profile").cloned().unwrap_or_default(),
+        }
+    }
+
+    fn parse_status(raw: &HashMap<String, String>) -> InfraStatus {
+        let public_ip = raw.get("public_ip").cloned();
+        InfraStatus {
+            running: public_ip.is_some(),
+            public_ip,
+            instance_id: raw.get("instance_id").cloned(),
+            instance_type: raw.get("instance_type").cloned(),
+            dsn: raw.get("dsn").cloned(),
+            iam_profile: raw.get("iam_instance_profile").cloned(),
+            pg_ready: false,
+        }
+    }
+
     pub fn write_tf_files(dest: &Path) -> Result<()> {
         let files = [
             (
@@ -177,5 +205,79 @@ impl TerraformRunner {
         }
 
         Ok(())
+    }
+}
+
+impl InfraBackend for TerraformRunner {
+    fn name(&self) -> &str {
+        "terraform"
+    }
+
+    fn up(
+        &self,
+        ssh_pub_key: &str,
+        ssh_priv_path: &str,
+        ssh_cidr: &str,
+        deploy_key_paths: &[String],
+        vars: &serde_json::Value,
+    ) -> Result<InfraOutput> {
+        let tf_version = Self::check_installed()?;
+        info!("Terraform: {tf_version}");
+
+        Self::write_tf_files(&self.work_dir)?;
+
+        let mut all_vars = vars.clone();
+        all_vars["ssh_public_key"] = serde_json::json!(ssh_pub_key);
+        all_vars["ssh_private_key_path"] = serde_json::json!(ssh_priv_path);
+        all_vars["ssh_cidr"] = serde_json::json!(ssh_cidr);
+        if !deploy_key_paths.is_empty() {
+            all_vars["github_ssh_key_paths"] = serde_json::json!(deploy_key_paths);
+        }
+
+        self.write_var_file(&all_vars)?;
+
+        info!("Running terraform init");
+        self.init()?;
+
+        info!("Running terraform apply (includes provisioning)");
+        self.apply()?;
+
+        let raw = self.output()?;
+        Ok(Self::parse_outputs(&raw))
+    }
+
+    fn down(&self) -> Result<()> {
+        Self::check_installed()?;
+        if !self.state_exists() {
+            return Err(Error::InfraNotRunning);
+        }
+        info!("Running terraform destroy");
+        self.destroy()?;
+        info!("Infrastructure destroyed");
+        Ok(())
+    }
+
+    fn status(&self) -> Result<InfraStatus> {
+        if !self.state_exists() {
+            return Ok(InfraStatus {
+                running: false,
+                public_ip: None,
+                instance_id: None,
+                instance_type: None,
+                dsn: None,
+                iam_profile: None,
+                pg_ready: false,
+            });
+        }
+        let raw = self.output()?;
+        Ok(Self::parse_status(&raw))
+    }
+
+    fn outputs(&self) -> Result<HashMap<String, String>> {
+        self.output()
+    }
+
+    fn has_state(&self) -> bool {
+        self.state_exists()
     }
 }
