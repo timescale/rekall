@@ -1,7 +1,7 @@
 mod aws_native;
 mod backend;
 pub mod config;
-mod state;
+pub(crate) mod state;
 mod terraform;
 
 use std::path::Path;
@@ -161,6 +161,25 @@ impl InfraManager {
         Ok(keys)
     }
 
+    pub fn provision(&self) -> Result<()> {
+        let status = self.backend.status()?;
+        if !status.running {
+            return Err(Error::InfraNotRunning);
+        }
+
+        let ip = status.public_ip.as_ref().ok_or(Error::InfraNotRunning)?;
+        let (_, ssh_priv) = self.config.require_ssh_key().map_err(Error::Config)?;
+
+        let deploy_key_paths: Vec<String> = self
+            .state
+            .deploy_key_paths()?
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        ssh_provision(ip, &ssh_priv, &self.config, &self.state, &deploy_key_paths)
+    }
+
     pub fn down(&self) -> Result<()> {
         self.backend.down()
     }
@@ -221,6 +240,148 @@ impl InfraManager {
         };
         check_pg_via_ssh(ip, Path::new(&ssh_priv), self.config.pg_port)
     }
+}
+
+fn ssh_run(ip: &str, ssh_priv_path: &str, cmd: &str) -> Result<()> {
+    let status = Command::new("ssh")
+        .args([
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "ConnectTimeout=10",
+            "-i",
+            ssh_priv_path,
+            &format!("ubuntu@{ip}"),
+            cmd,
+        ])
+        .stdin(std::process::Stdio::null())
+        .status()
+        .map_err(|e| Error::Config(format!("SSH failed to start: {e}")))?;
+
+    if !status.success() {
+        return Err(Error::Config(format!(
+            "Remote command failed on {ip} (see output above)"
+        )));
+    }
+    Ok(())
+}
+
+fn ssh_wait(ip: &str, ssh_priv_path: &str) -> Result<()> {
+    info!("Waiting for SSH to become available...");
+    let deadline = Instant::now() + Duration::from_secs(300);
+    loop {
+        if Instant::now() > deadline {
+            return Err(Error::InfraTimeout { timeout_secs: 300 });
+        }
+        if ssh_run(ip, ssh_priv_path, "true").is_ok() {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(10));
+    }
+}
+
+fn scp_file(ip: &str, ssh_priv_path: &str, local: &str, remote: &str) -> Result<()> {
+    let status = Command::new("scp")
+        .args([
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-i",
+            ssh_priv_path,
+            local,
+            &format!("ubuntu@{ip}:{remote}"),
+        ])
+        .status()
+        .map_err(|e| Error::Config(format!("SCP failed: {e}")))?;
+
+    if !status.success() {
+        return Err(Error::Config(format!(
+            "Failed to upload {local} to {ip}:{remote}"
+        )));
+    }
+    Ok(())
+}
+
+pub fn ssh_provision(
+    ip: &str,
+    ssh_priv_path: &str,
+    config: &InfraConfig,
+    state: &StateManager,
+    deploy_key_paths: &[String],
+) -> Result<()> {
+    ssh_wait(ip, ssh_priv_path)?;
+
+    info!("Waiting for cloud-init to complete...");
+    ssh_run(ip, ssh_priv_path, "cloud-init status --wait")?;
+
+    // Upload deploy keys
+    if !deploy_key_paths.is_empty() {
+        info!("Uploading deploy keys");
+        ssh_run(ip, ssh_priv_path, "mkdir -p ~/.ssh /tmp/deploy-keys")?;
+
+        for key_path in deploy_key_paths {
+            let name = Path::new(key_path)
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy();
+            scp_file(
+                ip,
+                ssh_priv_path,
+                key_path,
+                &format!("/tmp/deploy-keys/{name}"),
+            )?;
+        }
+
+        ssh_run(
+            ip,
+            ssh_priv_path,
+            "ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
+             sudo bash -c 'install -m 700 -d /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null' && \
+             for key in /tmp/deploy-keys/*; do \
+               [ -f \"$key\" ] && name=$(basename \"$key\") && \
+               cp \"$key\" \"$HOME/.ssh/$name\" && chmod 600 \"$HOME/.ssh/$name\" && \
+               sudo cp \"$key\" \"/root/.ssh/$name\" && sudo chmod 600 \"/root/.ssh/$name\"; \
+             done && rm -rf /tmp/deploy-keys",
+        )?;
+    }
+
+    // Upload and run provisioning script
+    let has_builds = config.meerkat.is_some() || config.rekall.is_some();
+    if has_builds {
+        info!("Uploading provisioning script");
+
+        let provision_script = include_str!("../../../infra/provision.sh");
+        let tmp_script = state.base_dir().join("provision.sh");
+        std::fs::write(&tmp_script, provision_script)
+            .map_err(|e| Error::Config(format!("Cannot write provision script: {e}")))?;
+
+        scp_file(
+            ip,
+            ssh_priv_path,
+            tmp_script.to_str().unwrap(),
+            "/tmp/provision.sh",
+        )?;
+        let _ = std::fs::remove_file(&tmp_script);
+
+        let mut env_vars = vec![format!("PG_VERSION={}", config.pg_version)];
+        if let Some(ref m) = config.meerkat {
+            env_vars.push(format!("MEERKAT_GIT_URL={}", m.git_url));
+            env_vars.push(format!("MEERKAT_GIT_REF={}", m.git_ref));
+        }
+        if let Some(ref r) = config.rekall {
+            env_vars.push(format!("REKALL_GIT_URL={}", r.git_url));
+            env_vars.push(format!("REKALL_GIT_REF={}", r.git_ref));
+        }
+
+        info!("Running provisioning script");
+        let env_str = env_vars.join(" ");
+        ssh_run(
+            ip,
+            ssh_priv_path,
+            &format!("chmod +x /tmp/provision.sh && {env_str} /tmp/provision.sh"),
+        )?;
+    }
+
+    Ok(())
 }
 
 fn check_pg_via_ssh(ip: &str, key_path: &Path, pg_port: u16) -> bool {

@@ -13,7 +13,13 @@ apt-get install -y build-essential git curl wget pkg-config \
   tmux htop libhdf5-dev \
   cmake meson ninja-build clang clang-tools gdb valgrind \
   autoconf automake libtool \
-  awscli
+  unzip
+
+# AWS CLI v2
+curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+rm -rf /tmp/aws /tmp/awscliv2.zip
 
 # PostgreSQL PGDG repository
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y

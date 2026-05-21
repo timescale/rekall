@@ -13,7 +13,7 @@ variable "instance_type" {
 variable "disk_size_gb" {
   description = "Root EBS volume size in GB"
   type        = number
-  default     = 100
+  default     = 1000
 }
 
 variable "disk_iops" {

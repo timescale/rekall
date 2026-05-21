@@ -238,6 +238,18 @@ enum InfraCommand {
         name: Option<String>,
     },
 
+    /// Re-run provisioning (deploy keys + builds) on an existing instance.
+    /// Use this after fixing a failed build or changing git refs.
+    Provision {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
     /// Print IAM policy and role templates for AWS setup.
     /// Review and apply these in your AWS account before running `infra up`.
     IamPolicy {
@@ -882,6 +894,13 @@ iam_instance_profile = "rekall-profile"
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
             let dsn = mgr.dsn()?;
             println!("{dsn}");
+        }
+
+        InfraCommand::Provision { config, name } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            mgr.provision()?;
+            println!("Provisioning complete.");
         }
 
         InfraCommand::IamPolicy {

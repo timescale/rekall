@@ -1,11 +1,12 @@
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 use tracing::info;
 
 use super::backend::InfraBackend;
 use super::config::InfraConfig;
+use super::state::StateManager;
 use super::{InfraOutput, InfraStatus};
 use crate::error::{Error, Result};
 
@@ -100,7 +101,13 @@ apt-get install -y build-essential git curl wget pkg-config \
   tmux htop libhdf5-dev \
   cmake meson ninja-build clang clang-tools gdb valgrind \
   autoconf automake libtool \
-  awscli
+  unzip
+
+# AWS CLI v2
+curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
+unzip -q /tmp/awscliv2.zip -d /tmp
+/tmp/aws/install
+rm -rf /tmp/aws /tmp/awscliv2.zip
 
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 apt-get install -y postgresql-{pg} postgresql-server-dev-{pg}
@@ -269,27 +276,28 @@ date
         // Delete existing key pair if present (ignore errors)
         let _ = self.run_aws_json(&["ec2", "delete-key-pair", "--key-name", &key_name]);
 
-        self.run_aws_json(&[
+        // Write public key to a temp file for fileb:// reference
+        let tmp_dir = self.state_dir.join("tmp");
+        std::fs::create_dir_all(&tmp_dir).ok();
+        let tmp_key = tmp_dir.join("ssh_pub_key");
+        std::fs::write(&tmp_key, ssh_pub_key)
+            .map_err(|e| Error::Config(format!("Cannot write temp key file: {e}")))?;
+
+        let fileb = format!("fileb://{}", tmp_key.display());
+        let result = self.run_aws_json(&[
             "ec2",
             "import-key-pair",
             "--key-name",
             &key_name,
             "--public-key-material",
-            &format!("fileb://<(echo '{ssh_pub_key}')"),
-        ])
-        .or_else(|_| {
-            // fileb:// with process substitution may not work; use base64
-            let encoded = base64_encode(ssh_pub_key.as_bytes());
-            self.run_aws_json(&[
-                "ec2",
-                "import-key-pair",
-                "--key-name",
-                &key_name,
-                "--public-key-material",
-                &encoded,
-            ])
-        })?;
+            &fileb,
+        ]);
 
+        // Clean up temp file
+        let _ = std::fs::remove_file(&tmp_key);
+        let _ = std::fs::remove_dir(&tmp_dir);
+
+        result?;
         Ok(key_name)
     }
 
@@ -378,113 +386,14 @@ date
         Ok((instance_id, public_ip))
     }
 
-    fn ssh_provision(
+    fn run_provision(
         &self,
         ip: &str,
         ssh_priv_path: &str,
         deploy_key_paths: &[String],
     ) -> Result<()> {
-        let ssh_base = |cmd: &str| -> std::result::Result<(), Error> {
-            let status = Command::new("ssh")
-                .args([
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-o",
-                    "ConnectTimeout=10",
-                    "-o",
-                    "BatchMode=yes",
-                    "-i",
-                    ssh_priv_path,
-                    &format!("ubuntu@{ip}"),
-                    cmd,
-                ])
-                .status()
-                .map_err(|e| Error::Config(format!("SSH failed: {e}")))?;
-
-            if !status.success() {
-                return Err(Error::Config(format!("SSH command failed: {cmd}")));
-            }
-            Ok(())
-        };
-
-        // Wait for cloud-init
-        info!("Waiting for cloud-init to complete...");
-        ssh_base("cloud-init status --wait")?;
-
-        // Upload deploy keys
-        if !deploy_key_paths.is_empty() {
-            info!("Uploading deploy keys");
-
-            // Create remote directory
-            ssh_base("mkdir -p ~/.ssh /tmp/deploy-keys")?;
-
-            // SCP each key
-            for key_path in deploy_key_paths {
-                let name = Path::new(key_path)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy();
-
-                let status = Command::new("scp")
-                    .args([
-                        "-o",
-                        "StrictHostKeyChecking=no",
-                        "-o",
-                        "BatchMode=yes",
-                        "-i",
-                        ssh_priv_path,
-                        key_path,
-                        &format!("ubuntu@{ip}:/tmp/deploy-keys/{name}"),
-                    ])
-                    .status()
-                    .map_err(|e| Error::Config(format!("SCP failed: {e}")))?;
-
-                if !status.success() {
-                    return Err(Error::Config(format!(
-                        "Failed to upload deploy key: {key_path}"
-                    )));
-                }
-            }
-
-            // Install keys
-            ssh_base(
-                "ssh-keyscan github.com >> ~/.ssh/known_hosts 2>/dev/null && \
-                 sudo bash -c 'install -m 700 -d /root/.ssh && ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null' && \
-                 for key in /tmp/deploy-keys/*; do \
-                   [ -f \"$key\" ] && name=$(basename \"$key\") && \
-                   cp \"$key\" \"$HOME/.ssh/$name\" && chmod 600 \"$HOME/.ssh/$name\" && \
-                   sudo cp \"$key\" \"/root/.ssh/$name\" && sudo chmod 600 \"/root/.ssh/$name\"; \
-                 done && rm -rf /tmp/deploy-keys",
-            )?;
-        }
-
-        // Build meerkat from source
-        if let Some(ref meerkat) = self.config.meerkat {
-            info!("Building meerkat from source");
-            let pg = self.config.pg_version;
-            ssh_base(&format!(
-                "sudo bash -c 'export GIT_SSH_COMMAND=\"ssh -i /root/.ssh/meerkat -o StrictHostKeyChecking=no\" && \
-                 cd /tmp && git clone {} meerkat && cd meerkat && git checkout {} && \
-                 meson setup builddir --buildtype=release -Dpg_config=/usr/lib/postgresql/{pg}/bin/pg_config && \
-                 meson compile -C builddir && meson install -C builddir' && \
-                 sudo systemctl restart postgresql@{pg}-main",
-                meerkat.git_url, meerkat.git_ref
-            ))?;
-        }
-
-        // Build rekall from source
-        if let Some(ref rekall) = self.config.rekall {
-            info!("Building rekall from source");
-            ssh_base(&format!(
-                "bash -c 'export GIT_SSH_COMMAND=\"ssh -i ~/.ssh/rekall -o StrictHostKeyChecking=no\" && \
-                 source ~/.cargo/env && cd /tmp && git clone {} rekall && cd rekall && git checkout {} && \
-                 cargo build --release' && \
-                 sudo cp /tmp/rekall/target/release/rekall /usr/local/bin/",
-                rekall.git_url, rekall.git_ref
-            ))?;
-        }
-
-        Ok(())
+        let state = StateManager::new(&self.config.name_prefix)?;
+        super::ssh_provision(ip, ssh_priv_path, &self.config, &state, deploy_key_paths)
     }
 
     fn terminate_instance(&self, instance_id: &str) -> Result<()> {
@@ -578,7 +487,7 @@ impl InfraBackend for AwsNativeBackend {
         self.save_state(&state)?;
 
         // SSH provisioning (deploy keys + builds)
-        self.ssh_provision(&public_ip, ssh_priv_path, deploy_key_paths)?;
+        self.run_provision(&public_ip, ssh_priv_path, deploy_key_paths)?;
 
         let dsn = format!(
             "host={public_ip} port={} dbname=rekall user=rekall password=rekall sslmode=disable",

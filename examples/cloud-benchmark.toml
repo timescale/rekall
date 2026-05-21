@@ -22,7 +22,7 @@ dsn = "host=localhost port=5432 dbname=rekall user=rekall password=rekall"
 provider = "aws"
 region = "us-east-1"
 instance_type = "r7g.2xlarge"
-disk_size_gb = 100
+disk_size_gb = 1000
 pg_version = 18
 extensions = ["pgvector", "meerkat"]
 name_prefix = "rekall"

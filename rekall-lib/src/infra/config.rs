@@ -15,7 +15,7 @@ fn default_instance_type() -> String {
 }
 
 fn default_disk_size() -> u32 {
-    100
+    1000
 }
 
 fn default_pg_version() -> u32 {
@@ -297,7 +297,7 @@ mod tests {
         assert_eq!(cfg.provider, "aws");
         assert_eq!(cfg.region, "us-east-1");
         assert_eq!(cfg.instance_type, "r7g.2xlarge");
-        assert_eq!(cfg.disk_size_gb, 100);
+        assert_eq!(cfg.disk_size_gb, 1000);
         assert_eq!(cfg.pg_version, 18);
         assert_eq!(cfg.pg_port, 5432);
         assert!(cfg.ssh_key.is_none());
