@@ -56,6 +56,30 @@ pub enum Error {
     #[error("Sweep references unknown index '{name}'")]
     SweepIndexNotFound { name: String },
 
+    #[error(
+        "Terraform not found. Install Terraform: \
+         https://developer.hashicorp.com/terraform/install"
+    )]
+    TerraformNotFound,
+
+    #[error("Terraform {command} failed: {detail}")]
+    TerraformFailed { command: String, detail: String },
+
+    #[error("No infrastructure running. Run `rekall infra up` first.")]
+    InfraNotRunning,
+
+    #[error(
+        "AWS credentials not configured. Run `aws configure` or set \
+         AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY environment variables."
+    )]
+    AwsCredentialsMissing,
+
+    #[error("Infrastructure timeout: PostgreSQL not ready after {timeout_secs}s. SSH into the instance and check /var/log/rekall-setup.log")]
+    InfraTimeout { timeout_secs: u64 },
+
+    #[error("SSH key generation failed: {0}")]
+    SshKeyGen(String),
+
     #[error("{0}")]
     Other(#[from] anyhow::Error),
 }

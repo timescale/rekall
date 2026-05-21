@@ -25,6 +25,7 @@ bytes = { workspace = true }
 futures-util = { workspace = true }
 shellexpand = { workspace = true }
 tabled = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

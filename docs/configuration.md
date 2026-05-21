@@ -241,4 +241,14 @@ rekall report <config>               # generate report
 rekall config [<config>]             # show config(s)
 rekall dataset info <file.hdf5>      # inspect dataset
 rekall dataset validate <file.hdf5>  # validate dataset
+
+rekall infra init [-c config]         # generate setup resources + instructions
+rekall infra up [-c config]           # provision cloud instance
+rekall infra down [-c config] [-n N]  # destroy cloud instance
+rekall infra list                     # list all instances
+rekall infra status [-c config] [-n N]# show instance status
+rekall infra ssh [-c config] [-n N]   # SSH into instance
+rekall infra dsn [-c config] [-n N]   # print connection string
+rekall infra deploy-key [-c config]   # generate deploy key for GitHub
+rekall infra iam-policy [-c config]   # print IAM template
 ```

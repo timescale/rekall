@@ -1,0 +1,15 @@
+# Local overrides for cloud-benchmark.toml
+# Copy this file to cloud-benchmark.local.toml and fill in your values.
+# The .local.toml file is gitignored and never committed.
+
+[infra]
+ssh_key = "~/.ssh/id_ed25519.pub"
+iam_instance_profile = "rekall-profile"
+
+[infra.rekall]
+git_url = "git@github.com:tigerdata/rekall.git"
+git_ref = "main"
+
+[infra.meerkat]
+git_url = "git@github.com:tigerdata/meerkat.git"
+git_ref = "main"

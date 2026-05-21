@@ -31,6 +31,8 @@ find? Total recall means you found them all.
   minimal measurement overhead.
 - **Full traceability**: every run captures the effective config, PG version,
   settings, and extension versions in both stdout and JSON output.
+- **Cloud infrastructure**: provision AWS EC2 instances with PostgreSQL,
+  extensions, and rekall pre-installed via `rekall infra up`.
 
 ## Quick Start
 
@@ -66,10 +68,37 @@ rekall run configs/cohere-1m/
 rekall run configs/cohere-1m/ --rebuild
 ```
 
+## Cloud Benchmarks
+
+Provision AWS EC2 instances with PostgreSQL and run benchmarks remotely:
+
+```bash
+# One-time: generate IAM template, deploy keys, and local config
+rekall infra init -c examples/cloud-benchmark.toml
+# → follow the printed instructions (apply IAM, add deploy key, edit .local.toml)
+
+# Provision instance (installs PG, extensions, rekall)
+rekall infra up -c examples/cloud-benchmark.toml
+
+# SSH in and run benchmarks
+rekall infra ssh -c examples/cloud-benchmark.toml
+
+# List all instances
+rekall infra list
+
+# Tear down
+rekall infra down -c examples/cloud-benchmark.toml
+```
+
+See [Cloud Infrastructure Guide](docs/cloud-infrastructure.md) for
+full setup instructions and configuration reference.
+
 ## Documentation
 
 - [Configuration Guide](docs/configuration.md) — config files, local
   overrides, directory groups, GUC defaults
+- [Cloud Infrastructure](docs/cloud-infrastructure.md) — AWS provisioning,
+  SSH keys, instance types
 - [DESIGN.md](DESIGN.md) — architecture, traits, data flow, roadmap
 
 ## License

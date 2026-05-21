@@ -4,6 +4,7 @@ pub mod backend;
 pub mod config;
 pub mod dataset;
 pub mod error;
+pub mod infra;
 pub mod metrics;
 pub mod output;
 pub mod phase;

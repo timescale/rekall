@@ -151,6 +151,117 @@ enum Command {
         /// Path to a specific config file (optional)
         config: Option<PathBuf>,
     },
+
+    /// Manage cloud infrastructure for benchmarks
+    Infra {
+        #[command(subcommand)]
+        command: InfraCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum InfraCommand {
+    /// Initialize local resources and print setup instructions.
+    /// Generates deploy keys, IAM templates, and a local config template.
+    /// Run this once before your first `infra up`.
+    #[command(alias = "setup")]
+    Init {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Output IAM template as Terraform HCL instead of CloudFormation
+        #[arg(long)]
+        terraform: bool,
+    },
+
+    /// Provision an AWS EC2 instance with PostgreSQL
+    Up {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// AWS region override
+        #[arg(long)]
+        region: Option<String>,
+
+        /// Instance type override
+        #[arg(long)]
+        instance_type: Option<String>,
+    },
+
+    /// Destroy cloud infrastructure
+    Down {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// Show infrastructure status
+    Status {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// List all provisioned instances
+    #[command(alias = "ls")]
+    List,
+
+    /// SSH into a benchmark instance
+    Ssh {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// Print the PostgreSQL DSN for a cloud instance
+    Dsn {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Instance name (name_prefix). Alternative to --config.
+        #[arg(short, long)]
+        name: Option<String>,
+    },
+
+    /// Print IAM policy and role templates for AWS setup.
+    /// Review and apply these in your AWS account before running `infra up`.
+    IamPolicy {
+        /// Config file with [infra] section (for s3_bucket scoping)
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Output as CloudFormation YAML instead of Terraform HCL
+        #[arg(long)]
+        cloudformation: bool,
+    },
+
+    /// Generate a deploy key for GitHub access.
+    /// Add the printed public key to your GitHub repos as a deploy key
+    /// before running `infra up`.
+    DeployKey {
+        /// Config file with [infra] section
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Force regenerate even if a key already exists
+        #[arg(long)]
+        regenerate: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -198,7 +309,7 @@ async fn main() -> anyhow::Result<()> {
             reload,
             ..
         } => {
-            let groups = rekall_lib::config::resolve_config_groups(&configs)?;
+            let mut groups = rekall_lib::config::resolve_config_groups(&configs)?;
 
             let phases = if let Some(ref p) = phase {
                 vec![p.parse().map_err(|e: String| anyhow::anyhow!(e))?]
@@ -206,8 +317,10 @@ async fn main() -> anyhow::Result<()> {
                 Phase::all().to_vec()
             };
 
-            for group in &groups {
-                if groups.len() > 1 {
+            let num_groups = groups.len();
+            for group in &mut groups {
+                resolve_infra_dsn(&mut group.config);
+                if num_groups > 1 {
                     println!("\n{}", "=".repeat(60));
                     println!("=== Group: {} ===", group.name);
                     println!("{}\n", "=".repeat(60));
@@ -227,7 +340,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Init { config } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
+            let mut cfg = BenchmarkConfig::from_path(&config)?;
+            resolve_infra_dsn(&mut cfg);
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Init], None, false, false).await?;
@@ -239,6 +353,7 @@ async fn main() -> anyhow::Result<()> {
             ..
         } => {
             let mut cfg = BenchmarkConfig::from_path(&config)?;
+            resolve_infra_dsn(&mut cfg);
             if let Some(p) = parallelism {
                 cfg.load.parallelism = p;
             }
@@ -248,7 +363,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Index { config, name } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
+            let mut cfg = BenchmarkConfig::from_path(&config)?;
+            resolve_infra_dsn(&mut cfg);
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
@@ -257,7 +373,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Search { config, index } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
+            let mut cfg = BenchmarkConfig::from_path(&config)?;
+            resolve_infra_dsn(&mut cfg);
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent
@@ -271,7 +388,8 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Report { config } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
+            let mut cfg = BenchmarkConfig::from_path(&config)?;
+            resolve_infra_dsn(&mut cfg);
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Report], None, false, false).await?;
@@ -334,6 +452,10 @@ async fn main() -> anyhow::Result<()> {
                     .map_err(|e| anyhow::anyhow!("CSV export failed: {e}"))?;
                 println!("CSV written to {}", csv_path.display());
             }
+        }
+
+        Command::Infra { command } => {
+            handle_infra(command)?;
         }
 
         Command::Config { config } => {
@@ -461,6 +583,343 @@ fn show_all_configs() {
                 println!("{} (ERROR: {e})", path.display());
                 println!();
             }
+        }
+    }
+}
+
+fn load_infra_config(
+    config: Option<&PathBuf>,
+) -> anyhow::Result<rekall_lib::infra::config::InfraConfig> {
+    if let Some(path) = config {
+        let cfg = BenchmarkConfig::from_path(path)?;
+        cfg.infra.ok_or_else(|| {
+            anyhow::anyhow!(
+                "Config '{}' has no [infra] section. Add an [infra] section or use defaults.",
+                path.display()
+            )
+        })
+    } else {
+        Ok(rekall_lib::infra::config::InfraConfig::default())
+    }
+}
+
+/// Resolve infra config from --config or --name. --name creates a
+/// minimal config targeting an existing instance by name_prefix.
+fn resolve_infra_config(
+    config: Option<&PathBuf>,
+    name: Option<&String>,
+) -> anyhow::Result<rekall_lib::infra::config::InfraConfig> {
+    if let Some(n) = name {
+        Ok(rekall_lib::infra::config::InfraConfig {
+            name_prefix: n.clone(),
+            ..Default::default()
+        })
+    } else {
+        load_infra_config(config)
+    }
+}
+
+fn handle_infra(command: InfraCommand) -> anyhow::Result<()> {
+    match command {
+        InfraCommand::Init { config, terraform } => {
+            let infra_cfg = load_infra_config(config.as_ref()).unwrap_or_default();
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+
+            // Generate deploy keys for rekall and meerkat repos
+            let repo_names = vec!["rekall", "meerkat"];
+            let deploy_keys = mgr.ensure_deploy_keys(&repo_names, false)?;
+            for key in &deploy_keys {
+                if key.generated {
+                    println!("Generated deploy key for '{}'", key.repo_name);
+                } else {
+                    println!("Deploy key for '{}' already exists", key.repo_name);
+                }
+            }
+
+            // Step 2: Write IAM template (CloudFormation by default)
+            let iam_filename = if terraform {
+                "rekall-iam.tf"
+            } else {
+                "rekall-iam.yaml"
+            };
+            let iam_content = if terraform {
+                rekall_lib::infra::iam_terraform_template(&infra_cfg)
+            } else {
+                rekall_lib::infra::iam_cloudformation_template(&infra_cfg)
+            };
+            std::fs::write(iam_filename, &iam_content)?;
+            println!("Wrote IAM template to {iam_filename}");
+
+            // Step 3: Write local config template if it doesn't exist
+            if let Some(ref cfg_path) = config {
+                let local_path = cfg_path.with_file_name(format!(
+                    "{}.local.toml",
+                    cfg_path.file_stem().unwrap_or_default().to_string_lossy()
+                ));
+                if !local_path.exists() {
+                    let local_content = r#"# Local overrides (gitignored, never committed)
+
+[infra]
+ssh_key = "~/.ssh/id_ed25519.pub"
+iam_instance_profile = "rekall-profile"
+
+# Private repo URLs (uses the deploy key generated by `rekall infra init`)
+# [infra.rekall]
+# git_url = "git@github.com:org/rekall.git"
+# git_ref = "main"
+
+# [infra.meerkat]
+# git_url = "git@github.com:org/meerkat.git"
+# git_ref = "main"
+"#;
+                    std::fs::write(&local_path, local_content)?;
+                    println!("Wrote local config template to {}", local_path.display());
+                }
+            }
+
+            // Print instructions
+            println!();
+            println!("=== Setup instructions ===");
+            println!();
+
+            let mut step = 1;
+
+            println!("{step}. Apply the IAM template in your AWS account:");
+            if terraform {
+                println!("   cp {iam_filename} <your-infra-repo>/ && cd <your-infra-repo> && terraform apply");
+            } else {
+                println!("   Option A: Upload {iam_filename} in AWS Console → CloudFormation → Create stack");
+                println!("   Option B: aws cloudformation deploy \\");
+                println!("               --template-file {iam_filename} \\");
+                println!("               --stack-name rekall-iam \\");
+                println!("               --capabilities CAPABILITY_NAMED_IAM");
+            }
+            println!("   This creates the IAM role and instance profile (one-time).");
+            println!();
+            step += 1;
+
+            println!("{step}. Add deploy keys to your private GitHub repos");
+            println!("   (each repo → Settings → Deploy keys → Add deploy key, read-only):");
+            println!();
+            for key in &deploy_keys {
+                println!("   {}:", key.repo_name);
+                println!("   {}", key.public_key.trim());
+                println!();
+            }
+            println!("   Skip this step if you only use public repos.");
+            println!();
+            step += 1;
+
+            if let Some(ref cfg_path) = config {
+                let local_path = cfg_path.with_file_name(format!(
+                    "{}.local.toml",
+                    cfg_path.file_stem().unwrap_or_default().to_string_lossy()
+                ));
+                println!("{step}. Edit {}:", local_path.display());
+                println!("   - Set ssh_key to your SSH private key path");
+                println!("   - Set iam_instance_profile to the profile name from step 1");
+                println!("   - Uncomment and set git URLs for private repos");
+                println!();
+                println!("   Verify the merged config with:");
+                println!("   rekall config {}", cfg_path.display());
+                println!();
+                step += 1;
+            } else {
+                println!("{step}. Create a .local.toml override next to your config file:");
+                println!("   cp examples/cloud-benchmark.local.toml.example \\");
+                println!("      examples/cloud-benchmark.local.toml");
+                println!("   Then set ssh_key, iam_instance_profile, and git URLs.");
+                println!();
+                step += 1;
+            }
+
+            println!("{step}. Provision the instance:");
+            if let Some(ref cfg_path) = config {
+                println!("   rekall infra up -c {}", cfg_path.display());
+            } else {
+                println!("   rekall infra up -c examples/cloud-benchmark.toml");
+            }
+        }
+
+        InfraCommand::Up {
+            config,
+            region,
+            instance_type,
+        } => {
+            let mut infra_cfg = load_infra_config(config.as_ref())?;
+            if let Some(r) = region {
+                infra_cfg.region = r;
+            }
+            if let Some(it) = instance_type {
+                infra_cfg.instance_type = it;
+            }
+
+            println!(
+                "Provisioning {} instance in {}...",
+                infra_cfg.instance_type, infra_cfg.region
+            );
+            println!("  PG version: {}", infra_cfg.pg_version);
+            println!("  Disk: {} GB (gp3)", infra_cfg.disk_size_gb);
+            println!(
+                "  Extensions: {}",
+                if infra_cfg.extensions.is_empty() {
+                    "none".to_string()
+                } else {
+                    infra_cfg.extensions.join(", ")
+                }
+            );
+            println!();
+
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let output = mgr.up()?;
+
+            println!();
+            println!("Instance ready:");
+            println!("  IP:            {}", output.public_ip);
+            println!(
+                "  Instance:      {} ({})",
+                output.instance_id, output.instance_type
+            );
+            println!("  DSN:           {}", output.dsn);
+            println!("  IAM role:      {}", output.iam_profile);
+            println!();
+            println!("SSH:  {}", mgr.ssh_command()?);
+            println!("DSN:  rekall infra dsn");
+        }
+
+        InfraCommand::Down { config, name } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            mgr.down()?;
+            println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
+        }
+
+        InfraCommand::Status { config, name } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let status = mgr.status()?;
+
+            println!("Instance: {}", infra_cfg.name_prefix);
+            if !status.running {
+                println!("  Status:     not running");
+                return Ok(());
+            }
+
+            if let Some(ref ip) = status.public_ip {
+                println!("  IP:         {ip}");
+            }
+            if let Some(ref id) = status.instance_id {
+                println!("  Instance:   {id}");
+            }
+            if let Some(ref it) = status.instance_type {
+                println!("  Type:       {it}");
+            }
+            println!(
+                "  PG ready:   {}",
+                if status.pg_ready { "yes" } else { "no" }
+            );
+            if let Some(ref dsn) = status.dsn {
+                println!("  DSN:        {dsn}");
+            }
+            if let Some(ref arn) = status.iam_profile {
+                println!("  IAM role:   {arn}");
+            }
+        }
+
+        InfraCommand::List => {
+            let instances = rekall_lib::infra::list_instances()?;
+            if instances.is_empty() {
+                println!("No instances provisioned.");
+                println!(
+                    "Run `rekall infra init -c examples/cloud-benchmark.toml` to get started."
+                );
+                return Ok(());
+            }
+
+            for inst in &instances {
+                let state = if inst.status.running {
+                    "running"
+                } else {
+                    "stopped"
+                };
+                let ip = inst.status.public_ip.as_deref().unwrap_or("-");
+                let itype = inst.status.instance_type.as_deref().unwrap_or("-");
+                let pg = if inst.status.pg_ready { "ready" } else { "-" };
+                println!(
+                    "{:<20} {:<10} {:<16} {:<14} pg: {}",
+                    inst.name, state, ip, itype, pg
+                );
+            }
+        }
+
+        InfraCommand::Ssh { config, name } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let cmd = mgr.ssh_command()?;
+
+            let parts: Vec<&str> = cmd.split_whitespace().collect();
+            if parts.len() < 2 {
+                return Err(anyhow::anyhow!("Invalid SSH command: {cmd}"));
+            }
+            let status = std::process::Command::new(parts[0])
+                .args(&parts[1..])
+                .status()?;
+
+            std::process::exit(status.code().unwrap_or(1));
+        }
+
+        InfraCommand::Dsn { config, name } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let dsn = mgr.dsn()?;
+            println!("{dsn}");
+        }
+
+        InfraCommand::IamPolicy {
+            config,
+            cloudformation,
+        } => {
+            let infra_cfg = load_infra_config(config.as_ref()).unwrap_or_default();
+            if cloudformation {
+                print!(
+                    "{}",
+                    rekall_lib::infra::iam_cloudformation_template(&infra_cfg)
+                );
+            } else {
+                print!("{}", rekall_lib::infra::iam_terraform_template(&infra_cfg));
+            }
+        }
+
+        InfraCommand::DeployKey { config, regenerate } => {
+            let infra_cfg = load_infra_config(config.as_ref())?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let repo_names = vec!["rekall", "meerkat"];
+            let keys = mgr.ensure_deploy_keys(&repo_names, regenerate)?;
+
+            println!("Add each key to the corresponding GitHub repo");
+            println!("(Settings → Deploy keys → read-only):");
+            println!();
+            for key in &keys {
+                let status = if key.generated { "generated" } else { "exists" };
+                println!("{} ({status}):", key.repo_name);
+                println!("{}", key.public_key.trim());
+                println!();
+            }
+            if regenerate {
+                println!("Keys regenerated. Update the deploy keys on GitHub.");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// If [infra] is configured and running, override the connection DSN.
+fn resolve_infra_dsn(config: &mut BenchmarkConfig) {
+    if let Some(ref infra) = config.infra {
+        if let Some(dsn) = rekall_lib::infra::resolve_infra_dsn(infra) {
+            tracing::info!("Using infrastructure DSN: {dsn}");
+            config.connection.dsn = dsn;
         }
     }
 }

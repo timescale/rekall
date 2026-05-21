@@ -185,6 +185,8 @@ pub struct BenchmarkConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub infra: Option<crate::infra::config::InfraConfig>,
 }
 
 impl BenchmarkConfig {
