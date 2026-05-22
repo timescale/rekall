@@ -255,16 +255,19 @@ deduped if its body already appears in the committed file.
 
 ### 3. Deploy keys (auto-generated, per-repo)
 
-Ephemeral key pairs for instances to access private GitHub repos. Rekall
-generates one per repo and stores them in
-`.rekall/infra/{name_prefix}/deploy-keys/`. The private keys are uploaded
-to instances via SCP over SSH (encrypted, never in provider state or
-instance metadata). Each `git clone` uses `GIT_SSH_COMMAND` to select
-the correct key.
+Key pairs for instances to access private GitHub repos. Rekall generates
+**one per repo, shared across every instance you ever launch**, stored in
+`.rekall/infra/deploy-keys/`. Register each public key on the corresponding
+GitHub repo **once** — the same key is reused for every `name_prefix` and
+every instance type going forward.
 
-The deploy key persists across `infra up`/`down` cycles so you don't need
-to re-add it to GitHub. Regenerate with `rekall infra deploy-key --regenerate`
-if you need to rotate it.
+The private keys are uploaded to instances via SCP over SSH (encrypted,
+never in provider state or instance metadata). Each `git clone` uses
+`GIT_SSH_COMMAND` to select the correct key.
+
+Keys persist across `infra up`/`down` cycles. Regenerate with
+`rekall infra deploy-key --regenerate` if you need to rotate them (you'll
+need to update the public key on GitHub afterward).
 
 ## S3 Dataset Access
 

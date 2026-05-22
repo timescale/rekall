@@ -96,7 +96,7 @@ impl InfraManager {
         self.state.ensure_dirs()?;
 
         for repo_name in &self.config.private_repo_names() {
-            if !self.state.has_deploy_key(repo_name) {
+            if !self.state.has_deploy_key(repo_name)? {
                 return Err(Error::Config(format!(
                     "No deploy key for repo '{repo_name}'. \
                      Run `rekall infra init` first to generate deploy keys, \
@@ -155,9 +155,7 @@ impl InfraManager {
 
         let mut keys = Vec::new();
         for repo_name in repo_names {
-            let key =
-                self.state
-                    .ensure_deploy_key(repo_name, &self.config.name_prefix, regenerate)?;
+            let key = self.state.ensure_deploy_key(repo_name, regenerate)?;
             keys.push(key);
         }
         Ok(keys)

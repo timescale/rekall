@@ -28,7 +28,7 @@ impl StateManager {
     }
 
     pub fn ensure_dirs(&self) -> Result<()> {
-        let dirs = [self.deploy_key_dir(), self.terraform_dir()];
+        let dirs = [deploy_key_dir()?, self.terraform_dir()];
         for dir in &dirs {
             std::fs::create_dir_all(dir).map_err(|e| {
                 Error::Config(format!("Cannot create state dir '{}': {e}", dir.display()))
@@ -41,25 +41,13 @@ impl StateManager {
         self.base_dir.join("terraform")
     }
 
-    fn deploy_key_dir(&self) -> PathBuf {
-        self.base_dir.join("deploy-keys")
+    pub fn has_deploy_key(&self, repo_name: &str) -> Result<bool> {
+        Ok(repo_key_path(repo_name)?.exists() && repo_key_pub_path(repo_name)?.exists())
     }
 
-    fn repo_key_path(&self, repo_name: &str) -> PathBuf {
-        self.deploy_key_dir().join(repo_name)
-    }
-
-    fn repo_key_pub_path(&self, repo_name: &str) -> PathBuf {
-        self.deploy_key_dir().join(format!("{repo_name}.pub"))
-    }
-
-    pub fn has_deploy_key(&self, repo_name: &str) -> bool {
-        self.repo_key_path(repo_name).exists() && self.repo_key_pub_path(repo_name).exists()
-    }
-
-    pub fn generate_deploy_key(&self, repo_name: &str, name_prefix: &str) -> Result<DeployKey> {
-        let key_path = self.repo_key_path(repo_name);
-        let pub_path = self.repo_key_pub_path(repo_name);
+    pub fn generate_deploy_key(&self, repo_name: &str) -> Result<DeployKey> {
+        let key_path = repo_key_path(repo_name)?;
+        let pub_path = repo_key_pub_path(repo_name)?;
 
         if key_path.exists() {
             std::fs::remove_file(&key_path).ok();
@@ -77,7 +65,7 @@ impl StateManager {
                 "-N",
                 "",
                 "-C",
-                &format!("{name_prefix}/{repo_name}"),
+                &format!("rekall/{repo_name}"),
             ])
             .output()
             .map_err(|e| Error::SshKeyGen(format!("ssh-keygen failed to start: {e}")))?;
@@ -109,14 +97,9 @@ impl StateManager {
         })
     }
 
-    pub fn ensure_deploy_key(
-        &self,
-        repo_name: &str,
-        name_prefix: &str,
-        regenerate: bool,
-    ) -> Result<DeployKey> {
-        if self.has_deploy_key(repo_name) && !regenerate {
-            let pub_path = self.repo_key_pub_path(repo_name);
+    pub fn ensure_deploy_key(&self, repo_name: &str, regenerate: bool) -> Result<DeployKey> {
+        if self.has_deploy_key(repo_name)? && !regenerate {
+            let pub_path = repo_key_pub_path(repo_name)?;
             let public_key = std::fs::read_to_string(&pub_path).map_err(|e| {
                 Error::SshKeyGen(format!(
                     "Cannot read public key '{}': {e}",
@@ -126,16 +109,16 @@ impl StateManager {
             return Ok(DeployKey {
                 repo_name: repo_name.to_string(),
                 public_key,
-                private_key_path: self.repo_key_path(repo_name),
+                private_key_path: repo_key_path(repo_name)?,
                 generated: false,
             });
         }
-        self.generate_deploy_key(repo_name, name_prefix)
+        self.generate_deploy_key(repo_name)
     }
 
     /// List all deploy key private key paths (for uploading to instances).
     pub fn deploy_key_paths(&self) -> Result<Vec<PathBuf>> {
-        let dir = self.deploy_key_dir();
+        let dir = deploy_key_dir()?;
         if !dir.exists() {
             return Ok(Vec::new());
         }
@@ -207,6 +190,21 @@ pub fn detect_public_ip() -> Result<String> {
     }
 
     Ok(ip)
+}
+
+/// Deploy keys are account-wide, shared across every `name_prefix`. One
+/// key per repo, registered once on GitHub, reused for every instance
+/// you ever launch (regardless of instance type or suite name).
+pub fn deploy_key_dir() -> Result<PathBuf> {
+    Ok(state_base_dir()?.join("deploy-keys"))
+}
+
+fn repo_key_path(repo_name: &str) -> Result<PathBuf> {
+    Ok(deploy_key_dir()?.join(repo_name))
+}
+
+fn repo_key_pub_path(repo_name: &str) -> Result<PathBuf> {
+    Ok(deploy_key_dir()?.join(format!("{repo_name}.pub")))
 }
 
 fn state_base_dir() -> Result<PathBuf> {
