@@ -131,7 +131,9 @@ if [ "$VECTORCHORD" = "1" ]; then
         cargo install "cargo-pgrx@${PGRX_VERSION}" --locked
         cargo pgrx init "--pg${PG_VERSION}=$PG_CONFIG"
 
-        cargo pgrx install --release --pg-config="$PG_CONFIG"
+        # --sudo: build as ubuntu (keeps target/ cache here) but use sudo
+        # for the final copy into /usr/{lib,share}/postgresql/*/.
+        cargo pgrx install --release --sudo --pg-config="$PG_CONFIG"
         sudo systemctl restart "postgresql@${PG_VERSION}-main"
         echo "=== VectorChord installed ==="
     fi
