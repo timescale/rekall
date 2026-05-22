@@ -1,9 +1,9 @@
 # Infra config for a Graviton3 instance with 64 GB RAM.
 #
 # Usage:
-#   rekall infra init -c examples/infra/graviton-64gb.toml
-#   rekall infra up -c examples/infra/graviton-64gb.toml
-#   rekall infra ssh -c examples/infra/graviton-64gb.toml
+#   rekall infra init -c examples/infra/r7g.2xlarge.toml
+#   rekall infra up -c examples/infra/r7g.2xlarge.toml
+#   rekall infra ssh -c examples/infra/r7g.2xlarge.toml
 
 provider = "aws"
 region = "us-east-1"

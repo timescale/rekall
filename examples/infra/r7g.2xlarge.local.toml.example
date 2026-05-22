@@ -1,5 +1,5 @@
 # Local overrides (gitignored, never committed)
-# Copy to graviton-64gb.local.toml and fill in your values.
+# Copy to r7g.2xlarge.local.toml and fill in your values.
 
 ssh_key = "~/.ssh/id_ed25519.pub"
 iam_instance_profile = "rekall-profile"
