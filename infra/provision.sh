@@ -53,12 +53,15 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
             git checkout "$MEERKAT_GIT_REF"
         fi
 
-        MEERKAT_MESON_OPTS="--buildtype=release -Dnative=true -Db_lto=true"
+        # Parallelise LTO across all available cores. Without this the link
+        # phase is single-threaded and pegs one core for many minutes.
+        LTO_THREADS=$(nproc 2>/dev/null || echo 1)
+        MEERKAT_MESON_OPTS="--buildtype=release -Dnative=true -Db_lto=true -Db_lto_threads=$LTO_THREADS"
         case "$MEERKAT_MESON_OPTS" in
             *"-Db_lto=true"*)
-                echo "NOTE: LTO is enabled (-Db_lto=true). The link step is"
-                echo "      single-threaded and typically takes 5-15 minutes"
-                echo "      with no output. This is expected, not a hang."
+                echo "NOTE: LTO is enabled with $LTO_THREADS parallel threads."
+                echo "      The link step still runs silently for a few minutes;"
+                echo "      this is expected, not a hang."
                 ;;
         esac
 
