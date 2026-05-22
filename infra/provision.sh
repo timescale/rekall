@@ -53,10 +53,19 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
             git checkout "$MEERKAT_GIT_REF"
         fi
 
+        MEERKAT_MESON_OPTS="--buildtype=release -Dnative=true -Db_lto=true"
+        case "$MEERKAT_MESON_OPTS" in
+            *"-Db_lto=true"*)
+                echo "NOTE: LTO is enabled (-Db_lto=true). The link step is"
+                echo "      single-threaded and typically takes 5-15 minutes"
+                echo "      with no output. This is expected, not a hang."
+                ;;
+        esac
+
         sudo bash -c "
             cd $MEERKAT_DIR
             rm -rf builddir
-            meson setup builddir --buildtype=release -Dnative=true -Db_lto=true -Dpg_config=$PG_CONFIG
+            meson setup builddir $MEERKAT_MESON_OPTS -Dpg_config=$PG_CONFIG
             meson compile -C builddir
             meson install -C builddir
         "
