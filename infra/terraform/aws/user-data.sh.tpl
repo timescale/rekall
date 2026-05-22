@@ -7,6 +7,34 @@ date
 
 export DEBIAN_FRONTEND=noninteractive
 
+%{ if huge_pages }
+echo "=== Configuring huge pages (vm.nr_hugepages=${nr_hugepages}, disable THP) ==="
+echo "vm.nr_hugepages = ${nr_hugepages}" > /etc/sysctl.d/30-postgres-hugepages.conf
+sysctl --system
+
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+cat > /etc/systemd/system/disable-thp.service << 'THPEOF'
+[Unit]
+Description=Disable Transparent Huge Pages
+DefaultDependencies=no
+After=local-fs.target
+Before=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+THPEOF
+
+systemctl daemon-reload
+systemctl enable disable-thp.service
+%{ endif }
+
 apt-get update
 apt-get install -y build-essential git curl wget pkg-config \
   postgresql-common apt-transport-https ca-certificates gnupg lsb-release \

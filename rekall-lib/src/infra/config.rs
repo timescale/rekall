@@ -34,6 +34,26 @@ fn default_git_ref() -> String {
     "main".to_string()
 }
 
+/// Parse a PG memory-size string (e.g. "8GB", "256MB", "1024kB") into bytes.
+/// PG accepts kB/MB/GB/TB suffixes, case-insensitive. Bare numbers are treated
+/// as bytes per PG convention.
+fn parse_size_bytes(s: &str) -> Option<u64> {
+    let s = s.trim();
+    let upper = s.to_ascii_uppercase();
+    let (num_part, mult): (&str, u64) = if let Some(n) = upper.strip_suffix("TB") {
+        (&s[..n.len()], 1024u64.pow(4))
+    } else if let Some(n) = upper.strip_suffix("GB") {
+        (&s[..n.len()], 1024u64.pow(3))
+    } else if let Some(n) = upper.strip_suffix("MB") {
+        (&s[..n.len()], 1024u64.pow(2))
+    } else if let Some(n) = upper.strip_suffix("KB") {
+        (&s[..n.len()], 1024)
+    } else {
+        (s, 1)
+    };
+    num_part.trim().parse::<u64>().ok().map(|n| n * mult)
+}
+
 fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
     match (base.as_table_mut(), overlay) {
         (Some(base_table), toml::Value::Table(overlay_table)) => {
@@ -73,6 +93,13 @@ pub struct InfraConfig {
     pub extensions: Vec<String>,
     #[serde(default)]
     pub pg_config: HashMap<String, String>,
+    /// Enable huge pages: pre-allocates kernel huge-page pool sized to
+    /// shared_buffers, disables THP, and sets PG `huge_pages = on`.
+    /// Reduces TLB pressure for vector-index workloads on large
+    /// shared_buffers but reserves the pool from normal RAM regardless
+    /// of PG usage — so leave off if you want a fair A/B comparison.
+    #[serde(default)]
+    pub huge_pages: bool,
     #[serde(default)]
     pub rekall: Option<GitSourceConfig>,
     #[serde(default)]
@@ -113,6 +140,7 @@ impl Default for InfraConfig {
             pg_port: default_pg_port(),
             extensions: Vec::new(),
             pg_config: HashMap::new(),
+            huge_pages: false,
             rekall: None,
             meerkat: None,
             pgvector: None,
@@ -287,7 +315,7 @@ impl InfraConfig {
         let mut config = HashMap::new();
 
         if let Some(ram_gb) = self.instance_ram_gb() {
-            let shared_buffers = ram_gb / 4;
+            let shared_buffers = ram_gb * 2 / 5;
             let maintenance_work_mem = ram_gb / 10;
             let effective_cache_size = ram_gb * 3 / 4;
 
@@ -301,10 +329,16 @@ impl InfraConfig {
                 format!("{effective_cache_size}GB"),
             );
             config.insert("work_mem".to_string(), "256MB".to_string());
+            config.insert("max_wal_size".to_string(), "16GB".to_string());
+            config.insert("min_wal_size".to_string(), "2GB".to_string());
             config.insert(
                 "max_parallel_maintenance_workers".to_string(),
                 "8".to_string(),
             );
+        }
+
+        if self.huge_pages {
+            config.insert("huge_pages".to_string(), "on".to_string());
         }
 
         for (k, v) in &self.pg_config {
@@ -312,6 +346,20 @@ impl InfraConfig {
         }
 
         config
+    }
+
+    /// Number of 2MB kernel huge pages to reserve, sized to shared_buffers
+    /// with ~10% overhead for PG's other shared-memory allocations
+    /// (lock tables, WAL buffers, etc.). Returns None if huge_pages is
+    /// disabled or shared_buffers can't be parsed.
+    pub fn nr_huge_pages(&self) -> Option<u64> {
+        if !self.huge_pages {
+            return None;
+        }
+        let pg = self.effective_pg_config();
+        let bytes = parse_size_bytes(pg.get("shared_buffers")?)?;
+        let pages = bytes / (2 * 1024 * 1024);
+        Some(pages * 110 / 100)
     }
 
     pub fn to_tfvars(&self) -> serde_json::Value {
@@ -329,6 +377,8 @@ impl InfraConfig {
             "pg_port": self.pg_port,
             "extensions": self.extensions,
             "pg_config": self.effective_pg_config(),
+            "huge_pages": self.huge_pages,
+            "nr_hugepages": self.nr_huge_pages().unwrap_or(0),
             "name_prefix": self.name_prefix,
         });
 
@@ -453,7 +503,7 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(64));
         let pg = cfg.effective_pg_config();
-        assert_eq!(pg["shared_buffers"], "16GB");
+        assert_eq!(pg["shared_buffers"], "25GB");
         assert_eq!(pg["maintenance_work_mem"], "6GB");
         assert_eq!(pg["effective_cache_size"], "48GB");
     }
@@ -466,7 +516,7 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(128));
         let pg = cfg.effective_pg_config();
-        assert_eq!(pg["shared_buffers"], "32GB");
+        assert_eq!(pg["shared_buffers"], "51GB");
         assert_eq!(pg["maintenance_work_mem"], "12GB");
         assert_eq!(pg["effective_cache_size"], "96GB");
     }
@@ -486,6 +536,55 @@ git_ref = "feat/parallel-build"
         assert_eq!(pg["shared_buffers"], "8GB");
         assert_eq!(pg["maintenance_work_mem"], "6GB");
         assert_eq!(pg["huge_pages"], "try");
+    }
+
+    #[test]
+    fn huge_pages_enabled_sets_pg_and_nr_pages() {
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            huge_pages: true,
+            ..Default::default()
+        };
+        let pg = cfg.effective_pg_config();
+        assert_eq!(pg["huge_pages"], "on");
+        // 25GB shared_buffers / 2MB = 12800 pages, +10% overhead = 14080
+        assert_eq!(cfg.nr_huge_pages(), Some(14080));
+    }
+
+    #[test]
+    fn huge_pages_disabled_yields_none() {
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            ..Default::default()
+        };
+        let pg = cfg.effective_pg_config();
+        assert!(!pg.contains_key("huge_pages"));
+        assert_eq!(cfg.nr_huge_pages(), None);
+    }
+
+    #[test]
+    fn huge_pages_user_override_wins() {
+        let mut pg_config = HashMap::new();
+        pg_config.insert("huge_pages".to_string(), "try".to_string());
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            huge_pages: true,
+            pg_config,
+            ..Default::default()
+        };
+        let pg = cfg.effective_pg_config();
+        assert_eq!(pg["huge_pages"], "try");
+        // Kernel pool still reserved — the flag drives the OS side regardless.
+        assert_eq!(cfg.nr_huge_pages(), Some(14080));
+    }
+
+    #[test]
+    fn parse_size_bytes_accepts_pg_suffixes() {
+        assert_eq!(parse_size_bytes("8GB"), Some(8 * 1024u64.pow(3)));
+        assert_eq!(parse_size_bytes("256MB"), Some(256 * 1024u64.pow(2)));
+        assert_eq!(parse_size_bytes("1024kB"), Some(1024 * 1024));
+        assert_eq!(parse_size_bytes("1024"), Some(1024));
+        assert_eq!(parse_size_bytes("bogus"), None);
     }
 
     #[test]

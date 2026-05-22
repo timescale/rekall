@@ -81,10 +81,12 @@ resource "aws_instance" "benchmark" {
   }
 
   user_data = templatefile("${path.module}/user-data.sh.tpl", {
-    pg_version = var.pg_version
-    extensions = var.extensions
-    pg_config  = var.pg_config
-    pg_port    = var.pg_port
+    pg_version   = var.pg_version
+    extensions   = var.extensions
+    pg_config    = var.pg_config
+    pg_port      = var.pg_port
+    huge_pages   = var.huge_pages
+    nr_hugepages = var.nr_hugepages
   })
 
   connection {

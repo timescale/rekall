@@ -46,6 +46,18 @@ variable "pg_config" {
   default     = {}
 }
 
+variable "huge_pages" {
+  description = "Pre-allocate kernel huge-page pool and disable THP"
+  type        = bool
+  default     = false
+}
+
+variable "nr_hugepages" {
+  description = "Number of 2MB huge pages to reserve (0 = disabled)"
+  type        = number
+  default     = 0
+}
+
 variable "ssh_public_key" {
   description = "SSH public key content"
   type        = string

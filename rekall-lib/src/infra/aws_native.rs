@@ -93,6 +93,11 @@ impl AwsNativeBackend {
         let port = self.config.pg_port;
         let pg_config = &self.config.effective_pg_config();
         let extensions = &self.config.extensions;
+        let huge_pages_setup = self
+            .config
+            .nr_huge_pages()
+            .map(huge_pages_setup_script)
+            .unwrap_or_default();
 
         let mut script = format!(
             r#"#!/bin/bash
@@ -103,7 +108,7 @@ echo "=== Rekall instance setup starting ==="
 date
 
 export DEBIAN_FRONTEND=noninteractive
-
+{huge_pages_setup}
 apt-get update
 apt-get install -y build-essential git curl wget pkg-config \
   postgresql-common apt-transport-https ca-certificates gnupg lsb-release \
@@ -659,6 +664,38 @@ impl InfraBackend for AwsNativeBackend {
     fn has_state(&self) -> bool {
         self.state_file().exists()
     }
+}
+
+fn huge_pages_setup_script(nr_pages: u64) -> String {
+    format!(
+        r#"
+echo "=== Configuring huge pages (vm.nr_hugepages={nr_pages}, disable THP) ==="
+echo "vm.nr_hugepages = {nr_pages}" > /etc/sysctl.d/30-postgres-hugepages.conf
+sysctl --system
+
+echo never > /sys/kernel/mm/transparent_hugepage/enabled
+echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+cat > /etc/systemd/system/disable-thp.service << 'THPEOF'
+[Unit]
+Description=Disable Transparent Huge Pages
+DefaultDependencies=no
+After=local-fs.target
+Before=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+THPEOF
+
+systemctl daemon-reload
+systemctl enable disable-thp.service
+"#
+    )
 }
 
 fn base64_encode(data: &[u8]) -> String {

@@ -168,10 +168,12 @@ PG settings are computed automatically from the instance type:
 
 | Setting | Formula |
 |---------|---------|
-| `shared_buffers` | 25% of RAM |
+| `shared_buffers` | 40% of RAM |
 | `maintenance_work_mem` | 10% of RAM |
 | `effective_cache_size` | 75% of RAM |
 | `work_mem` | 256 MB |
+| `max_wal_size` | 16 GB |
+| `min_wal_size` | 2 GB |
 | `max_parallel_maintenance_workers` | 8 |
 
 Override any setting explicitly in `[infra.pg_config]`:
@@ -181,6 +183,24 @@ Override any setting explicitly in `[infra.pg_config]`:
 shared_buffers = "32GB"     # override auto-computed value
 huge_pages = "try"          # add extra settings
 ```
+
+### Huge Pages
+
+Set `huge_pages = true` on `[infra]` to pre-allocate a kernel huge-page pool
+sized to `shared_buffers` (with ~10% overhead), disable Transparent Huge
+Pages, and set PG `huge_pages = on`. Reduces TLB pressure for random-access
+vector index workloads.
+
+```toml
+[infra]
+huge_pages = true
+```
+
+Note: the reserved huge-page pool is removed from the normal 4KB page
+allocator regardless of whether PG uses it. For A/B benchmarks comparing
+on vs off, bring up separate instances with this flag set differently —
+toggling only the PG-side `huge_pages` GUC on a shared OS configuration
+gives a confounded comparison.
 
 ### Configuration Reference
 
@@ -195,6 +215,7 @@ huge_pages = "try"          # add extra settings
 | `pg_version` | `18` | PostgreSQL major version |
 | `pg_port` | `5432` | PostgreSQL listen port |
 | `extensions` | `[]` | Extensions to install |
+| `huge_pages` | `false` | Reserve kernel huge pages + disable THP + set PG `huge_pages = on` |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
 | `ssh_key` | (required) | Path to your SSH public key |
 | `iam_instance_profile` | (required) | Pre-created IAM instance profile name |
