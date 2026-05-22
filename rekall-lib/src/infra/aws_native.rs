@@ -119,8 +119,10 @@ impl AwsNativeBackend {
             "x86_64"
         };
         let ami_arch = if arch == "arm64" { "arm64" } else { "amd64" };
+        let codename = self.config.ubuntu_codename();
+        let version = &self.config.ubuntu_version;
         let name_pattern =
-            format!("ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-{ami_arch}-server-*");
+            format!("ubuntu/images/hvm-ssd-gp3/ubuntu-{codename}-{version}-{ami_arch}-server-*");
 
         let result = self.run_aws_json(&[
             "ec2",
@@ -137,7 +139,7 @@ impl AwsNativeBackend {
 
         result.as_str().map(|s| s.to_string()).ok_or_else(|| {
             Error::Config(format!(
-                "No Ubuntu 24.04 {arch} AMI found in {}",
+                "No Ubuntu {version} {arch} AMI found in {}",
                 self.config.region
             ))
         })

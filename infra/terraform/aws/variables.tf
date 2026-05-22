@@ -34,6 +34,18 @@ variable "pg_version" {
   default     = 18
 }
 
+variable "ubuntu_version" {
+  description = "Ubuntu LTS version (e.g., 24.04, 26.04)"
+  type        = string
+  default     = "24.04"
+}
+
+variable "ubuntu_codename" {
+  description = "Ubuntu codename matching ubuntu_version (e.g., noble, resolute)"
+  type        = string
+  default     = "noble"
+}
+
 variable "ssh_public_key" {
   description = "SSH public key content"
   type        = string

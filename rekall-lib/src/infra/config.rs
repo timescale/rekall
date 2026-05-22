@@ -30,6 +30,10 @@ fn default_pg_port() -> u16 {
     5432
 }
 
+fn default_ubuntu_version() -> String {
+    "24.04".to_string()
+}
+
 fn default_git_ref() -> String {
     "main".to_string()
 }
@@ -89,6 +93,11 @@ pub struct InfraConfig {
     pub pg_version: u32,
     #[serde(default = "default_pg_port")]
     pub pg_port: u16,
+    /// Ubuntu LTS version for the AMI (e.g., "24.04", "26.04").
+    /// Default is the most-tested version — switching changes the
+    /// kernel/glibc/compiler baseline and can shift benchmark numbers.
+    #[serde(default = "default_ubuntu_version")]
+    pub ubuntu_version: String,
     #[serde(default)]
     pub extensions: Vec<String>,
     #[serde(default)]
@@ -138,6 +147,7 @@ impl Default for InfraConfig {
             disk_throughput: None,
             pg_version: default_pg_version(),
             pg_port: default_pg_port(),
+            ubuntu_version: default_ubuntu_version(),
             extensions: Vec::new(),
             pg_config: HashMap::new(),
             huge_pages: false,
@@ -203,6 +213,30 @@ impl InfraConfig {
             .as_ref()
             .and_then(|c| c.version.as_deref())
             .unwrap_or("1.1.1")
+    }
+
+    /// Ubuntu codename for the configured `ubuntu_version`. Used in the AMI
+    /// name pattern (e.g. `ubuntu-noble-24.04-...`). Falls back to "noble"
+    /// for unknown versions; `validate_ubuntu_version` catches those upfront.
+    pub fn ubuntu_codename(&self) -> &'static str {
+        match self.ubuntu_version.as_str() {
+            "22.04" => "jammy",
+            "24.04" => "noble",
+            "26.04" => "resolute",
+            _ => "noble",
+        }
+    }
+
+    /// Reject `ubuntu_version` values we haven't tested. Adding a new LTS
+    /// here also means trying the AMI search and full provision once.
+    pub fn validate_ubuntu_version(&self) -> std::result::Result<(), String> {
+        match self.ubuntu_version.as_str() {
+            "22.04" | "24.04" | "26.04" => Ok(()),
+            v => Err(format!(
+                "Unsupported ubuntu_version '{v}'. Supported: 22.04 (jammy), \
+                 24.04 (noble), 26.04 (resolute)"
+            )),
+        }
     }
 
     pub fn is_graviton(&self) -> bool {
@@ -375,6 +409,8 @@ impl InfraConfig {
             "disk_size_gb": self.disk_size_gb,
             "pg_version": self.pg_version,
             "pg_port": self.pg_port,
+            "ubuntu_version": self.ubuntu_version,
+            "ubuntu_codename": self.ubuntu_codename(),
             "name_prefix": self.name_prefix,
         });
 
@@ -505,6 +541,40 @@ git_ref = "feat/parallel-build"
         assert_eq!(pg["shared_buffers"], "25GB");
         assert_eq!(pg["maintenance_work_mem"], "6GB");
         assert_eq!(pg["effective_cache_size"], "48GB");
+    }
+
+    #[test]
+    fn ubuntu_version_default_is_24_04() {
+        let cfg = InfraConfig::default();
+        assert_eq!(cfg.ubuntu_version, "24.04");
+        assert_eq!(cfg.ubuntu_codename(), "noble");
+        assert!(cfg.validate_ubuntu_version().is_ok());
+    }
+
+    #[test]
+    fn ubuntu_version_26_04_maps_to_resolute() {
+        let cfg = InfraConfig {
+            ubuntu_version: "26.04".to_string(),
+            ..Default::default()
+        };
+        assert_eq!(cfg.ubuntu_codename(), "resolute");
+        assert!(cfg.validate_ubuntu_version().is_ok());
+        let vars = cfg.to_tfvars();
+        assert_eq!(vars["ubuntu_version"], "26.04");
+        assert_eq!(vars["ubuntu_codename"], "resolute");
+    }
+
+    #[test]
+    fn ubuntu_version_unknown_is_rejected() {
+        let cfg = InfraConfig {
+            ubuntu_version: "24.10".to_string(),
+            ..Default::default()
+        };
+        let err = cfg.validate_ubuntu_version().unwrap_err();
+        assert!(err.contains("24.10"));
+        assert!(err.contains("22.04"));
+        assert!(err.contains("24.04"));
+        assert!(err.contains("26.04"));
     }
 
     #[test]

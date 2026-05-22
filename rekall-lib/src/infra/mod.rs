@@ -70,6 +70,10 @@ impl InfraManager {
     pub fn up(&self) -> Result<InfraOutput> {
         check_aws_credentials()?;
 
+        self.config
+            .validate_ubuntu_version()
+            .map_err(Error::Config)?;
+
         let (ssh_pub_path, ssh_priv_path) = self.config.require_ssh_key().map_err(Error::Config)?;
         if !Path::new(&ssh_pub_path).exists() {
             return Err(Error::Config(format!(

@@ -214,6 +214,7 @@ gives a confounded comparison.
 | `disk_throughput` | (default) | gp3 throughput MiB/s (default 125) |
 | `pg_version` | `18` | PostgreSQL major version |
 | `pg_port` | `5432` | PostgreSQL listen port |
+| `ubuntu_version` | `"24.04"` | Ubuntu LTS version (`22.04`, `24.04`, or `26.04`) |
 | `extensions` | `[]` | Extensions to install |
 | `huge_pages` | `false` | Reserve kernel huge pages + disable THP + set PG `huge_pages = on` |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
