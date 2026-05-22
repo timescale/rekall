@@ -77,10 +77,6 @@ if [ "$VECTORCHORD" = "1" ]; then
         echo "=== Building VectorChord from source ==="
         source "$HOME/.cargo/env"
 
-        # pgrx version must match VectorChord's Cargo.toml
-        PGRX_VERSION=$(grep '^pgrx = ' "$VCHORD_DIR/Cargo.toml" 2>/dev/null \
-            | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "")
-
         if [ -d "$VCHORD_DIR" ]; then
             cd "$VCHORD_DIR"
             git fetch origin --tags
@@ -89,7 +85,17 @@ if [ "$VECTORCHORD" = "1" ]; then
             cd "$VCHORD_DIR"
         fi
         git checkout "$VECTORCHORD_VERSION"
-        PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+
+        # pgrx version must match VectorChord's Cargo.toml. Handle both
+        # `pgrx = "0.x.y"` (bare) and `pgrx = { version = "0.x.y", ... }`
+        # (table) by picking the first quoted string starting with a digit.
+        PGRX_VERSION=$(grep '^pgrx ' Cargo.toml | head -1 \
+            | grep -oE '"[0-9][^"]*"' | head -1 | tr -d '"')
+        if [ -z "$PGRX_VERSION" ]; then
+            echo "ERROR: could not parse pgrx version from Cargo.toml:" >&2
+            grep '^pgrx ' Cargo.toml >&2
+            exit 1
+        fi
 
         echo "Installing cargo-pgrx ${PGRX_VERSION}..."
         cargo install "cargo-pgrx@${PGRX_VERSION}" --locked
