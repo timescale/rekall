@@ -98,14 +98,32 @@ if [ "$VECTORCHORD" = "1" ]; then
         fi
         git checkout "$VECTORCHORD_VERSION"
 
-        # pgrx version must match VectorChord's Cargo.toml. Handle both
-        # `pgrx = "0.x.y"` (bare) and `pgrx = { version = "0.x.y", ... }`
-        # (table) by picking the first quoted string starting with a digit.
-        PGRX_VERSION=$(grep '^pgrx ' Cargo.toml | head -1 \
-            | grep -oE '"[0-9][^"]*"' | head -1 | tr -d '"')
+        # pgrx version must match VectorChord's Cargo.toml. Handle:
+        #   pgrx = "0.x.y"
+        #   pgrx = { version = "0.x.y", ... }
+        #   [dependencies.pgrx] then version = "0.x.y" (table form)
+        # by finding the first quoted version-shaped token on or after a
+        # pgrx-related line. Disable -e around the parse so a no-match
+        # doesn't silently kill the script via pipefail.
+        set +e
+        PGRX_VERSION=$(awk '
+            /^\[/ { in_pgrx=0 }
+            /^[[:space:]]*pgrx[[:space:]]*=/ { in_pgrx=1 }
+            /^\[(workspace\.)?dependencies\.pgrx\]/ { in_pgrx=1 }
+            in_pgrx && match($0, /"[=^~]?[0-9][^"]*"/) {
+                v = substr($0, RSTART+1, RLENGTH-2)
+                sub(/^[=^~]/, "", v)
+                print v
+                exit
+            }
+        ' Cargo.toml)
+        set -e
+
         if [ -z "$PGRX_VERSION" ]; then
-            echo "ERROR: could not parse pgrx version from Cargo.toml:" >&2
-            grep '^pgrx ' Cargo.toml >&2
+            echo "ERROR: could not parse pgrx version from Cargo.toml" >&2
+            echo "  pwd: $(pwd)" >&2
+            echo "  pgrx-related lines:" >&2
+            grep -n -i pgrx Cargo.toml >&2 || echo "  (none found)" >&2
             exit 1
         fi
 
