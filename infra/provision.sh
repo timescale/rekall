@@ -53,7 +53,7 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
         sudo bash -c "
             cd $MEERKAT_DIR
             rm -rf builddir
-            meson setup builddir --buildtype=release -Dpg_config=$PG_CONFIG
+            meson setup builddir --buildtype=release -Dnative=true -Db_lto=true -Dpg_config=$PG_CONFIG
             meson compile -C builddir
             meson install -C builddir
         "
