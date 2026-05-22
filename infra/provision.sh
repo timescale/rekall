@@ -76,21 +76,24 @@ if [ "$VECTORCHORD" = "1" ]; then
         echo "=== Building VectorChord from source ==="
         source "$HOME/.cargo/env"
 
-        # pgrx is required to build VectorChord
-        if ! command -v cargo-pgrx &>/dev/null; then
-            echo "Installing pgrx..."
-            cargo install cargo-pgrx --locked
-            cargo pgrx init "--pg${PG_VERSION}=$PG_CONFIG"
-        fi
+        # pgrx version must match VectorChord's Cargo.toml
+        PGRX_VERSION=$(grep '^pgrx = ' "$VCHORD_DIR/Cargo.toml" 2>/dev/null \
+            | head -1 | sed 's/.*"\(.*\)".*/\1/' || echo "")
 
         if [ -d "$VCHORD_DIR" ]; then
             cd "$VCHORD_DIR"
             git fetch origin
             git pull origin main || true
+            PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
         else
             git clone https://github.com/tensorchord/VectorChord.git "$VCHORD_DIR"
             cd "$VCHORD_DIR"
+            PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
         fi
+
+        echo "Installing cargo-pgrx ${PGRX_VERSION}..."
+        cargo install "cargo-pgrx@${PGRX_VERSION}" --locked
+        cargo pgrx init "--pg${PG_VERSION}=$PG_CONFIG"
 
         cargo pgrx install --release --pg-config="$PG_CONFIG"
         sudo systemctl restart "postgresql@${PG_VERSION}-main"
