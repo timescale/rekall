@@ -14,6 +14,7 @@
 #   MEERKAT_GIT_REF    — git ref for meerkat (default: main)
 #   REKALL_GIT_URL     — git URL for rekall (empty to skip)
 #   REKALL_GIT_REF     — git ref for rekall (default: main)
+#   VECTORCHORD        — set to "1" to install VectorChord
 
 set -euo pipefail
 
@@ -22,6 +23,7 @@ MEERKAT_GIT_URL="${MEERKAT_GIT_URL:-}"
 MEERKAT_GIT_REF="${MEERKAT_GIT_REF:-main}"
 REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
+VECTORCHORD="${VECTORCHORD:-}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
 REPOS_DIR="$HOME/repos"
@@ -62,6 +64,40 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
     fi
 fi
 
+# --- VectorChord ---
+
+if [ "$VECTORCHORD" = "1" ]; then
+    VCHORD_SO="/usr/lib/postgresql/${PG_VERSION}/lib/vchord.so"
+    VCHORD_DIR="$REPOS_DIR/vectorchord"
+
+    if [ -f "$VCHORD_SO" ]; then
+        echo "=== VectorChord already installed ($VCHORD_SO exists), skipping ==="
+    else
+        echo "=== Building VectorChord from source ==="
+        source "$HOME/.cargo/env"
+
+        # pgrx is required to build VectorChord
+        if ! command -v cargo-pgrx &>/dev/null; then
+            echo "Installing pgrx..."
+            cargo install cargo-pgrx --locked
+            cargo pgrx init "--pg${PG_VERSION}=$PG_CONFIG"
+        fi
+
+        if [ -d "$VCHORD_DIR" ]; then
+            cd "$VCHORD_DIR"
+            git fetch origin
+            git pull origin main || true
+        else
+            git clone https://github.com/tensorchord/VectorChord.git "$VCHORD_DIR"
+            cd "$VCHORD_DIR"
+        fi
+
+        cargo pgrx install --release --pg-config="$PG_CONFIG"
+        sudo systemctl restart "postgresql@${PG_VERSION}-main"
+        echo "=== VectorChord installed ==="
+    fi
+fi
+
 # --- Rekall ---
 
 if [ -n "$REKALL_GIT_URL" ]; then
@@ -96,6 +132,9 @@ echo ""
 echo "Repos cloned to ~/repos/. To update later:"
 if [ -n "$MEERKAT_GIT_URL" ]; then
     echo "  cd ~/repos/meerkat && git pull && sudo meson compile -C builddir && sudo meson install -C builddir"
+fi
+if [ "$VECTORCHORD" = "1" ]; then
+    echo "  cd ~/repos/vectorchord && git pull && cargo pgrx install --release --pg-config=$PG_CONFIG"
 fi
 if [ -n "$REKALL_GIT_URL" ]; then
     echo "  cd ~/repos/rekall && git pull && source ~/.cargo/env && cargo build --release && sudo cp target/release/rekall /usr/local/bin/"

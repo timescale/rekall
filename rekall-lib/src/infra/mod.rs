@@ -345,7 +345,8 @@ pub fn ssh_provision(
     }
 
     // Upload and run provisioning script
-    let has_builds = config.meerkat.is_some() || config.rekall.is_some();
+    let has_vectorchord = config.extensions.contains(&"vectorchord".to_string());
+    let has_builds = config.meerkat.is_some() || config.rekall.is_some() || has_vectorchord;
     if has_builds {
         info!("Uploading provisioning script");
 
@@ -370,6 +371,9 @@ pub fn ssh_provision(
         if let Some(ref r) = config.rekall {
             env_vars.push(format!("REKALL_GIT_URL={}", r.git_url));
             env_vars.push(format!("REKALL_GIT_REF={}", r.git_ref));
+        }
+        if has_vectorchord {
+            env_vars.push("VECTORCHORD=1".to_string());
         }
 
         info!("Running provisioning script");
