@@ -62,6 +62,13 @@ sudo -u postgres psql -p ${pg_port} -c "CREATE DATABASE rekall OWNER rekall"
 echo "=== Installing Rust ==="
 sudo -u ubuntu bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
 
+# tmux config
+sudo -u ubuntu bash -c 'cat > ~/.tmux.conf << TMUXEOF
+set-window-option -g mode-keys vi
+set -g history-limit 50000
+set -g default-terminal "xterm-256color"
+TMUXEOF'
+
 # Signal readiness
 touch /tmp/rekall-ready
 
