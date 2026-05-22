@@ -1,4 +1,7 @@
 #!/bin/bash
+# Cloud-init user-data for rekall benchmark instances.
+# Single source of truth for both aws_native and terraform backends.
+# Rendered by rekall_lib::infra::render_user_data via minijinja.
 set -euo pipefail
 exec > /var/log/rekall-setup.log 2>&1
 
@@ -7,9 +10,21 @@ date
 
 export DEBIAN_FRONTEND=noninteractive
 
-%{ if huge_pages }
-echo "=== Configuring huge pages (vm.nr_hugepages=${nr_hugepages}, disable THP) ==="
-echo "vm.nr_hugepages = ${nr_hugepages}" > /etc/sysctl.d/30-postgres-hugepages.conf
+{% if authorized_keys -%}
+echo "=== Installing team SSH keys ==="
+install -d -o ubuntu -g ubuntu -m 700 /home/ubuntu/.ssh
+cat >> /home/ubuntu/.ssh/authorized_keys <<'AUTHKEYSEOF'
+{% for key in authorized_keys -%}
+{{ key }}
+{% endfor -%}
+AUTHKEYSEOF
+chown ubuntu:ubuntu /home/ubuntu/.ssh/authorized_keys
+chmod 600 /home/ubuntu/.ssh/authorized_keys
+{%- endif %}
+
+{% if huge_pages -%}
+echo "=== Configuring huge pages (vm.nr_hugepages={{ nr_hugepages }}, disable THP) ==="
+echo "vm.nr_hugepages = {{ nr_hugepages }}" > /etc/sysctl.d/30-postgres-hugepages.conf
 sysctl --system
 
 echo never > /sys/kernel/mm/transparent_hugepage/enabled
@@ -33,7 +48,7 @@ THPEOF
 
 systemctl daemon-reload
 systemctl enable disable-thp.service
-%{ endif }
+{%- endif %}
 
 apt-get update
 apt-get install -y build-essential git curl wget pkg-config \
@@ -53,55 +68,46 @@ unzip -q /tmp/awscliv2.zip -d /tmp
 /tmp/aws/install
 rm -rf /tmp/aws /tmp/awscliv2.zip
 
-# PostgreSQL PGDG repository
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-apt-get install -y postgresql-${pg_version} postgresql-server-dev-${pg_version}
+apt-get install -y postgresql-{{ pg_version }} postgresql-server-dev-{{ pg_version }}
 
-# pgvector
-%{ if contains(extensions, "pgvector") }
-echo "=== Installing pgvector ==="
-apt-get install -y postgresql-${pg_version}-pgvector || {
+{% if "pgvector" in extensions -%}
+echo "=== Installing pgvector {{ pgvector_version }} ==="
+apt-get install -y postgresql-{{ pg_version }}-pgvector || {
   echo "pgvector apt package not available, building from source"
   cd /tmp
-  git clone --depth 1 https://github.com/pgvector/pgvector.git
+  git clone --branch {{ pgvector_version }} --depth 1 https://github.com/pgvector/pgvector.git
   cd pgvector
-  make PG_CONFIG=/usr/lib/postgresql/${pg_version}/bin/pg_config
-  make PG_CONFIG=/usr/lib/postgresql/${pg_version}/bin/pg_config install
+  make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config
+  make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config install
 }
-%{ endif }
+{%- endif %}
 
-# Configure PostgreSQL
-PG_CONF="/etc/postgresql/${pg_version}/main/postgresql.conf"
-PG_HBA="/etc/postgresql/${pg_version}/main/pg_hba.conf"
+PG_CONF="/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
+PG_HBA="/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
 
 sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" "$PG_CONF"
-sed -i "s/^port = .*/port = ${pg_port}/" "$PG_CONF"
+sed -i "s/^port = .*/port = {{ pg_port }}/" "$PG_CONF"
 
-%{ for key, value in pg_config }
-echo "${key} = '${value}'" >> "$PG_CONF"
-%{ endfor }
-
-# Allow remote connections for rekall user
+{% for key, value in pg_config | items -%}
+echo "{{ key }} = '{{ value }}'" >> "$PG_CONF"
+{% endfor %}
 echo "host all rekall 0.0.0.0/0 scram-sha-256" >> "$PG_HBA"
 
-# Restart and create user + database
-systemctl restart postgresql@${pg_version}-main
+systemctl restart postgresql@{{ pg_version }}-main
 
-sudo -u postgres psql -p ${pg_port} -c "CREATE USER rekall WITH PASSWORD 'rekall' SUPERUSER"
-sudo -u postgres psql -p ${pg_port} -c "CREATE DATABASE rekall OWNER rekall"
+sudo -u postgres psql -p {{ pg_port }} -c "CREATE USER rekall WITH PASSWORD 'rekall' SUPERUSER"
+sudo -u postgres psql -p {{ pg_port }} -c "CREATE DATABASE rekall OWNER rekall"
 
-# Rust toolchain (installed for ubuntu user)
 echo "=== Installing Rust ==="
 sudo -u ubuntu bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
 
-# tmux config
 sudo -u ubuntu bash -c 'cat > ~/.tmux.conf << TMUXEOF
 set-window-option -g mode-keys vi
 set -g history-limit 50000
 set -g default-terminal "xterm-256color"
 TMUXEOF'
 
-# Signal readiness
 touch /tmp/rekall-ready
 
 echo "=== Rekall instance setup complete ==="

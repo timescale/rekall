@@ -167,7 +167,7 @@ impl TerraformRunner {
         }
     }
 
-    pub fn write_tf_files(dest: &Path) -> Result<()> {
+    pub fn write_tf_files(dest: &Path, user_data: &str) -> Result<()> {
         let files = [
             (
                 "main.tf",
@@ -185,10 +185,6 @@ impl TerraformRunner {
                 "versions.tf",
                 include_str!("../../../infra/terraform/aws/versions.tf"),
             ),
-            (
-                "user-data.sh.tpl",
-                include_str!("../../../infra/terraform/aws/user-data.sh.tpl"),
-            ),
         ];
 
         std::fs::create_dir_all(dest).map_err(|e| Error::TerraformFailed {
@@ -203,6 +199,14 @@ impl TerraformRunner {
                 detail: format!("cannot write {}: {e}", path.display()),
             })?;
         }
+
+        // user-data is pre-rendered by rekall (single source of truth shared
+        // with the aws_native backend), then read by terraform via file().
+        let user_data_path = dest.join("user-data.sh");
+        std::fs::write(&user_data_path, user_data).map_err(|e| Error::TerraformFailed {
+            command: "write_tf_files".to_string(),
+            detail: format!("cannot write {}: {e}", user_data_path.display()),
+        })?;
 
         Ok(())
     }
@@ -220,11 +224,12 @@ impl InfraBackend for TerraformRunner {
         ssh_cidr: &str,
         deploy_key_paths: &[String],
         vars: &serde_json::Value,
+        user_data: &str,
     ) -> Result<InfraOutput> {
         let tf_version = Self::check_installed()?;
         info!("Terraform: {tf_version}");
 
-        Self::write_tf_files(&self.work_dir)?;
+        Self::write_tf_files(&self.work_dir, user_data)?;
 
         let mut all_vars = vars.clone();
         all_vars["ssh_public_key"] = serde_json::json!(ssh_pub_key);

@@ -27,6 +27,7 @@ byteorder = "1"
 bytes = "1"
 futures-util = "0.3"
 shellexpand = "3"
+minijinja = { version = "2", default-features = false, features = ["builtins", "serde"] }
 tempfile = "3"
 
 [workspace.package]

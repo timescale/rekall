@@ -375,10 +375,6 @@ impl InfraConfig {
             "disk_size_gb": self.disk_size_gb,
             "pg_version": self.pg_version,
             "pg_port": self.pg_port,
-            "extensions": self.extensions,
-            "pg_config": self.effective_pg_config(),
-            "huge_pages": self.huge_pages,
-            "nr_hugepages": self.nr_huge_pages().unwrap_or(0),
             "name_prefix": self.name_prefix,
         });
 
@@ -491,7 +487,10 @@ git_ref = "feat/parallel-build"
         };
         let vars = cfg.to_tfvars();
         assert_eq!(vars["region"], "us-east-1");
-        assert_eq!(vars["extensions"][0], "pgvector");
+        // extensions, pg_config, huge_pages are now baked into the pre-rendered
+        // user-data and no longer need to be tfvars.
+        assert!(vars.get("extensions").is_none());
+        assert!(vars.get("pg_config").is_none());
         assert!(vars.get("ssh_private_key_path").is_none());
     }
 

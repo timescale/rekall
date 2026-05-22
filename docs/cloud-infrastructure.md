@@ -223,12 +223,13 @@ gives a confounded comparison.
 
 ## SSH Keys
 
-Rekall uses two separate SSH key pairs:
+Rekall uses three separate SSH key sources:
 
-### 1. User key (`ssh_key`)
+### 1. Launcher key (`ssh_key`)
 
-Your personal SSH key for logging into instances. Only the **public key**
-is uploaded to AWS. The private key never leaves your machine.
+Your personal SSH key for logging into instances you launched. Only the
+**public key** is uploaded to AWS (as an EC2 key pair). The private key
+never leaves your machine.
 
 ```toml
 # In .local.toml (never committed)
@@ -236,7 +237,23 @@ is uploaded to AWS. The private key never leaves your machine.
 ssh_key = "~/.ssh/id_ed25519.pub"
 ```
 
-### 2. Deploy keys (auto-generated, per-repo)
+### 2. Team authorized_keys (`infra/authorized_keys`)
+
+A committed file of permanent public keys that get installed on **every**
+rekall instance at boot, regardless of who launched it. This is how
+teammates SSH into each other's instances — useful for inspecting a
+benchmark run on a colleague's machine, or attaching to a remote tmux
+session.
+
+Add one OpenSSH public key per line, with a trailing comment for
+attribution. Adding a key here grants permanent access to all future
+rekall instances under any team member's launch — only add keys you
+trust.
+
+The launcher's `ssh_key` is also injected into `authorized_keys`, but
+deduped if its body already appears in the committed file.
+
+### 3. Deploy keys (auto-generated, per-repo)
 
 Ephemeral key pairs for instances to access private GitHub repos. Rekall
 generates one per repo and stores them in

@@ -88,109 +88,6 @@ impl AwsNativeBackend {
         cmd
     }
 
-    fn generate_user_data(&self) -> String {
-        let pg = self.config.pg_version;
-        let port = self.config.pg_port;
-        let pg_config = &self.config.effective_pg_config();
-        let extensions = &self.config.extensions;
-        let huge_pages_setup = self
-            .config
-            .nr_huge_pages()
-            .map(huge_pages_setup_script)
-            .unwrap_or_default();
-
-        let mut script = format!(
-            r#"#!/bin/bash
-set -euo pipefail
-exec > /var/log/rekall-setup.log 2>&1
-
-echo "=== Rekall instance setup starting ==="
-date
-
-export DEBIAN_FRONTEND=noninteractive
-{huge_pages_setup}
-apt-get update
-apt-get install -y build-essential git curl wget pkg-config \
-  postgresql-common apt-transport-https ca-certificates gnupg lsb-release \
-  tmux htop libhdf5-dev \
-  cmake meson ninja-build clang clang-tools gdb valgrind \
-  autoconf automake libtool \
-  unzip libopenblas-dev gcc-14
-
-# Set gcc-14 as default
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-14 100
-
-# AWS CLI v2
-curl -sL "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" -o /tmp/awscliv2.zip
-unzip -q /tmp/awscliv2.zip -d /tmp
-/tmp/aws/install
-rm -rf /tmp/aws /tmp/awscliv2.zip
-
-/usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
-apt-get install -y postgresql-{pg} postgresql-server-dev-{pg}
-"#
-        );
-
-        if extensions.contains(&"pgvector".to_string()) {
-            let pgvector_ver = self.config.pgvector_version();
-            script.push_str(&format!(
-                r#"
-echo "=== Installing pgvector {pgvector_ver} ==="
-apt-get install -y postgresql-{pg}-pgvector || {{
-  echo "pgvector apt package not available, building from source"
-  cd /tmp
-  git clone --branch {pgvector_ver} --depth 1 https://github.com/pgvector/pgvector.git
-  cd pgvector
-  make PG_CONFIG=/usr/lib/postgresql/{pg}/bin/pg_config
-  make PG_CONFIG=/usr/lib/postgresql/{pg}/bin/pg_config install
-}}
-"#
-            ));
-        }
-
-        script.push_str(&format!(
-            r#"
-PG_CONF="/etc/postgresql/{pg}/main/postgresql.conf"
-PG_HBA="/etc/postgresql/{pg}/main/pg_hba.conf"
-
-sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" "$PG_CONF"
-sed -i "s/^port = .*/port = {port}/" "$PG_CONF"
-"#
-        ));
-
-        for (key, value) in pg_config {
-            script.push_str(&format!("echo \"{key} = '{value}'\" >> \"$PG_CONF\"\n"));
-        }
-
-        script.push_str(&format!(
-            r#"
-echo "host all rekall 0.0.0.0/0 scram-sha-256" >> "$PG_HBA"
-
-systemctl restart postgresql@{pg}-main
-
-sudo -u postgres psql -p {port} -c "CREATE USER rekall WITH PASSWORD 'rekall' SUPERUSER"
-sudo -u postgres psql -p {port} -c "CREATE DATABASE rekall OWNER rekall"
-
-echo "=== Installing Rust ==="
-sudo -u ubuntu bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
-
-# tmux config
-sudo -u ubuntu bash -c 'cat > ~/.tmux.conf << TMUXEOF
-set-window-option -g mode-keys vi
-set -g history-limit 50000
-set -g default-terminal "xterm-256color"
-TMUXEOF'
-
-touch /tmp/rekall-ready
-
-echo "=== Rekall instance setup complete ==="
-date
-"#
-        ));
-
-        script
-    }
 
     fn run_aws_json(&self, args: &[&str]) -> Result<serde_json::Value> {
         let mut cmd = self.aws_cmd();
@@ -536,6 +433,7 @@ impl InfraBackend for AwsNativeBackend {
         ssh_cidr: &str,
         deploy_key_paths: &[String],
         _vars: &serde_json::Value,
+        user_data: &str,
     ) -> Result<InfraOutput> {
         let name_prefix = &self.config.name_prefix;
 
@@ -548,8 +446,7 @@ impl InfraBackend for AwsNativeBackend {
         let key_name = self.import_key_pair(ssh_pub_key, name_prefix)?;
         info!("Key pair: {key_name}");
 
-        let user_data = self.generate_user_data();
-        let run_result = self.run_instance(&ami_id, &sg_id, &key_name, &user_data);
+        let run_result = self.run_instance(&ami_id, &sg_id, &key_name, user_data);
 
         let (instance_id, public_ip) = match run_result {
             Ok(r) => r,
@@ -664,38 +561,6 @@ impl InfraBackend for AwsNativeBackend {
     fn has_state(&self) -> bool {
         self.state_file().exists()
     }
-}
-
-fn huge_pages_setup_script(nr_pages: u64) -> String {
-    format!(
-        r#"
-echo "=== Configuring huge pages (vm.nr_hugepages={nr_pages}, disable THP) ==="
-echo "vm.nr_hugepages = {nr_pages}" > /etc/sysctl.d/30-postgres-hugepages.conf
-sysctl --system
-
-echo never > /sys/kernel/mm/transparent_hugepage/enabled
-echo never > /sys/kernel/mm/transparent_hugepage/defrag
-
-cat > /etc/systemd/system/disable-thp.service << 'THPEOF'
-[Unit]
-Description=Disable Transparent Huge Pages
-DefaultDependencies=no
-After=local-fs.target
-Before=postgresql.service
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'echo never > /sys/kernel/mm/transparent_hugepage/enabled && echo never > /sys/kernel/mm/transparent_hugepage/defrag'
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-THPEOF
-
-systemctl daemon-reload
-systemctl enable disable-thp.service
-"#
-    )
 }
 
 fn base64_encode(data: &[u8]) -> String {

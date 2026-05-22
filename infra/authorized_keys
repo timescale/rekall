@@ -1,0 +1,16 @@
+# Permanent SSH public keys for rekall benchmark instances.
+#
+# Every instance launched via `rekall infra up` will have these keys
+# installed in /home/ubuntu/.ssh/authorized_keys at boot, in addition
+# to the launcher's own ssh_key (from .local.toml).
+#
+# Adding a key here grants permanent SSH access to all future rekall
+# instances under any team member's launch. Only add keys you trust.
+#
+# Format: one OpenSSH public key per line. Blank lines and `#` comments
+# are ignored. Each key should have a trailing comment (email or name)
+# for attribution.
+#
+# Example:
+#   ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...example erik@tigerdata.com
+#   ssh-rsa     AAAAB3NzaC1yc2EAAAADAQAB...example joe@example.com

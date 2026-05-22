@@ -80,14 +80,9 @@ resource "aws_instance" "benchmark" {
     throughput  = var.disk_throughput > 0 ? var.disk_throughput : null
   }
 
-  user_data = templatefile("${path.module}/user-data.sh.tpl", {
-    pg_version   = var.pg_version
-    extensions   = var.extensions
-    pg_config    = var.pg_config
-    pg_port      = var.pg_port
-    huge_pages   = var.huge_pages
-    nr_hugepages = var.nr_hugepages
-  })
+  # user-data is pre-rendered by rekall from infra/user-data.sh.j2
+  # (same template as the aws_native backend) before terraform runs.
+  user_data = file("${path.module}/user-data.sh")
 
   connection {
     type        = "ssh"

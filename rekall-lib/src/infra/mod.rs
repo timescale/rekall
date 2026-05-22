@@ -129,6 +129,7 @@ impl InfraManager {
             .collect();
 
         let vars = self.config.to_tfvars();
+        let user_data = render_user_data(&self.config, Some(ssh_pub_key))?;
 
         let output = self.backend.up(
             ssh_pub_key,
@@ -136,6 +137,7 @@ impl InfraManager {
             &ssh_cidr,
             &deploy_key_paths,
             &vars,
+            &user_data,
         )?;
 
         info!("Verifying PostgreSQL is ready on {}...", output.public_ip);
@@ -440,6 +442,79 @@ pub struct InfraInstance {
     pub status: InfraStatus,
 }
 
+/// Render the cloud-init user-data script for an instance.
+/// Single source of truth shared by both the aws_native and terraform backends.
+///
+/// `local_pub_key`, if provided, is the launcher's own SSH public key
+/// (the same one uploaded as the EC2 key pair). It is appended to the
+/// team's `infra/authorized_keys` list, unless the same key body is
+/// already in there.
+pub fn render_user_data(config: &InfraConfig, local_pub_key: Option<&str>) -> Result<String> {
+    const TEMPLATE: &str = include_str!("../../../infra/user-data.sh.j2");
+
+    let mut env = minijinja::Environment::new();
+    env.add_template("user-data", TEMPLATE)
+        .map_err(|e| Error::Config(format!("user-data template parse error: {e}")))?;
+
+    let authorized_keys = collect_authorized_keys(local_pub_key);
+
+    let ctx = minijinja::context! {
+        pg_version => config.pg_version,
+        pg_port => config.pg_port,
+        extensions => &config.extensions,
+        pg_config => config.effective_pg_config(),
+        pgvector_version => config.pgvector_version(),
+        huge_pages => config.huge_pages,
+        nr_hugepages => config.nr_huge_pages().unwrap_or(0),
+        authorized_keys => authorized_keys,
+    };
+
+    env.get_template("user-data")
+        .map_err(|e| Error::Config(format!("user-data template lookup: {e}")))?
+        .render(ctx)
+        .map_err(|e| Error::Config(format!("user-data render error: {e}")))
+}
+
+/// Load the committed `infra/authorized_keys` and optionally append the
+/// launcher's local key (deduped on `(type, body)`, ignoring the comment).
+fn collect_authorized_keys(local_pub_key: Option<&str>) -> Vec<String> {
+    const PERMANENT: &str = include_str!("../../../infra/authorized_keys");
+
+    let mut keys: Vec<String> = PERMANENT
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        .map(String::from)
+        .collect();
+
+    if let Some(local) = local_pub_key {
+        let local = local.trim();
+        if let Some(local_body) = ssh_key_body(local) {
+            let already_present = keys
+                .iter()
+                .filter_map(|k| ssh_key_body(k))
+                .any(|b| b == local_body);
+            if !already_present {
+                keys.push(local.to_string());
+            }
+        }
+    }
+    keys
+}
+
+/// Extract `(type, base64-body)` from an OpenSSH public key line.
+/// Returns None for blank lines, comments, or malformed input.
+fn ssh_key_body(line: &str) -> Option<(String, String)> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return None;
+    }
+    let mut parts = line.split_whitespace();
+    let key_type = parts.next()?;
+    let body = parts.next()?;
+    Some((key_type.to_string(), body.to_string()))
+}
+
 /// List instances from local state files.
 pub fn list_instances_local() -> Result<Vec<InfraInstance>> {
     let names = state::list_infra_names()?;
@@ -726,3 +801,142 @@ Outputs:
 "#
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn render_user_data_minimal() {
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            extensions: vec!["pgvector".to_string()],
+            ..Default::default()
+        };
+        let out = render_user_data(&cfg, None).expect("template renders");
+
+        assert!(out.starts_with("#!/bin/bash"));
+        assert!(out.contains("apt-get install -y postgresql-18 postgresql-server-dev-18"));
+        assert!(out.contains("Installing pgvector v0.8.2"));
+        assert!(out.contains("shared_buffers = '25GB'"));
+        assert!(out.contains("port = 5432"));
+        // Huge pages off by default — block should be omitted entirely.
+        assert!(!out.contains("vm.nr_hugepages"));
+        assert!(!out.contains("disable-thp.service"));
+    }
+
+    #[test]
+    fn render_user_data_huge_pages() {
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            huge_pages: true,
+            ..Default::default()
+        };
+        let out = render_user_data(&cfg, None).expect("template renders");
+
+        assert!(out.contains("vm.nr_hugepages = 14080"));
+        assert!(out.contains("disable-thp.service"));
+        assert!(out.contains("huge_pages = 'on'"));
+    }
+
+    #[test]
+    fn render_user_data_no_pgvector() {
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            extensions: vec![],
+            ..Default::default()
+        };
+        let out = render_user_data(&cfg, None).expect("template renders");
+        assert!(!out.contains("Installing pgvector"));
+        assert!(!out.contains("git clone --branch"));
+    }
+
+    #[test]
+    fn render_user_data_injects_local_key() {
+        let cfg = InfraConfig::default();
+        let local = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEYBODY erik@laptop";
+        let out = render_user_data(&cfg, Some(local)).expect("template renders");
+
+        assert!(out.contains("Installing team SSH keys"));
+        assert!(out.contains("AAAAC3NzaC1lZDI1NTE5AAAAITESTKEYBODY"));
+    }
+
+    #[test]
+    fn collect_authorized_keys_dedupes_local_against_permanent() {
+        // Simulate the case: permanent file already contains the local key
+        // (matching type + body, even with a different comment).
+        let mut keys = vec![
+            "ssh-ed25519 AAAABODY1 alice@example.com".to_string(),
+            "ssh-ed25519 AAAABODY2 erik@tigerdata.com".to_string(),
+        ];
+        let local = "ssh-ed25519 AAAABODY2 erik@some-other-machine";
+
+        // Direct call to dedupe helper logic
+        let local_body = ssh_key_body(local).unwrap();
+        let already = keys
+            .iter()
+            .filter_map(|k| ssh_key_body(k))
+            .any(|b| b == local_body);
+        assert!(already, "matching body should be detected even with different comment");
+
+        // And the same key with a different body is not a dupe
+        let other = "ssh-ed25519 AAAABODY3 erik@tigerdata.com";
+        let other_body = ssh_key_body(other).unwrap();
+        let already2 = keys
+            .iter()
+            .filter_map(|k| ssh_key_body(k))
+            .any(|b| b == other_body);
+        assert!(!already2);
+        keys.push(other.to_string());
+        assert_eq!(keys.len(), 3);
+    }
+
+    #[test]
+    fn render_user_data_is_valid_bash() {
+        // Sanity-check that the rendered script parses cleanly. Catches
+        // templating bugs like missing whitespace control or stray
+        // template directives bleeding into the bash output.
+        let cfg = InfraConfig {
+            instance_type: "r7g.2xlarge".to_string(),
+            extensions: vec!["pgvector".to_string()],
+            huge_pages: true,
+            ..Default::default()
+        };
+        let out = render_user_data(
+            &cfg,
+            Some("ssh-ed25519 AAAABODYFORTEST tester@example.com"),
+        )
+        .expect("template renders");
+
+        let mut tmp = std::env::temp_dir();
+        tmp.push("rekall-render-check.sh");
+        std::fs::write(&tmp, &out).unwrap();
+
+        let status = std::process::Command::new("bash")
+            .args(["-n", tmp.to_str().unwrap()])
+            .status();
+        if let Ok(s) = status {
+            assert!(s.success(), "bash -n rejected the rendered script:\n{out}");
+        }
+        // If bash isn't on PATH, skip silently — CI may not have it.
+    }
+
+    #[test]
+    fn ssh_key_body_handles_comments_and_blanks() {
+        assert_eq!(ssh_key_body(""), None);
+        assert_eq!(ssh_key_body("   "), None);
+        assert_eq!(ssh_key_body("# a comment"), None);
+        assert_eq!(
+            ssh_key_body("ssh-rsa AAAABODY user@host"),
+            Some(("ssh-rsa".into(), "AAAABODY".into()))
+        );
+        // No comment is fine
+        assert_eq!(
+            ssh_key_body("ssh-ed25519 AAAABODY"),
+            Some(("ssh-ed25519".into(), "AAAABODY".into()))
+        );
+        // Single token is malformed
+        assert_eq!(ssh_key_body("ssh-rsa"), None);
+    }
+}
+

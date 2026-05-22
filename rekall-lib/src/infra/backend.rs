@@ -14,6 +14,7 @@ pub trait InfraBackend {
         ssh_cidr: &str,
         deploy_key_paths: &[String],
         vars: &serde_json::Value,
+        user_data: &str,
     ) -> Result<InfraOutput>;
     fn down(&self) -> Result<()>;
     fn status(&self) -> Result<InfraStatus>;

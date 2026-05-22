@@ -34,30 +34,6 @@ variable "pg_version" {
   default     = 18
 }
 
-variable "extensions" {
-  description = "Extensions to install"
-  type        = list(string)
-  default     = ["pgvector"]
-}
-
-variable "pg_config" {
-  description = "PostgreSQL GUC settings"
-  type        = map(string)
-  default     = {}
-}
-
-variable "huge_pages" {
-  description = "Pre-allocate kernel huge-page pool and disable THP"
-  type        = bool
-  default     = false
-}
-
-variable "nr_hugepages" {
-  description = "Number of 2MB huge pages to reserve (0 = disabled)"
-  type        = number
-  default     = 0
-}
-
 variable "ssh_public_key" {
   description = "SSH public key content"
   type        = string

@@ -24,6 +24,7 @@ byteorder = { workspace = true }
 bytes = { workspace = true }
 futures-util = { workspace = true }
 shellexpand = { workspace = true }
+minijinja = { workspace = true }
 tabled = { workspace = true }
 dirs = { workspace = true }
 
