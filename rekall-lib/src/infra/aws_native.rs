@@ -124,13 +124,14 @@ apt-get install -y postgresql-{pg} postgresql-server-dev-{pg}
         );
 
         if extensions.contains(&"pgvector".to_string()) {
+            let pgvector_ver = self.config.pgvector_version();
             script.push_str(&format!(
                 r#"
-echo "=== Installing pgvector ==="
+echo "=== Installing pgvector {pgvector_ver} ==="
 apt-get install -y postgresql-{pg}-pgvector || {{
   echo "pgvector apt package not available, building from source"
   cd /tmp
-  git clone --depth 1 https://github.com/pgvector/pgvector.git
+  git clone --branch {pgvector_ver} --depth 1 https://github.com/pgvector/pgvector.git
   cd pgvector
   make PG_CONFIG=/usr/lib/postgresql/{pg}/bin/pg_config
   make PG_CONFIG=/usr/lib/postgresql/{pg}/bin/pg_config install

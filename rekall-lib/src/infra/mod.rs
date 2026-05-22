@@ -374,6 +374,10 @@ pub fn ssh_provision(
         }
         if has_vectorchord {
             env_vars.push("VECTORCHORD=1".to_string());
+            env_vars.push(format!(
+                "VECTORCHORD_VERSION={}",
+                config.vectorchord_version()
+            ));
         }
 
         info!("Running provisioning script");

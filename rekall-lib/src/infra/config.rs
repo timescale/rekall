@@ -77,6 +77,10 @@ pub struct InfraConfig {
     pub rekall: Option<GitSourceConfig>,
     #[serde(default)]
     pub meerkat: Option<GitSourceConfig>,
+    #[serde(default)]
+    pub pgvector: Option<ExtVersionConfig>,
+    #[serde(default)]
+    pub vectorchord: Option<ExtVersionConfig>,
     /// Path to the user's SSH public key for instance access.
     /// Uploaded to AWS for the key pair. The corresponding private key
     /// (same path without .pub) is used locally for SSH connections.
@@ -111,12 +115,20 @@ impl Default for InfraConfig {
             pg_config: HashMap::new(),
             rekall: None,
             meerkat: None,
+            pgvector: None,
+            vectorchord: None,
             ssh_key: None,
             s3_bucket: None,
             iam_instance_profile: None,
             name_prefix: default_name_prefix(),
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtVersionConfig {
+    #[serde(default)]
+    pub version: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +161,20 @@ impl InfraConfig {
 
         base.try_into()
             .map_err(|e| format!("Invalid infra config: {e}"))
+    }
+
+    pub fn pgvector_version(&self) -> &str {
+        self.pgvector
+            .as_ref()
+            .and_then(|c| c.version.as_deref())
+            .unwrap_or("v0.8.2")
+    }
+
+    pub fn vectorchord_version(&self) -> &str {
+        self.vectorchord
+            .as_ref()
+            .and_then(|c| c.version.as_deref())
+            .unwrap_or("1.1.1")
     }
 
     pub fn is_graviton(&self) -> bool {

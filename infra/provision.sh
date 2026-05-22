@@ -24,6 +24,7 @@ MEERKAT_GIT_REF="${MEERKAT_GIT_REF:-main}"
 REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
 VECTORCHORD="${VECTORCHORD:-}"
+VECTORCHORD_VERSION="${VECTORCHORD_VERSION:-1.1.1}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
 REPOS_DIR="$HOME/repos"
@@ -82,14 +83,13 @@ if [ "$VECTORCHORD" = "1" ]; then
 
         if [ -d "$VCHORD_DIR" ]; then
             cd "$VCHORD_DIR"
-            git fetch origin
-            git pull origin main || true
-            PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+            git fetch origin --tags
         else
             git clone https://github.com/tensorchord/VectorChord.git "$VCHORD_DIR"
             cd "$VCHORD_DIR"
-            PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
         fi
+        git checkout "$VECTORCHORD_VERSION"
+        PGRX_VERSION=$(grep '^pgrx = ' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
 
         echo "Installing cargo-pgrx ${PGRX_VERSION}..."
         cargo install "cargo-pgrx@${PGRX_VERSION}" --locked

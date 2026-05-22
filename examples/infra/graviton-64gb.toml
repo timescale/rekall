@@ -10,5 +10,11 @@ region = "us-east-1"
 instance_type = "r7g.2xlarge"
 disk_size_gb = 1000
 pg_version = 18
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "meerkat", "vectorchord"]
 name_prefix = "rekall-64gb"
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"
