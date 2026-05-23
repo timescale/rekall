@@ -34,6 +34,9 @@ pub struct InfraStatus {
     pub public_ip: Option<String>,
     pub instance_id: Option<String>,
     pub instance_type: Option<String>,
+    /// AWS `Name` tag — unique per instance (timestamp-suffix). For
+    /// distinguishing multiple instances under the same name_prefix.
+    pub instance_name: Option<String>,
     pub dsn: Option<String>,
     pub iam_profile: Option<String>,
     pub pg_ready: bool,
@@ -535,6 +538,37 @@ pub fn list_instances_local() -> Result<Vec<InfraInstance>> {
     Ok(instances)
 }
 
+/// Look up a single AWS instance by its instance-id and return an
+/// `InfraInstance`. Returns InfraNotRunning if not found.
+///
+/// Used by `attach`/`ssh`/`dsn` with `--instance-id` to bypass local
+/// state — useful when multiple instances exist under the same
+/// name_prefix, or when you're on a different machine than the one
+/// that launched it.
+pub fn find_instance(region: &str, instance_id: &str) -> Result<InfraInstance> {
+    let config = InfraConfig {
+        region: region.to_string(),
+        ..Default::default()
+    };
+    let backend = AwsNativeBackend::new(std::env::current_dir().unwrap_or_default(), &config);
+    let d = backend
+        .find_instance_by_id(instance_id)?
+        .ok_or(Error::InfraNotRunning)?;
+    Ok(InfraInstance {
+        name: d.suite.clone(),
+        status: InfraStatus {
+            running: d.state == "running",
+            public_ip: d.public_ip,
+            instance_id: Some(d.instance_id),
+            instance_type: Some(d.instance_type),
+            instance_name: d.name,
+            dsn: None,
+            iam_profile: None,
+            pg_ready: false,
+        },
+    })
+}
+
 /// Discover all rekall instances in AWS by tag, regardless of local state.
 pub fn list_instances_aws(region: &str) -> Result<Vec<InfraInstance>> {
     let config = InfraConfig {
@@ -553,6 +587,7 @@ pub fn list_instances_aws(region: &str) -> Result<Vec<InfraInstance>> {
                 public_ip: d.public_ip,
                 instance_id: Some(d.instance_id),
                 instance_type: Some(d.instance_type),
+                instance_name: d.name,
                 dsn: None,
                 iam_profile: None,
                 pg_ready: false,

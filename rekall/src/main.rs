@@ -237,6 +237,16 @@ enum InfraCommand {
         /// Instance name (name_prefix). Alternative to --config.
         #[arg(short, long)]
         name: Option<String>,
+
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
+        /// useful when multiple instances share the same name_prefix
+        /// or you're on a different machine than the launcher.
+        #[arg(long)]
+        instance_id: Option<String>,
+
+        /// AWS region for --instance-id lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
     },
 
     /// List all provisioned instances.
@@ -289,6 +299,16 @@ enum InfraCommand {
         #[arg(short, long)]
         name: Option<String>,
 
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
+        /// useful when multiple instances share the same name_prefix
+        /// or you're on a different machine than the launcher.
+        #[arg(long)]
+        instance_id: Option<String>,
+
+        /// AWS region for --instance-id lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
+
         /// tmux session name (default: rekall)
         #[arg(short, long, default_value = "rekall")]
         session: String,
@@ -303,6 +323,14 @@ enum InfraCommand {
         /// Instance name (name_prefix). Alternative to --config.
         #[arg(short, long)]
         name: Option<String>,
+
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
+        #[arg(long)]
+        instance_id: Option<String>,
+
+        /// AWS region for --instance-id lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
     },
 
     /// Print the PostgreSQL DSN for a cloud instance
@@ -314,6 +342,14 @@ enum InfraCommand {
         /// Instance name (name_prefix). Alternative to --config.
         #[arg(short, long)]
         name: Option<String>,
+
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
+        #[arg(long)]
+        instance_id: Option<String>,
+
+        /// AWS region for --instance-id lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
     },
 
     /// Re-run provisioning (deploy keys + builds) on an existing instance.
@@ -855,6 +891,40 @@ fn resolve_infra_config(
     }
 }
 
+/// Build the `ssh ...` command string for an instance.
+/// When `--instance-id` is set, queries AWS directly and bypasses local
+/// state — the SSH key falls back to `--config`'s ssh_key if a config
+/// is also given, otherwise to ~/.ssh/id_ed25519. Without `--instance-id`,
+/// uses the standard local-state path via InfraManager.
+fn resolve_ssh_command(
+    config: Option<&PathBuf>,
+    name: Option<&String>,
+    instance_id: Option<&str>,
+    region: &str,
+) -> anyhow::Result<String> {
+    if let Some(id) = instance_id {
+        let inst = rekall_lib::infra::find_instance(region, id)?;
+        let ip = inst
+            .status
+            .public_ip
+            .ok_or_else(|| anyhow::anyhow!("Instance {id} has no public IP yet"))?;
+        // Use config's ssh_key if a config is provided, otherwise default.
+        let infra_cfg = if config.is_some() || name.is_some() {
+            resolve_infra_config(config, name).unwrap_or_default()
+        } else {
+            rekall_lib::infra::config::InfraConfig::default()
+        };
+        let ssh_priv = infra_cfg.ssh_private_key_path();
+        Ok(format!(
+            "ssh -i {ssh_priv} -o StrictHostKeyChecking=no ubuntu@{ip}"
+        ))
+    } else {
+        let infra_cfg = resolve_infra_config(config, name)?;
+        let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+        mgr.ssh_command().map_err(|e| anyhow::anyhow!("{e}"))
+    }
+}
+
 fn detect_ssh_key() -> Option<String> {
     let ssh_dir = dirs::home_dir()?.join(".ssh");
     for name in ["id_ed25519", "id_rsa", "id_ecdsa"] {
@@ -1068,12 +1138,28 @@ iam_instance_profile = "rekall-profile"
             println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
         }
 
-        InfraCommand::Status { config, name } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let status = mgr.status()?;
+        InfraCommand::Status {
+            config,
+            name,
+            instance_id,
+            region,
+        } => {
+            let (header, status) = if let Some(id) = instance_id.as_deref() {
+                let inst = rekall_lib::infra::find_instance(&region, id)?;
+                let h = inst.status.instance_name.clone().unwrap_or_else(|| id.to_string());
+                (h, inst.status)
+            } else {
+                let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+                let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+                (infra_cfg.name_prefix.clone(), mgr.status()?)
+            };
 
-            println!("Instance: {}", infra_cfg.name_prefix);
+            println!("Instance: {header}");
+            if let Some(ref name) = status.instance_name {
+                if name != &header {
+                    println!("  Name:       {name}");
+                }
+            }
             if !status.running {
                 println!("  Status:     not running");
                 return Ok(());
@@ -1113,8 +1199,8 @@ iam_instance_profile = "rekall-profile"
             }
 
             println!(
-                "{:<20} {:<10} {:<16} {:<14} {:<12}",
-                "SUITE", "STATE", "IP", "TYPE", "INSTANCE"
+                "{:<20} {:<28} {:<10} {:<16} {:<14} {:<22}",
+                "SUITE", "NAME", "STATE", "IP", "TYPE", "INSTANCE"
             );
             for inst in &instances {
                 let state = if inst.status.running {
@@ -1125,9 +1211,10 @@ iam_instance_profile = "rekall-profile"
                 let ip = inst.status.public_ip.as_deref().unwrap_or("-");
                 let itype = inst.status.instance_type.as_deref().unwrap_or("-");
                 let id = inst.status.instance_id.as_deref().unwrap_or("-");
+                let name = inst.status.instance_name.as_deref().unwrap_or("-");
                 println!(
-                    "{:<20} {:<10} {:<16} {:<14} {:<12}",
-                    inst.name, state, ip, itype, id
+                    "{:<20} {:<28} {:<10} {:<16} {:<14} {:<22}",
+                    inst.name, name, state, ip, itype, id
                 );
             }
         }
@@ -1316,12 +1403,16 @@ done"#
         InfraCommand::Attach {
             config,
             name,
+            instance_id,
+            region,
             session,
         } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let cmd = mgr.ssh_command()?;
-
+            let cmd = resolve_ssh_command(
+                config.as_ref(),
+                name.as_ref(),
+                instance_id.as_deref(),
+                &region,
+            )?;
             let parts: Vec<&str> = cmd.split_whitespace().collect();
             if parts.len() < 2 {
                 return Err(anyhow::anyhow!("Invalid SSH command: {cmd}"));
@@ -1338,11 +1429,18 @@ done"#
             std::process::exit(status.code().unwrap_or(1));
         }
 
-        InfraCommand::Ssh { config, name } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let cmd = mgr.ssh_command()?;
-
+        InfraCommand::Ssh {
+            config,
+            name,
+            instance_id,
+            region,
+        } => {
+            let cmd = resolve_ssh_command(
+                config.as_ref(),
+                name.as_ref(),
+                instance_id.as_deref(),
+                &region,
+            )?;
             let parts: Vec<&str> = cmd.split_whitespace().collect();
             if parts.len() < 2 {
                 return Err(anyhow::anyhow!("Invalid SSH command: {cmd}"));
@@ -1354,11 +1452,29 @@ done"#
             std::process::exit(status.code().unwrap_or(1));
         }
 
-        InfraCommand::Dsn { config, name } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let dsn = mgr.dsn()?;
-            println!("{dsn}");
+        InfraCommand::Dsn {
+            config,
+            name,
+            instance_id,
+            region,
+        } => {
+            if let Some(id) = instance_id {
+                let inst = rekall_lib::infra::find_instance(&region, &id)?;
+                let ip = inst
+                    .status
+                    .public_ip
+                    .ok_or_else(|| anyhow::anyhow!("Instance {id} has no public IP"))?;
+                // Default pg_port — we don't have config context with --instance-id.
+                let dsn = format!(
+                    "host={ip} port=5432 dbname=rekall user=rekall password=rekall sslmode=disable"
+                );
+                println!("{dsn}");
+            } else {
+                let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+                let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+                let dsn = mgr.dsn()?;
+                println!("{dsn}");
+            }
         }
 
         InfraCommand::Provision { config, name } => {

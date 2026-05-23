@@ -19,6 +19,11 @@ struct AwsState {
     region: String,
     instance_type: String,
     pg_port: u16,
+    /// AWS Name tag (unique per instance, timestamp-suffix). Optional
+    /// for backward compat with state files written before this field
+    /// existed — they get None.
+    #[serde(default)]
+    instance_name: Option<String>,
 }
 
 #[derive(Debug)]
@@ -28,6 +33,9 @@ pub struct DiscoveredInstance {
     pub public_ip: Option<String>,
     pub state: String,
     pub suite: String,
+    /// AWS `Name` tag — unique per instance (timestamp-based), the
+    /// human-friendly identifier shown in console + `infra list`.
+    pub name: Option<String>,
 }
 
 pub struct AwsNativeBackend {
@@ -268,12 +276,21 @@ impl AwsNativeBackend {
         sg_id: &str,
         key_name: &str,
         user_data: &str,
-    ) -> Result<(String, String)> {
+    ) -> Result<(String, String, String)> {
         info!("Launching EC2 instance ({})", self.config.instance_type);
 
         let user_data_b64 = base64_encode(user_data.as_bytes());
+        // Unique Name tag per instance so multiple under the same suite
+        // are distinguishable in the AWS console and `infra list`. The
+        // shared rekall:suite tag is still the group identifier used by
+        // discovery and resource scoping.
+        let instance_name = format!(
+            "{}-{}",
+            self.config.name_prefix,
+            chrono::Local::now().format("%Y%m%d-%H%M%S")
+        );
         let tag_spec = format!(
-            "ResourceType=instance,Tags=[{{Key=Name,Value={0}-benchmark}},{{Key=rekall:suite,Value={0}}}]",
+            "ResourceType=instance,Tags=[{{Key=Name,Value={instance_name}}},{{Key=rekall:suite,Value={}}}]",
             self.config.name_prefix
         );
         let block_device = format!(
@@ -344,7 +361,7 @@ impl AwsNativeBackend {
             })?
             .to_string();
 
-        Ok((instance_id, public_ip))
+        Ok((instance_id, public_ip, instance_name))
     }
 
     fn run_provision(
@@ -405,7 +422,10 @@ impl AwsNativeBackend {
             "Name=tag-key,Values=rekall:suite",
             "Name=instance-state-name,Values=running,stopped,pending",
             "--query",
-            "Reservations[].Instances[].[InstanceId,InstanceType,PublicIpAddress,State.Name,Tags[?Key==`rekall:suite`].Value|[0]]",
+            "Reservations[].Instances[].[\
+               InstanceId,InstanceType,PublicIpAddress,State.Name,\
+               Tags[?Key==`rekall:suite`].Value|[0],\
+               Tags[?Key==`Name`].Value|[0]]",
         ])?;
 
         let mut instances = Vec::new();
@@ -437,11 +457,48 @@ impl AwsNativeBackend {
                             .and_then(|v| v.as_str())
                             .unwrap_or("")
                             .to_string(),
+                        name: fields
+                            .get(5)
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                     });
                 }
             }
         }
         Ok(instances)
+    }
+
+    /// Look up a specific instance by its AWS instance-id. Returns the
+    /// IP if it's running, or an error otherwise. Used by `--instance-id`
+    /// on attach/ssh/dsn/status to bypass local state entirely.
+    pub fn find_instance_by_id(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<DiscoveredInstance>> {
+        let result = self.run_aws_json(&[
+            "ec2",
+            "describe-instances",
+            "--instance-ids",
+            instance_id,
+            "--query",
+            "Reservations[].Instances[].[\
+               InstanceId,InstanceType,PublicIpAddress,State.Name,\
+               Tags[?Key==`rekall:suite`].Value|[0],\
+               Tags[?Key==`Name`].Value|[0]]",
+        ])?;
+
+        let fields = match result.as_array().and_then(|a| a.first()).and_then(|i| i.as_array()) {
+            Some(f) => f,
+            None => return Ok(None),
+        };
+        Ok(Some(DiscoveredInstance {
+            instance_id: fields.first().and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            instance_type: fields.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            public_ip: fields.get(2).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            state: fields.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            suite: fields.get(4).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+            name: fields.get(5).and_then(|v| v.as_str()).map(|s| s.to_string()),
+        }))
     }
 
     fn describe_instance(&self, instance_id: &str) -> Result<Option<serde_json::Value>> {
@@ -483,7 +540,7 @@ impl InfraBackend for AwsNativeBackend {
 
         let run_result = self.run_instance(&ami_id, &sg_id, &key_name, user_data);
 
-        let (instance_id, public_ip) = match run_result {
+        let (instance_id, public_ip, instance_name) = match run_result {
             Ok(r) => r,
             Err(e) => {
                 tracing::warn!("Instance launch failed, cleaning up resources");
@@ -492,7 +549,7 @@ impl InfraBackend for AwsNativeBackend {
                 return Err(e);
             }
         };
-        info!("Instance: {instance_id} at {public_ip}");
+        info!("Instance: {instance_name} ({instance_id}) at {public_ip}");
 
         // Save state immediately so `infra down` can clean up if
         // subsequent steps (SSH provisioning) fail
@@ -504,6 +561,7 @@ impl InfraBackend for AwsNativeBackend {
             region: self.config.region.clone(),
             instance_type: self.config.instance_type.clone(),
             pg_port: self.config.pg_port,
+            instance_name: Some(instance_name),
         };
         self.save_state(&state)?;
 
@@ -546,6 +604,7 @@ impl InfraBackend for AwsNativeBackend {
                     public_ip: None,
                     instance_id: None,
                     instance_type: None,
+                    instance_name: None,
                     dsn: None,
                     iam_profile: None,
                     pg_ready: false,
@@ -570,6 +629,7 @@ impl InfraBackend for AwsNativeBackend {
             public_ip: Some(state.public_ip),
             instance_id: Some(state.instance_id),
             instance_type: Some(state.instance_type),
+            instance_name: state.instance_name,
             dsn: Some(dsn),
             iam_profile: None,
             pg_ready: false,
