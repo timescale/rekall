@@ -381,6 +381,13 @@ impl AwsNativeBackend {
         super::ssh_provision(ip, ssh_priv_path, &self.config, &state, deploy_key_paths)
     }
 
+    /// Terminate a single instance by id. Public wrapper around the
+    /// private terminate_instance — used by `infra down --instance-id`
+    /// to tear down one instance without touching shared SG/key pair.
+    pub fn terminate_by_id(&self, instance_id: &str) -> Result<()> {
+        self.terminate_instance(instance_id)
+    }
+
     fn terminate_instance(&self, instance_id: &str) -> Result<()> {
         info!("Terminating instance {instance_id}");
         self.run_aws_json(&["ec2", "terminate-instances", "--instance-ids", instance_id])?;

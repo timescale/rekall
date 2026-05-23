@@ -223,7 +223,14 @@ enum InfraCommand {
         instance_name: Option<String>,
     },
 
-    /// Destroy cloud infrastructure
+    /// Destroy cloud infrastructure.
+    ///
+    /// With -c/--suite (the default), tears down the latest-launched
+    /// instance from local state AND deletes the suite's security
+    /// group and key pair. With --instance-id or --instance-name,
+    /// terminates only that single instance — shared SG and key pair
+    /// are left in place since other instances under the same suite
+    /// may still be using them.
     Down {
         /// Config file with [infra] section
         #[arg(short, long)]
@@ -233,6 +240,20 @@ enum InfraCommand {
         /// the latest-launched instance under that suite via local state.
         #[arg(long)]
         suite: Option<String>,
+
+        /// AWS instance-id (e.g. i-0abc123). Targets a single instance
+        /// — leaves the suite's security group and key pair intact.
+        #[arg(short = 'i', long)]
+        instance_id: Option<String>,
+
+        /// Look up the instance by its Name tag. Errors if zero or
+        /// multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
     },
 
     /// Show infrastructure status
@@ -249,7 +270,7 @@ enum InfraCommand {
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
         /// useful when multiple instances share the same name_prefix
         /// or you're on a different machine than the launcher.
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         instance_id: Option<String>,
 
         /// Look up the instance by its Name tag (set via `infra up
@@ -317,7 +338,7 @@ enum InfraCommand {
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
         /// useful when multiple instances share the same name_prefix
         /// or you're on a different machine than the launcher.
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         instance_id: Option<String>,
 
         /// Look up the instance by its Name tag (set via `infra up
@@ -346,7 +367,7 @@ enum InfraCommand {
         suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         instance_id: Option<String>,
 
         /// Look up the instance by its Name tag (set via `infra up
@@ -371,7 +392,7 @@ enum InfraCommand {
         suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
-        #[arg(long)]
+        #[arg(short = 'i', long)]
         instance_id: Option<String>,
 
         /// Look up the instance by its Name tag (set via `infra up
@@ -1186,11 +1207,37 @@ iam_instance_profile = "rekall-profile"
             }
         }
 
-        InfraCommand::Down { config, suite } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            mgr.down()?;
-            println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
+        InfraCommand::Down {
+            config,
+            suite,
+            instance_id,
+            instance_name,
+            region,
+        } => {
+            // Targeted termination: resolve the specific instance via
+            // AWS, terminate only that one, leave SG/key in place.
+            if instance_id.is_some() || instance_name.is_some() {
+                let id = if let Some(id) = instance_id {
+                    id
+                } else {
+                    let n = instance_name.unwrap();
+                    let inst = rekall_lib::infra::find_instance_by_name(&region, &n)?;
+                    inst.status
+                        .instance_id
+                        .ok_or_else(|| anyhow::anyhow!("Instance '{n}' has no instance-id"))?
+                };
+                rekall_lib::infra::terminate_instance(&region, &id)?;
+                println!(
+                    "Terminated {id}. Shared security group and key pair left in \
+                     place — use `rekall infra down -c <config>` or `--suite` to \
+                     also clean those up once the last instance under the suite is gone."
+                );
+            } else {
+                let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
+                let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+                mgr.down()?;
+                println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
+            }
         }
 
         InfraCommand::Status {

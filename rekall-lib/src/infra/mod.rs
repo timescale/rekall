@@ -577,6 +577,20 @@ pub fn find_instance(region: &str, instance_id: &str) -> Result<InfraInstance> {
     })
 }
 
+/// Terminate a specific instance by AWS instance-id. Used by
+/// `infra down --instance-id`. Only tears down the instance; leaves
+/// the security group and key pair in place because they're scoped
+/// by name_prefix and may be shared with other instances under the
+/// same suite.
+pub fn terminate_instance(region: &str, instance_id: &str) -> Result<()> {
+    let config = InfraConfig {
+        region: region.to_string(),
+        ..Default::default()
+    };
+    let backend = AwsNativeBackend::new(std::env::current_dir().unwrap_or_default(), &config);
+    backend.terminate_by_id(instance_id)
+}
+
 /// Look up an instance by its Name tag (as set via `infra up --name`
 /// or the timestamp default). Errors if no match or multiple matches
 /// — collisions are surfaced with the matching instance-ids so the
