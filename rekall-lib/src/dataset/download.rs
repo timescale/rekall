@@ -117,55 +117,12 @@ fn describe_sdk_error<E: std::error::Error>(e: &E) -> String {
     parts.join(": ")
 }
 
-/// Probe S3 for the bucket's home region. Returns `None` if the call
-/// fails or the bucket is unreachable — the caller falls back to
-/// whatever region the default SdkConfig produced.
-async fn resolve_bucket_region(
-    base_config: &aws_config::SdkConfig,
-    bucket: &str,
-) -> Option<aws_sdk_s3::config::Region> {
-    // get_bucket_location is global; pin to us-east-1 for the probe so
-    // we have a known-reachable endpoint regardless of the instance's
-    // own default region.
-    let probe_cfg = base_config
-        .to_builder()
-        .region(aws_sdk_s3::config::Region::new("us-east-1"))
-        .build();
-    let probe = aws_sdk_s3::Client::new(&probe_cfg);
-    let loc = probe.get_bucket_location().bucket(bucket).send().await.ok()?;
-    // An empty/None LocationConstraint historically means us-east-1.
-    let region = loc
-        .location_constraint()
-        .map(|c| c.as_str())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("us-east-1")
-        .to_string();
-    Some(aws_sdk_s3::config::Region::new(region))
-}
-
 async fn download_s3(bucket: &str, key: &str, dest: &Path) -> Result<()> {
     let base_config = aws_config::load_defaults(aws_config::BehaviorVersion::latest()).await;
-
-    // Discover the bucket's actual region. aws-sdk-rust doesn't follow
-    // S3's PermanentRedirect responses transparently the way awscli does,
-    // so if the instance's default region differs from the bucket's home
-    // region, GetObject returns a vague `service error`. Probing
-    // GetBucketLocation first (it's a global-style operation that works
-    // from any region) lets us pin the right region before downloading.
-    let region = resolve_bucket_region(&base_config, bucket).await;
-    if let Some(ref r) = region {
-        tracing::debug!("Resolved bucket '{bucket}' region to {}", r.as_ref());
-    }
-
-    let config = match region {
-        Some(r) => base_config.to_builder().region(r).build(),
-        None => base_config,
-    };
-    let client = aws_sdk_s3::Client::new(&config);
-
+    let client = aws_sdk_s3::Client::new(&base_config);
     let filename = key.rsplit('/').next().unwrap_or(key);
 
-    // HEAD to get content length for progress bar (non-fatal if it fails)
+    // HEAD to get content length for progress bar (non-fatal if it fails).
     let total = match client.head_object().bucket(bucket).key(key).send().await {
         Ok(head) => head.content_length().map(|l| l as u64),
         Err(e) => {
@@ -176,23 +133,55 @@ async fn download_s3(bucket: &str, key: &str, dest: &Path) -> Result<()> {
 
     let pb = make_progress_bar(total, filename);
 
-    let resp = client
-        .get_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-        .map_err(|e| {
-            Error::Config(format!(
-                "S3 download s3://{bucket}/{key} failed: {}\n\
-                 \n\
-                 Check:\n  \
-                 - AWS credentials (aws configure / AWS_PROFILE)\n  \
-                 - Region (AWS_REGION or aws configure)\n  \
-                 - Bucket/key exists and you have s3:GetObject permission",
-                describe_sdk_error(&e)
-            ))
-        })?;
+    // aws-sdk-rust doesn't follow S3's PermanentRedirect transparently the
+    // way awscli does. If the default region differs from the bucket's
+    // actual region, GetObject returns a 301 that the SDK surfaces as a
+    // vague `service error`. The 301 response carries the correct region
+    // in `x-amz-bucket-region` — extract it and retry with a client
+    // pinned to that region.
+    let resp = match client.get_object().bucket(bucket).key(key).send().await {
+        Ok(r) => r,
+        Err(first_err) => {
+            let actual_region = first_err
+                .raw_response()
+                .and_then(|r| r.headers().get("x-amz-bucket-region"))
+                .map(|h| h.to_string());
+
+            if let Some(actual_region) = actual_region {
+                tracing::info!(
+                    "S3 bucket '{bucket}' is in {actual_region}, retrying with that region"
+                );
+                let regional_cfg = base_config
+                    .to_builder()
+                    .region(aws_sdk_s3::config::Region::new(actual_region))
+                    .build();
+                let regional_client = aws_sdk_s3::Client::new(&regional_cfg);
+                regional_client
+                    .get_object()
+                    .bucket(bucket)
+                    .key(key)
+                    .send()
+                    .await
+                    .map_err(|e| {
+                        Error::Config(format!(
+                            "S3 download s3://{bucket}/{key} failed even after \
+                             region redirect: {}",
+                            describe_sdk_error(&e)
+                        ))
+                    })?
+            } else {
+                return Err(Error::Config(format!(
+                    "S3 download s3://{bucket}/{key} failed: {}\n\
+                     \n\
+                     Check:\n  \
+                     - AWS credentials (aws configure / AWS_PROFILE)\n  \
+                     - Region (AWS_REGION or aws configure)\n  \
+                     - Bucket/key exists and you have s3:GetObject permission",
+                    describe_sdk_error(&first_err)
+                )));
+            }
+        }
+    };
 
     let mut body = resp.body.into_async_read();
     let mut file = tokio::fs::File::create(dest)
