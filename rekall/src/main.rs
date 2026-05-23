@@ -1589,10 +1589,18 @@ done"#
             let configs_str = remote_configs.join(" ");
             let rebuild_flag = if rebuild { " --rebuild" } else { "" };
 
-            let run_cmd = format!("cd ~ && rekall run {configs_str}{rebuild_flag}");
+            // Pipe both stdout and stderr to a log file. If the tmux
+            // session dies (because rekall exited fast on an error),
+            // the log persists and the user can SSH in and read it
+            // instead of being stuck guessing what went wrong.
+            let log_path = format!("{remote_dir}/last-run.log");
+            let run_cmd = format!(
+                "cd ~ && rekall run {configs_str}{rebuild_flag} 2>&1 | tee {log_path}"
+            );
 
             // Launch in tmux
             println!("Launching benchmark in tmux session '{session}'...");
+            println!("(Output also tee'd to {log_path} on the remote.)");
             let tmux_cmd = format!(
                 "TERM=xterm-256color tmux new -d -s {session} '{run_cmd}' 2>/dev/null || \
                  TERM=xterm-256color tmux send-keys -t {session} '{run_cmd}' Enter"
