@@ -36,18 +36,18 @@ for downloading datasets.
 
 ```bash
 # 1. Generate all setup resources and instructions
-rekall infra init -c examples/cloud-benchmark.toml
+rekall infra init -c infra/instances/r7g.2xlarge.toml
 
 # 2. Follow the printed instructions (apply IAM, add deploy key, etc.)
 
 # 3. Provision
-rekall infra up -c examples/cloud-benchmark.toml
+rekall infra up -c infra/instances/r7g.2xlarge.toml
 
 # 4. SSH in and run benchmarks
-rekall infra ssh -c examples/cloud-benchmark.toml
+rekall infra ssh -c infra/instances/r7g.2xlarge.toml
 
 # 5. Tear down
-rekall infra down -c examples/cloud-benchmark.toml
+rekall infra down -c infra/instances/r7g.2xlarge.toml
 ```
 
 ## Setup
@@ -58,7 +58,7 @@ This is the recommended starting point. It generates all local resources
 in one step and prints instructions for what to do next:
 
 ```bash
-rekall infra init -c examples/cloud-benchmark.toml
+rekall infra init -c infra/instances/r7g.2xlarge.toml
 ```
 
 This generates:
@@ -113,7 +113,6 @@ To scope S3 access to a specific bucket, set `s3_bucket` in the config
 before generating the template:
 
 ```toml
-[infra]
 s3_bucket = "my-datasets-bucket"
 ```
 
@@ -128,38 +127,51 @@ No IAM create permissions are needed since the role is pre-created.
 
 ## Configuration
 
-Infrastructure config lives in the `[infra]` section of your benchmark
-TOML. Sensitive values (SSH key, private repo URLs, instance profile)
-go in a gitignored `.local.toml` override.
+Infra configs are standalone TOML files (no `[infra]` wrapper) under
+`infra/instances/<instance-type>.toml`. The committed file is canonical;
+personal/machine-specific values (SSH key, IAM profile, private repo
+URLs) go in a gitignored `<instance-type>.local.toml` next to it and
+are deep-merged on top.
 
-### Base config (committed)
+### Base config (committed — `infra/instances/r7g.2xlarge.toml`)
+
+The committed file is self-documenting: every option you can override
+in `.local.toml` appears either set or commented with an explanation.
+Skeleton:
 
 ```toml
-[infra]
-provider = "aws"
-region = "us-east-1"
-instance_type = "r7g.2xlarge"    # Graviton3, 8 vCPU, 64 GB
-disk_size_gb = 100               # gp3 EBS volume
-pg_version = 18
-extensions = ["pgvector", "meerkat"]
-name_prefix = "rekall"           # resource naming + deploy key scope
+provider      = "aws"
+region        = "us-east-1"
+instance_type = "r7g.2xlarge"
+pg_version    = 18
+extensions    = ["pgvector", "meerkat", "vectorchord"]
+name_prefix   = "rekall-r7g"
+
+# ubuntu_version = "24.04"   # 22.04 | 24.04 | 26.04
+# huge_pages     = false
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"
 ```
 
-### Local override (gitignored)
+### Local override (gitignored — `infra/instances/r7g.2xlarge.local.toml`)
+
+Copy `infra/instances/local.toml.example` to start:
 
 ```toml
-# cloud-benchmark.local.toml
-[infra]
-ssh_key = "~/.ssh/id_ed25519"
+ssh_key              = "~/.ssh/id_ed25519.pub"
 iam_instance_profile = "rekall-profile"
 
-[infra.rekall]
-git_url = "git@github.com:myorg/rekall.git"
+[meerkat]
+git_url = "git@github.com:myorg/meerkat.git"
 git_ref = "main"
 
-[infra.meerkat]
-git_url = "git@github.com:myorg/meerkat.git"
-git_ref = "feat/my-branch"
+[rekall]
+git_url = "git@github.com:myorg/rekall.git"
+git_ref = "main"
 ```
 
 ### PostgreSQL Auto-Configuration
@@ -176,23 +188,22 @@ PG settings are computed automatically from the instance type:
 | `min_wal_size` | 2 GB |
 | `max_parallel_maintenance_workers` | 8 |
 
-Override any setting explicitly in `[infra.pg_config]`:
+Override any setting explicitly in `[pg_config]`:
 
 ```toml
-[infra.pg_config]
+[pg_config]
 shared_buffers = "32GB"     # override auto-computed value
 huge_pages = "try"          # add extra settings
 ```
 
 ### Huge Pages
 
-Set `huge_pages = true` on `[infra]` to pre-allocate a kernel huge-page pool
+Set `huge_pages = true` (top-level) to pre-allocate a kernel huge-page pool
 sized to `shared_buffers` (with ~10% overhead), disable Transparent Huge
 Pages, and set PG `huge_pages = on`. Reduces TLB pressure for random-access
 vector index workloads.
 
 ```toml
-[infra]
 huge_pages = true
 ```
 
@@ -234,7 +245,6 @@ never leaves your machine.
 
 ```toml
 # In .local.toml (never committed)
-[infra]
 ssh_key = "~/.ssh/id_ed25519.pub"
 ```
 

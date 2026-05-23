@@ -983,8 +983,8 @@ iam_instance_profile = "rekall-profile"
                 step += 1;
             } else {
                 println!("{step}. Create a .local.toml override next to your config file:");
-                println!("   cp examples/cloud-benchmark.local.toml.example \\");
-                println!("      examples/cloud-benchmark.local.toml");
+                println!("   cp infra/instances/local.toml.example \\");
+                println!("      infra/instances/<instance>.local.toml");
                 println!("   Then set ssh_key, iam_instance_profile, and git URLs.");
                 println!();
                 step += 1;
@@ -994,7 +994,7 @@ iam_instance_profile = "rekall-profile"
             if let Some(ref cfg_path) = config {
                 println!("   rekall infra up -c {}", cfg_path.display());
             } else {
-                println!("   rekall infra up -c examples/cloud-benchmark.toml");
+                println!("   rekall infra up -c infra/instances/r7g.2xlarge.toml");
             }
         }
 
@@ -1107,7 +1107,7 @@ iam_instance_profile = "rekall-profile"
             if instances.is_empty() {
                 println!("No rekall instances found in {region}.");
                 println!(
-                    "Run `rekall infra init -c examples/cloud-benchmark.toml` to get started."
+                    "Run `rekall infra init -c infra/instances/r7g.2xlarge.toml` to get started."
                 );
                 return Ok(());
             }

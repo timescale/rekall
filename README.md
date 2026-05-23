@@ -75,20 +75,20 @@ Provision AWS EC2 instances with PostgreSQL and run benchmarks remotely:
 
 ```bash
 # One-time: generate IAM template, deploy keys, and local config
-rekall infra init -c examples/cloud-benchmark.toml
+rekall infra init -c infra/instances/r7g.2xlarge.toml
 # → follow the printed instructions (apply IAM, add deploy key, edit .local.toml)
 
 # Provision instance (installs PG, extensions, rekall)
-rekall infra up -c examples/cloud-benchmark.toml
+rekall infra up -c infra/instances/r7g.2xlarge.toml
 
 # SSH in and run benchmarks
-rekall infra ssh -c examples/cloud-benchmark.toml
+rekall infra ssh -c infra/instances/r7g.2xlarge.toml
 
 # List all instances
 rekall infra list
 
 # Tear down
-rekall infra down -c examples/cloud-benchmark.toml
+rekall infra down -c infra/instances/r7g.2xlarge.toml
 ```
 
 See [Cloud Infrastructure Guide](docs/cloud-infrastructure.md) for
