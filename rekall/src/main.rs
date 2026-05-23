@@ -1626,9 +1626,17 @@ done"#
             // session dies (because rekall exited fast on an error),
             // the log persists and the user can SSH in and read it
             // instead of being stuck guessing what went wrong.
+            //
+            // `source ~/.cargo/env` ensures ~/.cargo/bin is on PATH —
+            // tmux inherits the non-interactive SSH shell's PATH, which
+            // doesn't include cargo bins by default. Without this, a
+            // user who runs `cargo install` to update their rekall
+            // would have their update silently ignored in favour of
+            // the older /usr/local/bin/rekall from provision.sh.
             let log_path = format!("{remote_dir}/last-run.log");
             let run_cmd = format!(
-                "cd ~ && rekall run {configs_str}{rebuild_flag} 2>&1 | tee {log_path}"
+                "cd ~ && source ~/.cargo/env 2>/dev/null; \
+                 rekall run {configs_str}{rebuild_flag} 2>&1 | tee {log_path}"
             );
 
             // Launch in tmux
