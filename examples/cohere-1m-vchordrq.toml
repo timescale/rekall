@@ -1,0 +1,88 @@
+# Benchmark cohere-1m against VectorChord's vchordrq (IVF posting-list)
+# index in three flavours: plain, rabitq8, and rabitq4 with rerank.
+#
+# Build/search defaults follow VectorChord's documentation:
+#   - lists = [1000] for a 1M-row table (single-level partitioning).
+#   - residual_quantization = true and spherical_centroids = true
+#     are recommended for cosine workloads.
+#   - probes sweep covers the typical IVF range from coarse to fine.
+
+[dataset]
+name = "cohere-1m"
+path = "data/cohere-wikipedia-22-12-1M-angular.hdf5"
+metric = "angular"
+dimension = 768
+
+[connection]
+dsn = "host=localhost port=5432 dbname=rekall user=rekall password=rekall"
+
+[load]
+table = "cohere_1m"
+parallelism = 1
+chunk_size = 50000
+
+# ----- Plain vchordrq on the original vector column ---------------------
+
+[[index]]
+type = "vchordrq"
+name = "vchordrq-lists-1000"
+[index.params]
+lists = [1000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 8
+
+# ----- RaBitQ8 (8-bit quantization, ~8x smaller, <1% recall loss) ------
+
+[[index]]
+type = "vchordrq-rabitq8"
+name = "vchordrq-rabitq8-lists-1000"
+[index.params]
+lists = [1000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 8
+
+# ----- RaBitQ4 + exact-distance rerank (4-bit, ~16x smaller) -----------
+# Query fetches `rerank_n` candidates by quantized distance, then
+# re-orders them by exact distance on the original `v` column. The
+# rerank pool size is a build-time parameter on the index, not a GUC.
+
+[[index]]
+type = "vchordrq-rabitq4"
+name = "vchordrq-rabitq4-rerank-200"
+[index.params]
+lists = [1000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 8
+rerank_n = 200
+
+[search]
+k = 10
+runs = 3
+warmup = 100
+
+# VectorChord's docs use strings for list-typed GUCs:
+#   SET vchordrq.probes TO '10';
+# probes shape must match lists shape. With lists = [1000] (single
+# level), probes is a single value per setting.
+
+[[search.sweep]]
+index = "vchordrq-lists-1000"
+[search.sweep.params]
+"vchordrq.probes" = ["5", "10", "20", "40", "80", "160"]
+
+[[search.sweep]]
+index = "vchordrq-rabitq8-lists-1000"
+[search.sweep.params]
+"vchordrq.probes" = ["5", "10", "20", "40", "80", "160"]
+
+[[search.sweep]]
+index = "vchordrq-rabitq4-rerank-200"
+[search.sweep.params]
+"vchordrq.probes" = ["5", "10", "20", "40", "80", "160"]
+
+[output]
+format = ["table", "json"]
+json_path = "results/cohere-1m-vchordrq-results.json"

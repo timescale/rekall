@@ -2,6 +2,7 @@ pub mod meerkat;
 pub mod pg_vector_type;
 pub mod pgvector_hnsw;
 pub mod postgres;
+pub mod vchordrq;
 
 use std::collections::HashMap;
 
@@ -87,6 +88,25 @@ impl BackendRegistry {
                     metric,
                     index_config,
                     cancel_registry,
+                )
+                .await?;
+                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+            }
+            t @ ("vchordrq" | "vchordrq-rabitq8" | "vchordrq-rabitq4") => {
+                let variant = match t {
+                    "vchordrq" => vchordrq::Variant::Plain,
+                    "vchordrq-rabitq8" => vchordrq::Variant::Rabitq8,
+                    "vchordrq-rabitq4" => vchordrq::Variant::Rabitq4Rerank,
+                    _ => unreachable!(),
+                };
+                let backend = vchordrq::VchordrqBackend::create(
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
+                    cancel_registry,
+                    variant,
                 )
                 .await?;
                 Ok(Box::new(backend) as Box<dyn IndexBackend>)
