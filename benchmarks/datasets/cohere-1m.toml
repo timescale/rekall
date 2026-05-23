@@ -1,11 +1,12 @@
 [dataset]
 name = "cohere-1m"
-path = "data/cohere-wikipedia-22-12-1M-angular.hdf5"
+uri = "s3://vector-datasets/1M/cohere-wikipedia-22-12-1M-angular.hdf5"
 metric = "angular"
 dimension = 768
 
-[connection]
-dsn = "host=localhost port=5432 dbname=postgres"
+# Uncomment to override the global connection (from ~/.config/rekall/config.toml)
+# [connection]
+# dsn = "host=localhost port=5432 dbname=postgres"
 
 [load]
 table = "cohere_1m"

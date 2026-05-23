@@ -66,14 +66,42 @@ rekall run --datasets benchmarks/datasets/cohere-1m.toml \
                      benchmarks/indexes/mkt-n4000-cctrue-fs16-soar.toml
 ```
 
+## Auto-Download
+
+Dataset configs include a `uri` field pointing to the canonical download
+source (S3 or HTTP/S). When a benchmark runs and the dataset file isn't
+found locally, it is downloaded automatically with a progress bar.
+
+```toml
+[dataset]
+name = "cohere-1m"
+uri = "s3://vector-datasets/1M/cohere-wikipedia-22-12-1M-angular.hdf5"
+```
+
+Downloaded datasets are stored in `~/.local/share/rekall/datasets/`
+by default (XDG data directory). The filename is derived from the URI.
+Override the location with `data_dir`:
+
+```toml
+data_dir = "/mnt/fast-disk/datasets"
+```
+
+If the file already exists, no download occurs.
+
+S3 downloads use the AWS SDK (respects `AWS_PROFILE`, `AWS_REGION`,
+etc.). HTTP/S downloads use `reqwest`.
+
 ## Local Overrides
 
-Dataset paths and connection strings are machine-specific. Create a
+Connection strings and dataset locations are machine-specific. Create a
 `.local.toml` sibling to override them without modifying the committed file:
 
 ```bash
 # benchmarks/datasets/cohere-1m.local.toml (gitignored)
 [dataset]
+data_dir = "~/my-datasets"       # override download directory
+uri = "https://my-mirror.example.com/cohere-1M.hdf5"  # override source
+# or skip download entirely by pointing to an existing file:
 path = "~/data/cohere-wikipedia-22-12-1M-angular.hdf5"
 
 [connection]

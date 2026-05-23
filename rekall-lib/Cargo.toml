@@ -27,6 +27,9 @@ shellexpand = { workspace = true }
 minijinja = { workspace = true }
 tabled = { workspace = true }
 dirs = { workspace = true }
+reqwest = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-s3 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

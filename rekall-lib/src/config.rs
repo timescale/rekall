@@ -24,20 +24,62 @@ impl std::fmt::Display for Metric {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetConfig {
     pub name: String,
-    pub path: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub uri: Option<String>,
+    #[serde(default = "default_data_dir")]
+    pub data_dir: String,
     pub metric: Metric,
     pub dimension: u32,
 }
 
+fn default_data_dir() -> String {
+    dirs::data_dir()
+        .map(|d| d.join("rekall/datasets").to_string_lossy().to_string())
+        .unwrap_or_else(|| "data".to_string())
+}
+
 impl DatasetConfig {
+    /// Resolve the local file path for this dataset.
+    ///
+    /// If `path` is set explicitly, use it (with tilde expansion).
+    /// Otherwise derive from `data_dir` + the filename component of `uri`.
     pub fn resolved_path(&self) -> PathBuf {
-        PathBuf::from(shellexpand::tilde(&self.path).as_ref())
+        if let Some(ref path) = self.path {
+            return PathBuf::from(shellexpand::tilde(path).as_ref());
+        }
+        if let Some(ref uri) = self.uri {
+            let filename = uri.rsplit('/').next().unwrap_or("dataset.hdf5");
+            let data_dir = shellexpand::tilde(&self.data_dir);
+            return PathBuf::from(data_dir.as_ref()).join(filename);
+        }
+        PathBuf::from(shellexpand::tilde(&self.data_dir).as_ref()).join("dataset.hdf5")
+    }
+
+    /// Human-readable path string for display/dry-run output.
+    pub fn display_path(&self) -> String {
+        if let Some(ref path) = self.path {
+            return path.clone();
+        }
+        self.resolved_path().display().to_string()
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionConfig {
+    #[serde(default = "default_dsn")]
     pub dsn: String,
+}
+
+fn default_dsn() -> String {
+    "host=localhost dbname=postgres".to_string()
+}
+
+impl Default for ConnectionConfig {
+    fn default() -> Self {
+        Self { dsn: default_dsn() }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,6 +218,7 @@ impl Default for OutputConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkConfig {
     pub dataset: DatasetConfig,
+    #[serde(default)]
     pub connection: ConnectionConfig,
     #[serde(default)]
     pub load: LoadConfig,
@@ -210,8 +253,12 @@ impl BenchmarkConfig {
         let content = std::fs::read_to_string(path).map_err(|e| {
             Error::Config(format!("Cannot read config file '{}': {e}", path.display()))
         })?;
-        let mut base: toml::Value = toml::from_str(&content)
+        let file_value: toml::Value = toml::from_str(&content)
             .map_err(|e| Error::Config(format!("Invalid config file '{}': {e}", path.display())))?;
+
+        // Merge chain: global config → file → .local.toml
+        let mut merged = load_global_config();
+        deep_merge(&mut merged, file_value);
 
         let local_path = local_config_path(path);
         if local_path.exists() {
@@ -227,11 +274,11 @@ impl BenchmarkConfig {
                     local_path.display()
                 ))
             })?;
-            deep_merge(&mut base, local);
+            deep_merge(&mut merged, local);
             tracing::info!("Merged local overrides from {}", local_path.display());
         }
 
-        let config: Self = base
+        let config: Self = merged
             .try_into()
             .map_err(|e| Error::Config(format!("Invalid merged config: {e}")))?;
         config.validate()?;
@@ -595,6 +642,40 @@ fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Resu
     Ok(())
 }
 
+/// Path to the global rekall config file.
+pub fn global_config_path() -> PathBuf {
+    dirs::config_dir()
+        .map(|d| d.join("rekall/config.toml"))
+        .unwrap_or_else(|| PathBuf::from("~/.config/rekall/config.toml"))
+}
+
+/// Load the global config as a raw TOML value. Returns an empty table
+/// if the file doesn't exist. Logs a warning on parse errors rather
+/// than failing — a broken global config shouldn't block all runs.
+fn load_global_config() -> toml::Value {
+    let path = global_config_path();
+    if !path.exists() {
+        return toml::Value::Table(toml::map::Map::new());
+    }
+
+    match std::fs::read_to_string(&path) {
+        Ok(content) => match toml::from_str(&content) {
+            Ok(value) => {
+                tracing::debug!("Loaded global config from {}", path.display());
+                value
+            }
+            Err(e) => {
+                tracing::warn!("Invalid global config '{}': {e}", path.display());
+                toml::Value::Table(toml::map::Map::new())
+            }
+        },
+        Err(e) => {
+            tracing::warn!("Cannot read global config '{}': {e}", path.display());
+            toml::Value::Table(toml::map::Map::new())
+        }
+    }
+}
+
 /// Derive the local config path: `foo.toml` -> `foo.local.toml`
 fn local_config_path(path: &Path) -> PathBuf {
     let stem = path.file_stem().unwrap_or_default().to_string_lossy();
@@ -734,6 +815,75 @@ json_path = "out.json"
         let path = cfg.dataset.resolved_path();
         assert!(!path.to_str().unwrap().contains('~'));
         assert!(path.to_str().unwrap().contains("data/cohere.hdf5"));
+    }
+
+    #[test]
+    fn resolved_path_from_uri_and_data_dir() {
+        let toml_str = r#"
+[dataset]
+name = "test"
+uri = "s3://bucket/path/to/data.hdf5"
+data_dir = "my-data"
+metric = "angular"
+dimension = 128
+
+[connection]
+dsn = "host=localhost"
+"#;
+        let cfg = parse_config(toml_str);
+        assert_eq!(
+            cfg.dataset.resolved_path(),
+            PathBuf::from("my-data/data.hdf5")
+        );
+        assert!(cfg.dataset.display_path().contains("my-data/data.hdf5"));
+    }
+
+    #[test]
+    fn resolved_path_explicit_overrides_uri() {
+        let toml_str = r#"
+[dataset]
+name = "test"
+path = "/explicit/path.hdf5"
+uri = "s3://bucket/different.hdf5"
+data_dir = "ignored"
+metric = "angular"
+dimension = 128
+
+[connection]
+dsn = "host=localhost"
+"#;
+        let cfg = parse_config(toml_str);
+        assert_eq!(
+            cfg.dataset.resolved_path(),
+            PathBuf::from("/explicit/path.hdf5")
+        );
+    }
+
+    #[test]
+    fn resolved_path_default_data_dir() {
+        let toml_str = r#"
+[dataset]
+name = "test"
+uri = "https://example.com/vectors.hdf5"
+metric = "angular"
+dimension = 128
+
+[connection]
+dsn = "host=localhost"
+"#;
+        let cfg = parse_config(toml_str);
+        let path = cfg.dataset.resolved_path();
+        assert!(
+            path.ends_with("vectors.hdf5"),
+            "expected path ending in vectors.hdf5, got: {}",
+            path.display()
+        );
+        // Default data_dir uses XDG data dir (~/.local/share/rekall/datasets)
+        let path_str = path.to_string_lossy();
+        assert!(
+            path_str.contains("rekall") || path_str.contains("data"),
+            "expected rekall or data in path, got: {path_str}"
+        );
     }
 
     #[test]

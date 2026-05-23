@@ -29,6 +29,9 @@ futures-util = "0.3"
 shellexpand = "3"
 minijinja = { version = "2", default-features = false, features = ["builtins", "serde"] }
 tempfile = "3"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+aws-config = "1"
+aws-sdk-s3 = "1"
 
 [workspace.package]
 version = "0.1.0"

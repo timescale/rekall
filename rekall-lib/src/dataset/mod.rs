@@ -1,3 +1,4 @@
+pub mod download;
 pub mod hdf5;
 
 use ndarray::Array2;

@@ -81,6 +81,46 @@ impl Agent {
         pg.runtime_info().await.ok()
     }
 
+    /// If the dataset file doesn't exist locally and a URI is configured,
+    /// download it before running phases that need it.
+    async fn ensure_dataset(&mut self, phases: &[Phase]) -> Result<()> {
+        let needs_dataset = phases
+            .iter()
+            .any(|p| matches!(p, Phase::Load | Phase::Search));
+        if !needs_dataset {
+            return Ok(());
+        }
+
+        let uri = match self.config.dataset.uri {
+            Some(ref u) => u.clone(),
+            None => return Ok(()),
+        };
+
+        let dest = self.config.dataset.resolved_path();
+        if dest.exists() {
+            return Ok(());
+        }
+
+        for output in self.outputs.iter_mut() {
+            output.on_progress(&ProgressEvent::Message {
+                text: format!(
+                    "Dataset not found at {}. Downloading from {uri}",
+                    dest.display()
+                ),
+            });
+        }
+
+        dataset::download::ensure_available(&uri, &dest).await?;
+
+        for output in self.outputs.iter_mut() {
+            output.on_progress(&ProgressEvent::Message {
+                text: format!("Dataset ready at {}", dest.display()),
+            });
+        }
+
+        Ok(())
+    }
+
     pub async fn run(
         &mut self,
         phases: &[Phase],
@@ -88,6 +128,8 @@ impl Agent {
         rebuild_indexes: bool,
         reload_data: bool,
     ) -> Result<()> {
+        self.ensure_dataset(phases).await?;
+
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
         let mut pg_runtime: Option<PgRuntimeInfo> = None;
