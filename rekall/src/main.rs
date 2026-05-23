@@ -215,6 +215,12 @@ enum InfraCommand {
         /// Instance type override
         #[arg(long)]
         instance_type: Option<String>,
+
+        /// Memorable Name tag for this instance (e.g. "perf-test").
+        /// Defaults to `<name_prefix>-<YYYYMMDD-HHMMSS>` if not given.
+        /// Use it later with attach/ssh/dsn via --name.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
     },
 
     /// Destroy cloud infrastructure
@@ -223,9 +229,10 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
     },
 
     /// Show infrastructure status
@@ -234,9 +241,10 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
         /// useful when multiple instances share the same name_prefix
@@ -244,7 +252,12 @@ enum InfraCommand {
         #[arg(long)]
         instance_id: Option<String>,
 
-        /// AWS region for --instance-id lookup (default: us-east-1).
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
         #[arg(short, long, default_value = "us-east-1")]
         region: String,
     },
@@ -267,9 +280,10 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
 
         /// Benchmark config paths (files or directories) to upload and run
         #[arg(required = true)]
@@ -295,9 +309,10 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state —
         /// useful when multiple instances share the same name_prefix
@@ -305,7 +320,12 @@ enum InfraCommand {
         #[arg(long)]
         instance_id: Option<String>,
 
-        /// AWS region for --instance-id lookup (default: us-east-1).
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
         #[arg(short, long, default_value = "us-east-1")]
         region: String,
 
@@ -320,15 +340,21 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
         #[arg(long)]
         instance_id: Option<String>,
 
-        /// AWS region for --instance-id lookup (default: us-east-1).
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
         #[arg(short, long, default_value = "us-east-1")]
         region: String,
     },
@@ -339,15 +365,21 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
 
         /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
         #[arg(long)]
         instance_id: Option<String>,
 
-        /// AWS region for --instance-id lookup (default: us-east-1).
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
         #[arg(short, long, default_value = "us-east-1")]
         region: String,
     },
@@ -359,9 +391,10 @@ enum InfraCommand {
         #[arg(short, long)]
         config: Option<PathBuf>,
 
-        /// Instance name (name_prefix). Alternative to --config.
-        #[arg(short, long)]
-        name: Option<String>,
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
     },
 
     /// Print IAM policy and role templates for AWS setup.
@@ -892,37 +925,58 @@ fn resolve_infra_config(
 }
 
 /// Build the `ssh ...` command string for an instance.
-/// When `--instance-id` is set, queries AWS directly and bypasses local
-/// state — the SSH key falls back to `--config`'s ssh_key if a config
-/// is also given, otherwise to ~/.ssh/id_ed25519. Without `--instance-id`,
-/// uses the standard local-state path via InfraManager.
+///
+/// Resolution priority:
+///   1. `--instance-id`: AWS-side lookup by exact id.
+///   2. `--instance-name`: AWS-side lookup by Name tag (errors if no
+///      match or multiple matches).
+///   3. `-c CONFIG` / `--suite`: local state lookup (latest-launched
+///      instance under that name_prefix).
+///
+/// For (1) and (2) the SSH key falls back to `--config`'s ssh_key if
+/// a config is also given, otherwise to ~/.ssh/id_ed25519.
 fn resolve_ssh_command(
     config: Option<&PathBuf>,
-    name: Option<&String>,
+    suite: Option<&String>,
     instance_id: Option<&str>,
+    instance_name: Option<&str>,
     region: &str,
 ) -> anyhow::Result<String> {
-    if let Some(id) = instance_id {
-        let inst = rekall_lib::infra::find_instance(region, id)?;
-        let ip = inst
-            .status
-            .public_ip
-            .ok_or_else(|| anyhow::anyhow!("Instance {id} has no public IP yet"))?;
-        // Use config's ssh_key if a config is provided, otherwise default.
-        let infra_cfg = if config.is_some() || name.is_some() {
-            resolve_infra_config(config, name).unwrap_or_default()
+    if let Some(ip) = aws_side_lookup_ip(region, instance_id, instance_name)? {
+        let infra_cfg = if config.is_some() || suite.is_some() {
+            resolve_infra_config(config, suite).unwrap_or_default()
         } else {
             rekall_lib::infra::config::InfraConfig::default()
         };
         let ssh_priv = infra_cfg.ssh_private_key_path();
-        Ok(format!(
+        return Ok(format!(
             "ssh -i {ssh_priv} -o StrictHostKeyChecking=no ubuntu@{ip}"
-        ))
-    } else {
-        let infra_cfg = resolve_infra_config(config, name)?;
-        let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-        mgr.ssh_command().map_err(|e| anyhow::anyhow!("{e}"))
+        ));
     }
+    let infra_cfg = resolve_infra_config(config, suite)?;
+    let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+    mgr.ssh_command().map_err(|e| anyhow::anyhow!("{e}"))
+}
+
+/// Returns the instance's public IP via AWS-side lookup if either
+/// --instance-id or --instance-name is set. None if neither is set.
+fn aws_side_lookup_ip(
+    region: &str,
+    instance_id: Option<&str>,
+    instance_name: Option<&str>,
+) -> anyhow::Result<Option<String>> {
+    let inst = if let Some(id) = instance_id {
+        rekall_lib::infra::find_instance(region, id)?
+    } else if let Some(n) = instance_name {
+        rekall_lib::infra::find_instance_by_name(region, n)?
+    } else {
+        return Ok(None);
+    };
+    let ip = inst
+        .status
+        .public_ip
+        .ok_or_else(|| anyhow::anyhow!("Instance has no public IP yet"))?;
+    Ok(Some(ip))
 }
 
 fn detect_ssh_key() -> Option<String> {
@@ -1072,6 +1126,7 @@ iam_instance_profile = "rekall-profile"
             config,
             region,
             instance_type,
+            instance_name,
         } => {
             let mut infra_cfg = load_infra_config(config.as_ref())?;
             if let Some(r) = region {
@@ -1098,7 +1153,7 @@ iam_instance_profile = "rekall-profile"
             println!();
 
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let output = mgr.up()?;
+            let output = mgr.up_with_name(instance_name.as_deref())?;
             let ssh_cmd = mgr.ssh_command()?;
 
             let summary = format!(
@@ -1131,8 +1186,8 @@ iam_instance_profile = "rekall-profile"
             }
         }
 
-        InfraCommand::Down { config, name } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+        InfraCommand::Down { config, suite } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
             mgr.down()?;
             println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
@@ -1140,16 +1195,20 @@ iam_instance_profile = "rekall-profile"
 
         InfraCommand::Status {
             config,
-            name,
+            suite,
             instance_id,
+            instance_name,
             region,
         } => {
             let (header, status) = if let Some(id) = instance_id.as_deref() {
                 let inst = rekall_lib::infra::find_instance(&region, id)?;
                 let h = inst.status.instance_name.clone().unwrap_or_else(|| id.to_string());
                 (h, inst.status)
+            } else if let Some(n) = instance_name.as_deref() {
+                let inst = rekall_lib::infra::find_instance_by_name(&region, n)?;
+                (n.to_string(), inst.status)
             } else {
-                let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+                let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
                 let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
                 (infra_cfg.name_prefix.clone(), mgr.status()?)
             };
@@ -1221,13 +1280,13 @@ iam_instance_profile = "rekall-profile"
 
         InfraCommand::RemoteRun {
             config,
-            name,
+            suite,
             benchmarks,
             session,
             rebuild,
             s3_dataset,
         } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+            let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
             let status = mgr.status()?;
             if !status.running {
@@ -1402,15 +1461,17 @@ done"#
 
         InfraCommand::Attach {
             config,
-            name,
+            suite,
             instance_id,
+            instance_name,
             region,
             session,
         } => {
             let cmd = resolve_ssh_command(
                 config.as_ref(),
-                name.as_ref(),
+                suite.as_ref(),
                 instance_id.as_deref(),
+                instance_name.as_deref(),
                 &region,
             )?;
             let parts: Vec<&str> = cmd.split_whitespace().collect();
@@ -1431,14 +1492,16 @@ done"#
 
         InfraCommand::Ssh {
             config,
-            name,
+            suite,
             instance_id,
+            instance_name,
             region,
         } => {
             let cmd = resolve_ssh_command(
                 config.as_ref(),
-                name.as_ref(),
+                suite.as_ref(),
                 instance_id.as_deref(),
+                instance_name.as_deref(),
                 &region,
             )?;
             let parts: Vec<&str> = cmd.split_whitespace().collect();
@@ -1454,31 +1517,31 @@ done"#
 
         InfraCommand::Dsn {
             config,
-            name,
+            suite,
             instance_id,
+            instance_name,
             region,
         } => {
-            if let Some(id) = instance_id {
-                let inst = rekall_lib::infra::find_instance(&region, &id)?;
-                let ip = inst
-                    .status
-                    .public_ip
-                    .ok_or_else(|| anyhow::anyhow!("Instance {id} has no public IP"))?;
-                // Default pg_port — we don't have config context with --instance-id.
+            if let Some(ip) = aws_side_lookup_ip(
+                &region,
+                instance_id.as_deref(),
+                instance_name.as_deref(),
+            )? {
+                // Default pg_port — we don't have config context with --instance-id/-name.
                 let dsn = format!(
                     "host={ip} port=5432 dbname=rekall user=rekall password=rekall sslmode=disable"
                 );
                 println!("{dsn}");
             } else {
-                let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+                let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
                 let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
                 let dsn = mgr.dsn()?;
                 println!("{dsn}");
             }
         }
 
-        InfraCommand::Provision { config, name } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), name.as_ref())?;
+        InfraCommand::Provision { config, suite } => {
+            let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
             mgr.provision()?;
             println!("Provisioning complete.");

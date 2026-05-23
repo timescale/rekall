@@ -226,6 +226,7 @@ impl InfraBackend for TerraformRunner {
         deploy_key_paths: &[String],
         vars: &serde_json::Value,
         user_data: &str,
+        _instance_name: Option<&str>,
     ) -> Result<InfraOutput> {
         let tf_version = Self::check_installed()?;
         info!("Terraform: {tf_version}");

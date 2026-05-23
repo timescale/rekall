@@ -276,6 +276,7 @@ impl AwsNativeBackend {
         sg_id: &str,
         key_name: &str,
         user_data: &str,
+        instance_name_override: Option<&str>,
     ) -> Result<(String, String, String)> {
         info!("Launching EC2 instance ({})", self.config.instance_type);
 
@@ -283,12 +284,18 @@ impl AwsNativeBackend {
         // Unique Name tag per instance so multiple under the same suite
         // are distinguishable in the AWS console and `infra list`. The
         // shared rekall:suite tag is still the group identifier used by
-        // discovery and resource scoping.
-        let instance_name = format!(
-            "{}-{}",
-            self.config.name_prefix,
-            chrono::Local::now().format("%Y%m%d-%H%M%S")
-        );
+        // discovery and resource scoping. Honour the caller's override
+        // (from `infra up --name`) if given, otherwise generate the
+        // timestamp default.
+        let instance_name = instance_name_override
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| {
+                format!(
+                    "{}-{}",
+                    self.config.name_prefix,
+                    chrono::Local::now().format("%Y%m%d-%H%M%S")
+                )
+            });
         let tag_spec = format!(
             "ResourceType=instance,Tags=[{{Key=Name,Value={instance_name}}},{{Key=rekall:suite,Value={}}}]",
             self.config.name_prefix
@@ -468,6 +475,43 @@ impl AwsNativeBackend {
         Ok(instances)
     }
 
+    /// Look up instances with a given Name tag. Returns all matches so
+    /// the caller can error helpfully if there's a name collision.
+    pub fn find_instances_by_name(
+        &self,
+        instance_name: &str,
+    ) -> Result<Vec<DiscoveredInstance>> {
+        let result = self.run_aws_json(&[
+            "ec2",
+            "describe-instances",
+            "--filters",
+            &format!("Name=tag:Name,Values={instance_name}"),
+            "Name=instance-state-name,Values=running,stopped,pending",
+            "--query",
+            "Reservations[].Instances[].[\
+               InstanceId,InstanceType,PublicIpAddress,State.Name,\
+               Tags[?Key==`rekall:suite`].Value|[0],\
+               Tags[?Key==`Name`].Value|[0]]",
+        ])?;
+
+        let mut instances = Vec::new();
+        if let Some(arr) = result.as_array() {
+            for item in arr {
+                if let Some(fields) = item.as_array() {
+                    instances.push(DiscoveredInstance {
+                        instance_id: fields.first().and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        instance_type: fields.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        public_ip: fields.get(2).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        state: fields.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        suite: fields.get(4).and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                        name: fields.get(5).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    });
+                }
+            }
+        }
+        Ok(instances)
+    }
+
     /// Look up a specific instance by its AWS instance-id. Returns the
     /// IP if it's running, or an error otherwise. Used by `--instance-id`
     /// on attach/ssh/dsn/status to bypass local state entirely.
@@ -526,6 +570,7 @@ impl InfraBackend for AwsNativeBackend {
         deploy_key_paths: &[String],
         _vars: &serde_json::Value,
         user_data: &str,
+        instance_name: Option<&str>,
     ) -> Result<InfraOutput> {
         let name_prefix = &self.config.name_prefix;
 
@@ -538,7 +583,7 @@ impl InfraBackend for AwsNativeBackend {
         let key_name = self.import_key_pair(ssh_pub_key, name_prefix)?;
         info!("Key pair: {key_name}");
 
-        let run_result = self.run_instance(&ami_id, &sg_id, &key_name, user_data);
+        let run_result = self.run_instance(&ami_id, &sg_id, &key_name, user_data, instance_name);
 
         let (instance_id, public_ip, instance_name) = match run_result {
             Ok(r) => r,

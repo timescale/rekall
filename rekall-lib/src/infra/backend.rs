@@ -15,6 +15,7 @@ pub trait InfraBackend {
         deploy_key_paths: &[String],
         vars: &serde_json::Value,
         user_data: &str,
+        instance_name: Option<&str>,
     ) -> Result<InfraOutput>;
     fn down(&self) -> Result<()>;
     fn status(&self) -> Result<InfraStatus>;

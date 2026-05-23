@@ -71,6 +71,13 @@ impl InfraManager {
     }
 
     pub fn up(&self) -> Result<InfraOutput> {
+        self.up_with_name(None)
+    }
+
+    /// Variant of `up()` that lets the caller override the AWS Name tag
+    /// for the new instance. Passing `None` uses the auto-generated
+    /// timestamp default.
+    pub fn up_with_name(&self, instance_name: Option<&str>) -> Result<InfraOutput> {
         check_aws_credentials()?;
 
         self.config
@@ -145,6 +152,7 @@ impl InfraManager {
             &deploy_key_paths,
             &vars,
             &user_data,
+            instance_name,
         )?;
 
         info!("Verifying PostgreSQL is ready on {}...", output.public_ip);
@@ -567,6 +575,48 @@ pub fn find_instance(region: &str, instance_id: &str) -> Result<InfraInstance> {
             pg_ready: false,
         },
     })
+}
+
+/// Look up an instance by its Name tag (as set via `infra up --name`
+/// or the timestamp default). Errors if no match or multiple matches
+/// — collisions are surfaced with the matching instance-ids so the
+/// caller can pick one with --instance-id.
+pub fn find_instance_by_name(region: &str, name: &str) -> Result<InfraInstance> {
+    let config = InfraConfig {
+        region: region.to_string(),
+        ..Default::default()
+    };
+    let backend = AwsNativeBackend::new(std::env::current_dir().unwrap_or_default(), &config);
+    let matches = backend.find_instances_by_name(name)?;
+    match matches.len() {
+        0 => Err(Error::Config(format!(
+            "No instance with Name tag '{name}' found in {region}."
+        ))),
+        1 => {
+            let d = matches.into_iter().next().unwrap();
+            Ok(InfraInstance {
+                name: d.suite.clone(),
+                status: InfraStatus {
+                    running: d.state == "running",
+                    public_ip: d.public_ip,
+                    instance_id: Some(d.instance_id),
+                    instance_type: Some(d.instance_type),
+                    instance_name: d.name,
+                    dsn: None,
+                    iam_profile: None,
+                    pg_ready: false,
+                },
+            })
+        }
+        _ => {
+            let ids: Vec<String> = matches.iter().map(|d| d.instance_id.clone()).collect();
+            Err(Error::Config(format!(
+                "Multiple instances with Name tag '{name}' in {region}: {}.\n\
+                 Disambiguate with --instance-id <id>.",
+                ids.join(", ")
+            )))
+        }
+    }
 }
 
 /// Discover all rekall instances in AWS by tag, regardless of local state.
