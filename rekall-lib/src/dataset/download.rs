@@ -108,15 +108,14 @@ async fn download_s3(bucket: &str, key: &str, dest: &Path) -> Result<()> {
 
     let filename = key.rsplit('/').next().unwrap_or(key);
 
-    // HEAD request to get content length for progress bar
-    let head = client
-        .head_object()
-        .bucket(bucket)
-        .key(key)
-        .send()
-        .await
-        .map_err(|e| Error::Config(format!("S3 HEAD s3://{bucket}/{key} failed: {e}")))?;
-    let total = head.content_length().map(|l| l as u64);
+    // HEAD to get content length for progress bar (non-fatal if it fails)
+    let total = match client.head_object().bucket(bucket).key(key).send().await {
+        Ok(head) => head.content_length().map(|l| l as u64),
+        Err(e) => {
+            tracing::debug!("S3 HEAD failed (will use spinner): {e:?}");
+            None
+        }
+    };
 
     let pb = make_progress_bar(total, filename);
 
@@ -126,7 +125,16 @@ async fn download_s3(bucket: &str, key: &str, dest: &Path) -> Result<()> {
         .key(key)
         .send()
         .await
-        .map_err(|e| Error::Config(format!("S3 GET s3://{bucket}/{key} failed: {e}")))?;
+        .map_err(|e| {
+            Error::Config(format!(
+                "S3 download s3://{bucket}/{key} failed: {e:#}\n\
+                 \n\
+                 Check:\n  \
+                 - AWS credentials (aws configure / AWS_PROFILE)\n  \
+                 - Region (AWS_REGION or aws configure)\n  \
+                 - Bucket/key exists and you have s3:GetObject permission"
+            ))
+        })?;
 
     let mut body = resp.body.into_async_read();
     let mut file = tokio::fs::File::create(dest)
