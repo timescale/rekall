@@ -107,6 +107,30 @@ impl InfraManager {
             ));
         }
 
+        // Without [rekall] in the config, provision.sh skips the rekall
+        // build block and the instance ends up without the `rekall` binary.
+        // `infra run` would silently fail later (rekall: command not found
+        // exits the tmux session immediately, leaving nothing to attach to).
+        // Fail loudly here instead.
+        if self.config.rekall.is_none() {
+            return Err(Error::Config(
+                "[rekall] is required — without it provision.sh won't \
+                 install the rekall CLI on the instance, and `infra run` \
+                 will silently fail later. Add to your .local.toml:\n\n\
+                 [rekall]\n\
+                 git_url = \"git@github.com:timescale/rekall.git\"\n\
+                 git_ref = \"main\""
+                    .to_string(),
+            ));
+        }
+        if self.config.meerkat.is_none() {
+            tracing::warn!(
+                "[meerkat] is not configured — the meerkat extension won't \
+                 be installed on the instance. Benchmarks that use \
+                 type = \"meerkat\" will fail."
+            );
+        }
+
         self.state.ensure_dirs()?;
 
         for repo_name in &self.config.private_repo_names() {
