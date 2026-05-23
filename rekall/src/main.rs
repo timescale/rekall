@@ -847,11 +847,24 @@ fn resolve_infra_config(
     if let Some(n) = name {
         Ok(rekall_lib::infra::config::InfraConfig {
             name_prefix: n.clone(),
+            ssh_key: detect_ssh_key(),
             ..Default::default()
         })
     } else {
         load_infra_config(config)
     }
+}
+
+fn detect_ssh_key() -> Option<String> {
+    let ssh_dir = dirs::home_dir()?.join(".ssh");
+    for name in ["id_ed25519", "id_rsa", "id_ecdsa"] {
+        let priv_path = ssh_dir.join(name);
+        let pub_path = ssh_dir.join(format!("{name}.pub"));
+        if priv_path.exists() && pub_path.exists() {
+            return Some(format!("~/.ssh/{name}"));
+        }
+    }
+    None
 }
 
 fn handle_infra(command: InfraCommand) -> anyhow::Result<()> {
