@@ -879,7 +879,10 @@ mod tests {
             .iter()
             .filter_map(|k| ssh_key_body(k))
             .any(|b| b == local_body);
-        assert!(already, "matching body should be detected even with different comment");
+        assert!(
+            already,
+            "matching body should be detected even with different comment"
+        );
 
         // And the same key with a different body is not a dupe
         let other = "ssh-ed25519 AAAABODY3 erik@tigerdata.com";
@@ -904,11 +907,8 @@ mod tests {
             huge_pages: true,
             ..Default::default()
         };
-        let out = render_user_data(
-            &cfg,
-            Some("ssh-ed25519 AAAABODYFORTEST tester@example.com"),
-        )
-        .expect("template renders");
+        let out = render_user_data(&cfg, Some("ssh-ed25519 AAAABODYFORTEST tester@example.com"))
+            .expect("template renders");
 
         let mut tmp = std::env::temp_dir();
         tmp.push("rekall-render-check.sh");
@@ -941,4 +941,3 @@ mod tests {
         assert_eq!(ssh_key_body("ssh-rsa"), None);
     }
 }
-

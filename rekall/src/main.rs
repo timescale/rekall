@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 
-use rekall_lib::config::BenchmarkConfig;
+use rekall_lib::config::{self, BenchmarkConfig};
 use rekall_lib::dataset::hdf5::Hdf5Reader;
 use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
@@ -30,9 +30,16 @@ enum Command {
     /// Individual files are grouped by parent directory.
     /// Example: rekall run dir1/ dir2/mkt-*.toml
     Run {
-        /// Config paths (files, directories, or shell globs)
-        #[arg(required = true)]
+        /// Suite config file, or legacy config paths (files/directories)
         configs: Vec<PathBuf>,
+
+        /// Dataset config files (builds an anonymous suite with --indexes)
+        #[arg(long, num_args = 1..)]
+        datasets: Option<Vec<PathBuf>>,
+
+        /// Index config files or directories (used with --datasets)
+        #[arg(long, num_args = 1..)]
+        indexes: Option<Vec<PathBuf>>,
 
         /// Run only a specific phase
         #[arg(long)]
@@ -365,6 +372,8 @@ async fn main() -> anyhow::Result<()> {
     match cli.command {
         Command::Run {
             configs,
+            datasets,
+            indexes,
             phase,
             index,
             dry_run,
@@ -372,7 +381,7 @@ async fn main() -> anyhow::Result<()> {
             reload,
             ..
         } => {
-            let groups = rekall_lib::config::resolve_config_groups(&configs)?;
+            let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
 
             let phases = if let Some(ref p) = phase {
                 vec![p.parse().map_err(|e: String| anyhow::anyhow!(e))?]
@@ -536,6 +545,33 @@ async fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+fn resolve_run_groups(
+    configs: &[PathBuf],
+    datasets: Option<&[PathBuf]>,
+    indexes: Option<&[PathBuf]>,
+) -> anyhow::Result<Vec<config::ConfigGroup>> {
+    match (datasets, indexes) {
+        (Some(ds), Some(ix)) => {
+            if !configs.is_empty() {
+                anyhow::bail!("Cannot use positional configs with --datasets/--indexes");
+            }
+            Ok(config::resolve_anonymous_suite(ds, ix)?)
+        }
+        (Some(_), None) => anyhow::bail!("--datasets requires --indexes"),
+        (None, Some(_)) => anyhow::bail!("--indexes requires --datasets"),
+        (None, None) => {
+            if configs.is_empty() {
+                anyhow::bail!("Provide a suite file, config paths, or --datasets/--indexes");
+            }
+            if configs.len() == 1 && config::is_suite_file(&configs[0]) {
+                Ok(config::resolve_suite(&configs[0])?)
+            } else {
+                Ok(config::resolve_config_groups(configs)?)
+            }
+        }
+    }
 }
 
 fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {

@@ -1,0 +1,21 @@
+[dataset]
+name = "cohere-50m"
+path = "data/cohere-wikipedia-22-12-50M-angular.hdf5"
+metric = "angular"
+dimension = 768
+
+[connection]
+dsn = "host=localhost port=5432 dbname=postgres"
+
+[load]
+table = "cohere_50m"
+
+[search]
+k = 10
+runs = 3
+warmup = 500
+num_queries = 10000
+
+[output]
+format = ["table", "json"]
+results_dir = "results/cohere-50m"

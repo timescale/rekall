@@ -88,7 +88,6 @@ impl AwsNativeBackend {
         cmd
     }
 
-
     fn run_aws_json(&self, args: &[&str]) -> Result<serde_json::Value> {
         let mut cmd = self.aws_cmd();
         cmd.args(args);

@@ -266,43 +266,7 @@ impl BenchmarkConfig {
             .collect();
         index_files.sort();
 
-        for index_file in &index_files {
-            let content = std::fs::read_to_string(index_file).map_err(|e| {
-                Error::Config(format!(
-                    "Cannot read index config '{}': {e}",
-                    index_file.display()
-                ))
-            })?;
-
-            #[derive(Deserialize)]
-            struct IndexFragment {
-                #[serde(default)]
-                index: Vec<IndexConfig>,
-                #[serde(default)]
-                search: Option<SearchFragment>,
-            }
-
-            #[derive(Deserialize)]
-            struct SearchFragment {
-                #[serde(default)]
-                sweep: Vec<SweepConfig>,
-            }
-
-            let fragment: IndexFragment = toml::from_str(&content).map_err(|e| {
-                Error::Config(format!(
-                    "Invalid index config '{}': {e}",
-                    index_file.display()
-                ))
-            })?;
-
-            config.index.extend(fragment.index);
-            if let Some(search) = fragment.search {
-                config.search.sweep.extend(search.sweep);
-            }
-
-            tracing::info!("Loaded index config from {}", index_file.display());
-        }
-
+        load_index_fragments(&mut config, &index_files)?;
         config.validate()?;
         Ok(config)
     }
@@ -323,43 +287,7 @@ impl BenchmarkConfig {
         let mut sorted_files = files.to_vec();
         sorted_files.sort();
 
-        for index_file in &sorted_files {
-            let content = std::fs::read_to_string(index_file).map_err(|e| {
-                Error::Config(format!(
-                    "Cannot read index config '{}': {e}",
-                    index_file.display()
-                ))
-            })?;
-
-            #[derive(Deserialize)]
-            struct IndexFragment {
-                #[serde(default)]
-                index: Vec<IndexConfig>,
-                #[serde(default)]
-                search: Option<SearchFragment>,
-            }
-
-            #[derive(Deserialize)]
-            struct SearchFragment {
-                #[serde(default)]
-                sweep: Vec<SweepConfig>,
-            }
-
-            let fragment: IndexFragment = toml::from_str(&content).map_err(|e| {
-                Error::Config(format!(
-                    "Invalid index config '{}': {e}",
-                    index_file.display()
-                ))
-            })?;
-
-            config.index.extend(fragment.index);
-            if let Some(search) = fragment.search {
-                config.search.sweep.extend(search.sweep);
-            }
-
-            tracing::info!("Loaded index config from {}", index_file.display());
-        }
-
+        load_index_fragments(&mut config, &sorted_files)?;
         config.validate()?;
         Ok(config)
     }
@@ -369,6 +297,21 @@ impl BenchmarkConfig {
             .table
             .clone()
             .unwrap_or_else(|| self.dataset.name.replace('-', "_"))
+    }
+
+    /// Load a dataset config and merge index fragments from separate paths.
+    ///
+    /// `dataset` is a TOML file with `[dataset]`, `[connection]`, etc.
+    /// `index_paths` are individual index fragment files or directories
+    /// containing index fragments (all `*.toml` files in the directory).
+    pub fn from_dataset_and_indexes(dataset: &Path, index_paths: &[PathBuf]) -> Result<Self> {
+        let mut config = Self::from_file(dataset)?;
+
+        let expanded = expand_index_paths(index_paths)?;
+        load_index_fragments(&mut config, &expanded)?;
+
+        config.validate()?;
+        Ok(config)
     }
 
     fn validate(&self) -> Result<()> {
@@ -388,6 +331,32 @@ impl BenchmarkConfig {
 pub struct ConfigGroup {
     pub name: String,
     pub config: BenchmarkConfig,
+}
+
+/// A suite config that pairs datasets with shared index definitions.
+///
+/// ```toml
+/// indexes = ["indexes/hnsw-m16.toml", "indexes/mkt-n4000.toml"]
+///
+/// [[suite]]
+/// dataset = "datasets/cohere-1m.toml"
+///
+/// [[suite]]
+/// dataset = "datasets/cohere-10m.toml"
+/// indexes = ["indexes/hnsw-m16.toml"]  # override default
+/// ```
+#[derive(Debug, Clone, Deserialize)]
+pub struct SuiteConfig {
+    #[serde(default)]
+    pub indexes: Vec<PathBuf>,
+    pub suite: Vec<SuiteEntry>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SuiteEntry {
+    pub dataset: PathBuf,
+    #[serde(default)]
+    pub indexes: Option<Vec<PathBuf>>,
 }
 
 /// Resolve a list of CLI paths into named config groups.
@@ -453,6 +422,177 @@ pub fn resolve_config_groups(paths: &[PathBuf]) -> Result<Vec<ConfigGroup>> {
     }
 
     Ok(groups)
+}
+
+/// Resolve a suite config file into config groups.
+///
+/// Each `[[suite]]` entry produces one `ConfigGroup`. The dataset file
+/// provides `[dataset]`, `[connection]`, `[search]`, etc. Index fragments
+/// come from the entry's `indexes` (or the top-level default). Paths are
+/// resolved relative to the suite file's parent directory.
+pub fn resolve_suite(suite_path: &Path) -> Result<Vec<ConfigGroup>> {
+    let content = std::fs::read_to_string(suite_path).map_err(|e| {
+        Error::Config(format!(
+            "Cannot read suite file '{}': {e}",
+            suite_path.display()
+        ))
+    })?;
+    let suite: SuiteConfig = toml::from_str(&content).map_err(|e| {
+        Error::Config(format!(
+            "Invalid suite file '{}': {e}",
+            suite_path.display()
+        ))
+    })?;
+
+    if suite.suite.is_empty() {
+        return Err(Error::Config(format!(
+            "Suite file '{}' has no [[suite]] entries",
+            suite_path.display()
+        )));
+    }
+
+    let base_dir = suite_path.parent().unwrap_or(Path::new("."));
+    let mut groups = Vec::new();
+
+    for entry in &suite.suite {
+        let dataset_path = base_dir.join(&entry.dataset);
+        let index_refs = entry.indexes.as_ref().unwrap_or(&suite.indexes);
+
+        if index_refs.is_empty() {
+            return Err(Error::Config(format!(
+                "Suite entry for '{}' has no indexes (and no top-level default)",
+                entry.dataset.display()
+            )));
+        }
+
+        let abs_indexes: Vec<PathBuf> = index_refs.iter().map(|p| base_dir.join(p)).collect();
+        let config = BenchmarkConfig::from_dataset_and_indexes(&dataset_path, &abs_indexes)?;
+        let name = dataset_path
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        groups.push(ConfigGroup { name, config });
+    }
+
+    Ok(groups)
+}
+
+/// Build config groups from explicit dataset and index paths (anonymous suite).
+///
+/// Each dataset is paired with all indexes, producing one `ConfigGroup` per dataset.
+pub fn resolve_anonymous_suite(
+    datasets: &[PathBuf],
+    indexes: &[PathBuf],
+) -> Result<Vec<ConfigGroup>> {
+    if datasets.is_empty() {
+        return Err(Error::Config(
+            "--datasets requires at least one dataset file".to_string(),
+        ));
+    }
+    if indexes.is_empty() {
+        return Err(Error::Config(
+            "--indexes requires at least one index file or directory".to_string(),
+        ));
+    }
+
+    let mut groups = Vec::new();
+    for dataset in datasets {
+        let config = BenchmarkConfig::from_dataset_and_indexes(dataset, indexes)?;
+        let name = dataset
+            .file_stem()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        groups.push(ConfigGroup { name, config });
+    }
+    Ok(groups)
+}
+
+/// Returns true if the file looks like a suite config (has `[[suite]]` entries).
+pub fn is_suite_file(path: &Path) -> bool {
+    if path.is_dir() {
+        return false;
+    }
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return false;
+    };
+    content.contains("[[suite]]")
+}
+
+/// Expand index paths: directories become all their `*.toml` files, plain
+/// files pass through. Results are sorted for deterministic order.
+fn expand_index_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+    let mut expanded = Vec::new();
+    for path in paths {
+        if path.is_dir() {
+            let mut dir_files: Vec<PathBuf> = std::fs::read_dir(path)
+                .map_err(|e| {
+                    Error::Config(format!(
+                        "Cannot read index directory '{}': {e}",
+                        path.display()
+                    ))
+                })?
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.extension().is_some_and(|e| e == "toml")
+                        && !p
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .contains(".local.")
+                })
+                .collect();
+            dir_files.sort();
+            expanded.extend(dir_files);
+        } else {
+            expanded.push(path.clone());
+        }
+    }
+    Ok(expanded)
+}
+
+/// Load index fragments from files into an existing config.
+fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Result<()> {
+    #[derive(Deserialize)]
+    struct IndexFragment {
+        #[serde(default)]
+        index: Vec<IndexConfig>,
+        #[serde(default)]
+        search: Option<SearchFragment>,
+    }
+
+    #[derive(Deserialize)]
+    struct SearchFragment {
+        #[serde(default)]
+        sweep: Vec<SweepConfig>,
+    }
+
+    for index_file in files {
+        let content = std::fs::read_to_string(index_file).map_err(|e| {
+            Error::Config(format!(
+                "Cannot read index config '{}': {e}",
+                index_file.display()
+            ))
+        })?;
+
+        let fragment: IndexFragment = toml::from_str(&content).map_err(|e| {
+            Error::Config(format!(
+                "Invalid index config '{}': {e}",
+                index_file.display()
+            ))
+        })?;
+
+        config.index.extend(fragment.index);
+        if let Some(search) = fragment.search {
+            config.search.sweep.extend(search.sweep);
+        }
+
+        tracing::info!("Loaded index config from {}", index_file.display());
+    }
+
+    Ok(())
 }
 
 /// Derive the local config path: `foo.toml` -> `foo.local.toml`
@@ -731,5 +871,222 @@ runs = 1
     fn no_local_config_is_fine() {
         let cfg = parse_config(MINIMAL_CONFIG);
         assert_eq!(cfg.search.k, 10); // default, no local override
+    }
+
+    const INDEX_HNSW: &str = r#"
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-m16"
+[index.params]
+m = 16
+
+[[search.sweep]]
+index = "hnsw-m16"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 40]
+"#;
+
+    const INDEX_MEERKAT: &str = r#"
+[[index]]
+type = "meerkat"
+name = "mkt-1k"
+[index.params]
+nlist = 1000
+
+[[search.sweep]]
+index = "mkt-1k"
+[search.sweep.params]
+"mkt.nprobe" = [5, 10]
+"#;
+
+    fn write_suite_dir(dir: &Path) {
+        let datasets = dir.join("datasets");
+        let indexes = dir.join("indexes");
+        std::fs::create_dir_all(&datasets).unwrap();
+        std::fs::create_dir_all(&indexes).unwrap();
+        std::fs::write(datasets.join("ds-a.toml"), MINIMAL_CONFIG).unwrap();
+        std::fs::write(
+            datasets.join("ds-b.toml"),
+            MINIMAL_CONFIG.replace("test-ds", "test-ds-b"),
+        )
+        .unwrap();
+        std::fs::write(indexes.join("hnsw.toml"), INDEX_HNSW).unwrap();
+        std::fs::write(indexes.join("mkt.toml"), INDEX_MEERKAT).unwrap();
+    }
+
+    #[test]
+    fn suite_file_loads_all_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+
+[[suite]]
+dataset = "datasets/ds-b.toml"
+"#,
+        )
+        .unwrap();
+
+        let groups = resolve_suite(&suite_path).unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].name, "ds-a");
+        assert_eq!(groups[0].config.dataset.name, "test-ds");
+        assert_eq!(groups[0].config.index.len(), 2);
+        assert_eq!(groups[1].name, "ds-b");
+        assert_eq!(groups[1].config.dataset.name, "test-ds-b");
+        assert_eq!(groups[1].config.index.len(), 2);
+    }
+
+    #[test]
+    fn suite_entry_overrides_indexes() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+
+[[suite]]
+dataset = "datasets/ds-b.toml"
+indexes = ["indexes/hnsw.toml"]
+"#,
+        )
+        .unwrap();
+
+        let groups = resolve_suite(&suite_path).unwrap();
+        assert_eq!(groups[0].config.index.len(), 2);
+        assert_eq!(groups[1].config.index.len(), 1);
+        assert_eq!(groups[1].config.index[0].name, "hnsw-m16");
+    }
+
+    #[test]
+    fn suite_with_index_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/"]
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+"#,
+        )
+        .unwrap();
+
+        let groups = resolve_suite(&suite_path).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].config.index.len(), 2);
+    }
+
+    #[test]
+    fn suite_empty_entries_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml"]
+suite = []
+"#,
+        )
+        .unwrap();
+
+        let err = resolve_suite(&suite_path).unwrap_err();
+        assert!(err.to_string().contains("no [[suite]] entries"));
+    }
+
+    #[test]
+    fn suite_no_indexes_error() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+[[suite]]
+dataset = "datasets/ds-a.toml"
+"#,
+        )
+        .unwrap();
+
+        let err = resolve_suite(&suite_path).unwrap_err();
+        assert!(err.to_string().contains("no indexes"));
+    }
+
+    #[test]
+    fn anonymous_suite() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+
+        let datasets = vec![
+            dir.path().join("datasets/ds-a.toml"),
+            dir.path().join("datasets/ds-b.toml"),
+        ];
+        let indexes = vec![dir.path().join("indexes/hnsw.toml")];
+
+        let groups = resolve_anonymous_suite(&datasets, &indexes).unwrap();
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].config.index.len(), 1);
+        assert_eq!(groups[0].config.index[0].name, "hnsw-m16");
+        assert_eq!(groups[1].config.index.len(), 1);
+    }
+
+    #[test]
+    fn anonymous_suite_with_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+
+        let datasets = vec![dir.path().join("datasets/ds-a.toml")];
+        let indexes = vec![dir.path().join("indexes")];
+
+        let groups = resolve_anonymous_suite(&datasets, &indexes).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].config.index.len(), 2);
+    }
+
+    #[test]
+    fn dataset_and_indexes_method() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+
+        let cfg = BenchmarkConfig::from_dataset_and_indexes(
+            &dir.path().join("datasets/ds-a.toml"),
+            &[
+                dir.path().join("indexes/hnsw.toml"),
+                dir.path().join("indexes/mkt.toml"),
+            ],
+        )
+        .unwrap();
+
+        assert_eq!(cfg.dataset.name, "test-ds");
+        assert_eq!(cfg.index.len(), 2);
+        assert_eq!(cfg.search.sweep.len(), 2);
+    }
+
+    #[test]
+    fn is_suite_file_detection() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let suite = dir.path().join("suite.toml");
+        std::fs::write(&suite, "[[suite]]\ndataset = \"foo.toml\"").unwrap();
+        assert!(is_suite_file(&suite));
+
+        let regular = dir.path().join("regular.toml");
+        std::fs::write(&regular, MINIMAL_CONFIG).unwrap();
+        assert!(!is_suite_file(&regular));
+
+        assert!(!is_suite_file(dir.path()));
     }
 }
