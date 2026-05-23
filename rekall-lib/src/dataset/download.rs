@@ -142,18 +142,6 @@ async fn download_s3(bucket: &str, key: &str, dest: &Path) -> Result<()> {
     let resp = match client.get_object().bucket(bucket).key(key).send().await {
         Ok(r) => r,
         Err(first_err) => {
-            tracing::warn!(
-                "S3 GetObject failed, checking for region redirect. raw_response Some: {}",
-                first_err.raw_response().is_some()
-            );
-            if let Some(r) = first_err.raw_response() {
-                let header_dump: Vec<(String, String)> = r
-                    .headers()
-                    .iter()
-                    .map(|(k, v)| (k.to_string(), v.to_string()))
-                    .collect();
-                tracing::warn!("S3 response headers: {header_dump:?}");
-            }
             let actual_region = first_err
                 .raw_response()
                 .and_then(|r| r.headers().get("x-amz-bucket-region"))
