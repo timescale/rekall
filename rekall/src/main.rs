@@ -1305,8 +1305,8 @@ iam_instance_profile = "rekall-profile"
             }
 
             println!(
-                "{:<20} {:<28} {:<10} {:<16} {:<14} {:<22}",
-                "SUITE", "NAME", "STATE", "IP", "TYPE", "INSTANCE"
+                "{:<28} {:<10} {:<16} {:<14} {:<22} {:<20}",
+                "NAME", "STATE", "IP", "TYPE", "INSTANCE", "GROUP"
             );
             for inst in &instances {
                 let state = if inst.status.running {
@@ -1319,8 +1319,8 @@ iam_instance_profile = "rekall-profile"
                 let id = inst.status.instance_id.as_deref().unwrap_or("-");
                 let name = inst.status.instance_name.as_deref().unwrap_or("-");
                 println!(
-                    "{:<20} {:<28} {:<10} {:<16} {:<14} {:<22}",
-                    inst.name, name, state, ip, itype, id
+                    "{:<28} {:<10} {:<16} {:<14} {:<22} {:<20}",
+                    name, state, ip, itype, id, inst.name
                 );
             }
         }
