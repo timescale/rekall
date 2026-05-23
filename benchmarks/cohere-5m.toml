@@ -1,0 +1,12 @@
+# Suite: cohere-5m × hnsw + meerkat.
+# Usage: rekall run benchmarks/cohere-5m.toml [--dry-run]
+
+indexes = [
+    "indexes/hnsw-m16.toml",
+    "indexes/hnsw-m24.toml",
+    "indexes/mkt-n4000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n8000-cctrue-fs16-soar.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-5m.toml"
