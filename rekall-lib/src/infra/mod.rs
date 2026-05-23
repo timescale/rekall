@@ -367,7 +367,10 @@ pub fn ssh_provision(
         )?;
         let _ = std::fs::remove_file(&tmp_script);
 
-        let mut env_vars = vec![format!("PG_VERSION={}", config.pg_version)];
+        let mut env_vars = vec![
+            format!("PG_VERSION={}", config.pg_version),
+            format!("PG_PORT={}", config.pg_port),
+        ];
         if let Some(ref m) = config.meerkat {
             env_vars.push(format!("MEERKAT_GIT_URL={}", m.git_url));
             env_vars.push(format!("MEERKAT_GIT_REF={}", m.git_ref));

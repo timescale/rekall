@@ -166,6 +166,14 @@ if [ -n "$REKALL_GIT_URL" ]; then
         sudo cp "$REKALL_DIR/target/release/rekall" /usr/local/bin/
         echo "=== Rekall installed ==="
     fi
+
+    # Generate global config with cloud-appropriate paths
+    PG_PORT="${PG_PORT:-5432}"
+    BENCH_DIR="$HOME/benchmarks"
+    rekall setup --force \
+        --data-dir "$BENCH_DIR/data" \
+        --results-dir "$BENCH_DIR/results" \
+        --dsn "host=localhost port=$PG_PORT dbname=rekall user=rekall password=rekall"
 fi
 
 echo "=== Provisioning complete ==="
