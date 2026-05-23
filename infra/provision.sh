@@ -35,23 +35,26 @@ mkdir -p "$REPOS_DIR"
 if [ -n "$MEERKAT_GIT_URL" ]; then
     MEERKAT_SO="/usr/lib/postgresql/${PG_VERSION}/lib/meerkat.so"
     MEERKAT_DIR="$REPOS_DIR/meerkat"
+    MEERKAT_SSH_CMD="ssh -i $HOME/.ssh/meerkat -o StrictHostKeyChecking=no"
 
     if [ -f "$MEERKAT_SO" ]; then
         echo "=== Meerkat already installed ($MEERKAT_SO exists), skipping ==="
     else
         echo "=== Building meerkat from source ==="
-        export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/meerkat -o StrictHostKeyChecking=no"
 
-        if [ -d "$MEERKAT_DIR" ]; then
-            cd "$MEERKAT_DIR"
-            git fetch origin
-            git checkout "$MEERKAT_GIT_REF"
-            git pull origin "$MEERKAT_GIT_REF" || true
-        else
-            git clone "$MEERKAT_GIT_URL" "$MEERKAT_DIR"
-            cd "$MEERKAT_DIR"
-            git checkout "$MEERKAT_GIT_REF"
+        # The initial clone needs GIT_SSH_COMMAND because .git/config doesn't
+        # exist yet. Every subsequent git operation in this repo uses the
+        # core.sshCommand we set below, so users SSH'ing in to pull/push
+        # later don't need to export anything.
+        if [ ! -d "$MEERKAT_DIR" ]; then
+            GIT_SSH_COMMAND="$MEERKAT_SSH_CMD" git clone "$MEERKAT_GIT_URL" "$MEERKAT_DIR"
         fi
+        cd "$MEERKAT_DIR"
+        git config core.sshCommand "$MEERKAT_SSH_CMD"
+
+        git fetch origin
+        git checkout "$MEERKAT_GIT_REF"
+        git pull origin "$MEERKAT_GIT_REF" || true
 
         # Parallelise LTO across all available cores. Without this the link
         # phase is single-threaded and pegs one core for many minutes.
@@ -144,23 +147,26 @@ fi
 if [ -n "$REKALL_GIT_URL" ]; then
     REKALL_DIR="$REPOS_DIR/rekall"
 
+    REKALL_SSH_CMD="ssh -i $HOME/.ssh/rekall -o StrictHostKeyChecking=no"
+
     if command -v rekall &>/dev/null; then
         echo "=== Rekall already installed ($(rekall --version)), skipping ==="
     else
         echo "=== Building rekall from source ==="
-        export GIT_SSH_COMMAND="ssh -i $HOME/.ssh/rekall -o StrictHostKeyChecking=no"
         source "$HOME/.cargo/env"
 
-        if [ -d "$REKALL_DIR" ]; then
-            cd "$REKALL_DIR"
-            git fetch origin
-            git checkout "$REKALL_GIT_REF"
-            git pull origin "$REKALL_GIT_REF" || true
-        else
-            git clone "$REKALL_GIT_URL" "$REKALL_DIR"
-            cd "$REKALL_DIR"
-            git checkout "$REKALL_GIT_REF"
+        # See the meerkat block: GIT_SSH_COMMAND only for the initial
+        # clone, then persist via core.sshCommand for the user's later
+        # pulls/pushes.
+        if [ ! -d "$REKALL_DIR" ]; then
+            GIT_SSH_COMMAND="$REKALL_SSH_CMD" git clone "$REKALL_GIT_URL" "$REKALL_DIR"
         fi
+        cd "$REKALL_DIR"
+        git config core.sshCommand "$REKALL_SSH_CMD"
+
+        git fetch origin
+        git checkout "$REKALL_GIT_REF"
+        git pull origin "$REKALL_GIT_REF" || true
 
         cargo build --release
         sudo cp "$REKALL_DIR/target/release/rekall" /usr/local/bin/
