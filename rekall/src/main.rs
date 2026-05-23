@@ -252,8 +252,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
     },
 
     /// Show infrastructure status
@@ -279,8 +281,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
     },
 
     /// List all provisioned instances.
@@ -288,8 +292,10 @@ enum InfraCommand {
     #[command(alias = "ls")]
     List {
         /// AWS region to scan (default: us-east-1)
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
     },
 
     /// Run a benchmark on a remote instance.
@@ -316,8 +322,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
 
         /// Benchmark config paths (files or directories) to upload and run
         #[arg(required = true)]
@@ -360,8 +368,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
 
         /// tmux session name (default: rekall)
         #[arg(short, long, default_value = "rekall")]
@@ -389,8 +399,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
     },
 
     /// Print the PostgreSQL DSN for a cloud instance
@@ -414,8 +426,10 @@ enum InfraCommand {
         instance_name: Option<String>,
 
         /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
-        #[arg(short, long, default_value = "us-east-1")]
-        region: String,
+        /// AWS region. Defaults to the config's region (when -c is
+        /// given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
     },
 
     /// Re-run provisioning (deploy keys + builds) on an existing instance.
@@ -958,6 +972,21 @@ fn resolve_infra_config(
     }
 }
 
+/// Resolve the AWS region from CLI args, preferring explicit `--region`
+/// then the config's region. Falls back to us-east-1 when neither is
+/// available, but most commands have a config so this rarely kicks in.
+fn effective_region(explicit: Option<&str>, config: Option<&PathBuf>) -> String {
+    if let Some(r) = explicit {
+        return r.to_string();
+    }
+    if let Some(p) = config {
+        if let Ok(cfg) = rekall_lib::infra::config::InfraConfig::from_file(p) {
+            return cfg.region;
+        }
+    }
+    "us-east-1".to_string()
+}
+
 /// Build the `ssh ...` command string for an instance.
 ///
 /// Resolution priority:
@@ -1227,6 +1256,7 @@ iam_instance_profile = "rekall-profile"
             instance_name,
             region,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             // Targeted termination: resolve the specific instance via
             // AWS, terminate only that one, leave SG/key in place.
             if instance_id.is_some() || instance_name.is_some() {
@@ -1260,6 +1290,7 @@ iam_instance_profile = "rekall-profile"
             instance_name,
             region,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             let (header, status) = if let Some(id) = instance_id.as_deref() {
                 let inst = rekall_lib::infra::find_instance(&region, id)?;
                 let h = inst.status.instance_name.clone().unwrap_or_else(|| id.to_string());
@@ -1306,6 +1337,7 @@ iam_instance_profile = "rekall-profile"
         }
 
         InfraCommand::List { region } => {
+            let region = effective_region(region.as_deref(), None);
             // Discover from AWS tags (works across machines)
             let instances = rekall_lib::infra::list_instances_aws(&region)?;
 
@@ -1349,6 +1381,7 @@ iam_instance_profile = "rekall-profile"
             rebuild,
             s3_dataset,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             let (ip, ssh_priv): (String, String) = if let Some(ip) = aws_side_lookup_ip(
                 &region,
                 instance_id.as_deref(),
@@ -1642,6 +1675,7 @@ done"#
             region,
             session,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             let cmd = resolve_ssh_command(
                 config.as_ref(),
                 suite.as_ref(),
@@ -1672,6 +1706,7 @@ done"#
             instance_name,
             region,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             let cmd = resolve_ssh_command(
                 config.as_ref(),
                 suite.as_ref(),
@@ -1697,6 +1732,7 @@ done"#
             instance_name,
             region,
         } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
             if let Some(ip) = aws_side_lookup_ip(
                 &region,
                 instance_id.as_deref(),
