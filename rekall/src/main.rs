@@ -306,6 +306,19 @@ enum InfraCommand {
         #[arg(long)]
         suite: Option<String>,
 
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
+        #[arg(short = 'i', long)]
+        instance_id: Option<String>,
+
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup (default: us-east-1).
+        #[arg(short, long, default_value = "us-east-1")]
+        region: String,
+
         /// Benchmark config paths (files or directories) to upload and run
         #[arg(required = true)]
         benchmarks: Vec<PathBuf>,
@@ -1328,26 +1341,45 @@ iam_instance_profile = "rekall-profile"
         InfraCommand::RemoteRun {
             config,
             suite,
+            instance_id,
+            instance_name,
+            region,
             benchmarks,
             session,
             rebuild,
             s3_dataset,
         } => {
-            let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
-            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let status = mgr.status()?;
-            if !status.running {
-                return Err(anyhow::anyhow!(
-                    "Instance not running. Run `rekall infra up` first."
-                ));
-            }
-            let ip = status
-                .public_ip
-                .as_ref()
-                .ok_or_else(|| anyhow::anyhow!("No public IP for instance"))?;
-            let (_, ssh_priv) = infra_cfg
-                .require_ssh_key()
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let (ip, ssh_priv): (String, String) = if let Some(ip) = aws_side_lookup_ip(
+                &region,
+                instance_id.as_deref(),
+                instance_name.as_deref(),
+            )? {
+                // AWS-side lookup. SSH key from --config if provided, else default.
+                let cfg = if config.is_some() || suite.is_some() {
+                    resolve_infra_config(config.as_ref(), suite.as_ref()).unwrap_or_default()
+                } else {
+                    rekall_lib::infra::config::InfraConfig::default()
+                };
+                (ip, cfg.ssh_private_key_path())
+            } else {
+                let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
+                let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+                let status = mgr.status()?;
+                if !status.running {
+                    return Err(anyhow::anyhow!(
+                        "Instance not running. Run `rekall infra up` first."
+                    ));
+                }
+                let ip = status
+                    .public_ip
+                    .ok_or_else(|| anyhow::anyhow!("No public IP for instance"))?;
+                let (_, sp) = infra_cfg
+                    .require_ssh_key()
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                (ip, sp)
+            };
+            let ip = ip.as_str();
+            let ssh_priv = ssh_priv.as_str();
 
             let ssh_target = format!("ubuntu@{ip}");
             let ssh_args = |extra: &[&str]| -> std::process::Command {
@@ -1484,26 +1516,28 @@ done"#
                 return Err(anyhow::anyhow!("Failed to start tmux session"));
             }
 
+            // Build a selector hint for the follow-up commands, matching
+            // whichever flag the user actually used to find the instance.
+            let selector_hint = if let Some(ref id) = instance_id {
+                format!("--instance-id {id}")
+            } else if let Some(ref n) = instance_name {
+                format!("--name {n}")
+            } else if let Some(ref p) = config {
+                format!("-c {}", p.display())
+            } else if let Some(ref s) = suite {
+                format!("--suite {s}")
+            } else {
+                String::new()
+            };
+
             println!();
             println!("Benchmark started on {} in tmux session '{session}'", ip);
             println!();
             println!("To check progress:");
-            println!(
-                "  rekall infra attach -c {}",
-                config
-                    .as_ref()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| format!("-n {}", infra_cfg.name_prefix))
-            );
+            println!("  rekall infra attach {selector_hint}");
             println!();
             println!("To view results later:");
-            println!(
-                "  rekall infra ssh {} -- cat ~/benchmarks/results/*.json",
-                config
-                    .as_ref()
-                    .map(|p| format!("-c {}", p.display()))
-                    .unwrap_or_else(|| format!("-n {}", infra_cfg.name_prefix))
-            );
+            println!("  rekall infra ssh {selector_hint} -- cat ~/benchmarks/results/*.json");
         }
 
         InfraCommand::Attach {
