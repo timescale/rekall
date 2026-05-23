@@ -119,7 +119,57 @@ from the base config.
 **Verify the merged result**:
 
 ```bash
-rekall config examples/cohere-1m.toml
+rekall config benchmarks/datasets/cohere-1m.toml
+```
+
+## Suite Files
+
+A **suite file** pairs one or more datasets with a shared set of index
+definitions, so a single `rekall run` invocation can cross datasets ×
+index variants. The committed suites live in `benchmarks/` — that's
+the convention, not a requirement. You can put your own suite + index
++ dataset files anywhere and pass the path explicitly to `rekall run`.
+
+```toml
+# benchmarks/run-all.toml
+indexes = [
+    "indexes/hnsw-m16.toml",
+    "indexes/mkt-n4000-cctrue-fs16-soar.toml",
+    "indexes/vchordrq-rabitq8.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m.toml"
+
+[[suite]]
+dataset = "datasets/cohere-10m.toml"
+indexes = ["indexes/hnsw-m16.toml"]   # override the default per-suite
+```
+
+Paths in a suite file are resolved relative to the suite's parent
+directory. Each `[[suite]]` entry produces one benchmark group; the
+default `indexes = [...]` at the top is the per-entry default, which
+any single entry can override.
+
+Running:
+
+```bash
+# Canonical suites
+rekall run benchmarks/run-all.toml
+rekall run benchmarks/vchordrq-rabitq8.toml
+
+# A suite you keep outside the repo
+rekall run ~/my-experiments/scaling-test.toml
+```
+
+Repo layout under `benchmarks/`:
+
+```
+benchmarks/
+  run-all.toml                     # suite: all indexes × all datasets
+  vchordrq-*.toml                  # per-variant suites
+  datasets/cohere-{1m,10m,...}.toml
+  indexes/{hnsw,mkt,vchordrq}-*.toml
 ```
 
 ## Directory-Based Config Groups

@@ -81,9 +81,11 @@ rekall/
       main.rs                   # clap CLI, config resolution, group runner
   docs/
     configuration.md            # Detailed config guide
-  examples/
-    cohere-1m.toml              # Example benchmark config
-    cohere-1m-no-soar.toml
+  benchmarks/
+    run-all.toml                # Suite: all indexes × all datasets
+    datasets/cohere-1m.toml     # Dataset config
+    indexes/hnsw-m16.toml       # Reusable index config
+    indexes/vchordrq-*.toml     # vchordrq variants
 ```
 
 ## Core Abstractions
@@ -153,8 +155,8 @@ Pluggable output: `StdoutSink` (formatted tables with PG runtime header),
 
 ### Layered Config
 
-1. **Base config** (committed): `examples/cohere-1m.toml`
-2. **Local overrides** (gitignored): `examples/cohere-1m.local.toml`
+1. **Base config** (committed): `benchmarks/datasets/cohere-1m.toml`
+2. **Local overrides** (gitignored): `benchmarks/datasets/cohere-1m.local.toml`
    Deep-merged on top — tables merge recursively, scalars/arrays replace.
 
 ### Directory Groups

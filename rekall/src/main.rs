@@ -742,7 +742,7 @@ fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {
 }
 
 fn show_all_configs() {
-    let search_dirs = [".", "examples"];
+    let search_dirs = [".", "benchmarks", "benchmarks/datasets"];
     let mut found = Vec::new();
 
     for dir in &search_dirs {
@@ -780,7 +780,7 @@ fn show_all_configs() {
     found.sort();
 
     if found.is_empty() {
-        println!("No config files found in . or examples/");
+        println!("No config files found in . or benchmarks/");
         return;
     }
 

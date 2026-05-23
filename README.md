@@ -44,8 +44,8 @@ cargo build --release
 # Inspect a dataset
 rekall dataset info data/cohere-wikipedia-22-12-1M-angular.hdf5
 
-# Run a benchmark
-rekall run examples/cohere-1m.toml
+# Run a benchmark suite
+rekall run benchmarks/run-all.toml
 
 # Run from a config directory
 rekall run configs/cohere-1m/
@@ -57,7 +57,7 @@ rekall run configs/cohere-1m/mkt-*.toml
 rekall run configs/group1/ configs/group2/mkt-*.toml
 
 # Show effective merged config
-rekall config examples/cohere-1m.toml
+rekall config benchmarks/datasets/cohere-1m.toml
 
 # List all configs
 rekall config

@@ -984,8 +984,8 @@ index = "nonexistent"
     #[test]
     fn local_config_path_derivation() {
         assert_eq!(
-            super::local_config_path(Path::new("examples/cohere-1m.toml")),
-            PathBuf::from("examples/cohere-1m.local.toml")
+            super::local_config_path(Path::new("benchmarks/datasets/cohere-1m.toml")),
+            PathBuf::from("benchmarks/datasets/cohere-1m.local.toml")
         );
         assert_eq!(
             super::local_config_path(Path::new("/abs/path/bench.toml")),
