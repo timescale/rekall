@@ -144,56 +144,90 @@ impl AwsNativeBackend {
         })
     }
 
+    /// Ensure a security group named `<name_prefix>-sg` exists with our
+    /// SSH and PG ingress rules. Reuses an existing SG if present —
+    /// instances under the same name_prefix share one SG by design,
+    /// so re-running `infra up` (or launching a second instance) is
+    /// idempotent rather than failing with InvalidGroup.Duplicate.
     fn create_security_group(&self, ssh_cidr: &str, name_prefix: &str) -> Result<String> {
-        info!("Creating security group");
         let sg_name = format!("{name_prefix}-sg");
 
-        let result = self.run_aws_json(&[
-            "ec2",
-            "create-security-group",
-            "--group-name",
-            &sg_name,
-            "--description",
-            "Rekall benchmark instance",
-        ])?;
+        let sg_id = if let Some(existing) = self.find_security_group_by_name(&sg_name)? {
+            info!("Reusing existing security group {existing} ({sg_name})");
+            existing
+        } else {
+            info!("Creating security group {sg_name}");
+            let result = self.run_aws_json(&[
+                "ec2",
+                "create-security-group",
+                "--group-name",
+                &sg_name,
+                "--description",
+                "Rekall benchmark instance",
+            ])?;
+            let id = result["GroupId"]
+                .as_str()
+                .ok_or_else(|| Error::Config("Failed to create security group".to_string()))?
+                .to_string();
+            self.tag_resource(&id, name_prefix)?;
+            id
+        };
 
-        let sg_id = result["GroupId"]
-            .as_str()
-            .ok_or_else(|| Error::Config("Failed to create security group".to_string()))?
-            .to_string();
-
-        // Tag security group
-        self.tag_resource(&sg_id, name_prefix)?;
-
-        // SSH ingress
-        self.run_aws_json(&[
-            "ec2",
-            "authorize-security-group-ingress",
-            "--group-id",
-            &sg_id,
-            "--protocol",
-            "tcp",
-            "--port",
-            "22",
-            "--cidr",
-            ssh_cidr,
-        ])?;
-
-        // PG ingress
-        self.run_aws_json(&[
-            "ec2",
-            "authorize-security-group-ingress",
-            "--group-id",
-            &sg_id,
-            "--protocol",
-            "tcp",
-            "--port",
-            &self.config.pg_port.to_string(),
-            "--cidr",
-            ssh_cidr,
-        ])?;
+        // Idempotently ensure both ingress rules are present. The launcher's
+        // public IP may have changed since the SG was first created, so
+        // ports we want may need new CIDRs added; duplicates are tolerated.
+        self.authorize_sg_ingress(&sg_id, 22, ssh_cidr)?;
+        self.authorize_sg_ingress(&sg_id, self.config.pg_port, ssh_cidr)?;
 
         Ok(sg_id)
+    }
+
+    fn find_security_group_by_name(&self, name: &str) -> Result<Option<String>> {
+        let result = self.run_aws_json(&[
+            "ec2",
+            "describe-security-groups",
+            "--filters",
+            &format!("Name=group-name,Values={name}"),
+            "--query",
+            "SecurityGroups[0].GroupId",
+        ])?;
+        Ok(result
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string()))
+    }
+
+    /// Add an ingress rule, tolerating the "rule already exists" error
+    /// returned when the same (port, cidr) tuple is already present.
+    fn authorize_sg_ingress(&self, sg_id: &str, port: u16, cidr: &str) -> Result<()> {
+        let port_s = port.to_string();
+        let mut cmd = self.aws_cmd();
+        cmd.args([
+            "ec2",
+            "authorize-security-group-ingress",
+            "--group-id",
+            sg_id,
+            "--protocol",
+            "tcp",
+            "--port",
+            &port_s,
+            "--cidr",
+            cidr,
+        ]);
+        let output = cmd.output().map_err(|e| {
+            Error::Config(format!("Failed to run aws CLI: {e}. Is aws-cli installed?"))
+        })?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if stderr.contains("InvalidPermission.Duplicate") {
+                return Ok(());
+            }
+            return Err(Error::AwsCliFailed {
+                command: format!("aws ec2 authorize-security-group-ingress (port {port})"),
+                detail: stderr.trim().to_string(),
+            });
+        }
+        Ok(())
     }
 
     fn import_key_pair(&self, ssh_pub_key: &str, name_prefix: &str) -> Result<String> {
