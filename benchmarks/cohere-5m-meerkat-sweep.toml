@@ -1,17 +1,42 @@
-# Suite: cohere-5m × meerkat nlist sweep.
-# Compares nlist ∈ {2000, 4000, 8000, 16000} at otherwise-identical
-# params (centroid compression on, fastscan-16, SOAR λ=1.0) to find
-# the best partitioning size for ~5M cosine vectors. The IVF rule of
-# thumb is ~4·√N (≈8944 for 5M), so 8000 should be near-optimal —
-# this brackets it 4× either side.
+# Suite: cohere-5m × meerkat full 3-axis sweep.
+#
+# 4 × 2 × 2 = 16 index variants, all at fastscan-16 with
+# boundary_epsilon=0.05:
+#   nlist ∈ {2000, 4000, 8000, 16000}     # IVF partition count
+#   centroid_compression ∈ {true, false}   # 8-bit centroid quantization
+#   SOAR ∈ {off, λ=1.0}                    # SOAR loss on the IVF build
+#
+# IVF rule of thumb for 5M is ~4·√N (≈8944) so 8000 should be near-
+# optimal for nlist. The other two axes typically trade recall vs.
+# build cost / index size — this surfaces by how much for cohere-5m
+# specifically. Each variant sweeps 10 nprobe values.
+#
+# Heavy: 16 builds × 10 nprobes × 3 runs against a 5M dataset is
+# multi-hour. Use `rekall run ... --dry-run` first if unsure.
 #
 # Usage: rekall run benchmarks/cohere-5m-meerkat-sweep.toml [--dry-run]
 
 indexes = [
+    # cc=true, SOAR off
+    "indexes/mkt-n2000-cctrue-fs16.toml",
+    "indexes/mkt-n4000-cctrue-fs16.toml",
+    "indexes/mkt-n8000-cctrue-fs16.toml",
+    "indexes/mkt-n16000-cctrue-fs16.toml",
+    # cc=true, SOAR on
     "indexes/mkt-n2000-cctrue-fs16-soar.toml",
     "indexes/mkt-n4000-cctrue-fs16-soar.toml",
     "indexes/mkt-n8000-cctrue-fs16-soar.toml",
     "indexes/mkt-n16000-cctrue-fs16-soar.toml",
+    # cc=false, SOAR off
+    "indexes/mkt-n2000-ccfalse-fs16.toml",
+    "indexes/mkt-n4000-ccfalse-fs16.toml",
+    "indexes/mkt-n8000-ccfalse-fs16.toml",
+    "indexes/mkt-n16000-ccfalse-fs16.toml",
+    # cc=false, SOAR on
+    "indexes/mkt-n2000-ccfalse-fs16-soar.toml",
+    "indexes/mkt-n4000-ccfalse-fs16-soar.toml",
+    "indexes/mkt-n8000-ccfalse-fs16-soar.toml",
+    "indexes/mkt-n16000-ccfalse-fs16-soar.toml",
 ]
 
 [[suite]]
