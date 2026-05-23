@@ -525,6 +525,47 @@ pub fn resolve_suite(suite_path: &Path) -> Result<Vec<ConfigGroup>> {
     Ok(groups)
 }
 
+/// If `path` is a suite file (parses as SuiteConfig with at least one
+/// `[[suite]]` entry), return the list of paths it references — every
+/// index TOML and every dataset TOML, deduplicated, in the form they
+/// appear in the suite file (relative to the suite's parent directory).
+///
+/// Returns `Ok(None)` for files that don't parse as a suite (regular
+/// benchmark configs, or anything else). Used by `infra run` to figure
+/// out what extra files to SCP alongside a suite TOML so the suite's
+/// relative references resolve on the remote.
+pub fn suite_dependencies(path: &Path) -> Result<Option<Vec<PathBuf>>> {
+    let content = match std::fs::read_to_string(path) {
+        Ok(s) => s,
+        Err(e) => {
+            return Err(Error::Config(format!(
+                "Cannot read '{}': {e}",
+                path.display()
+            )))
+        }
+    };
+    let suite: SuiteConfig = match toml::from_str(&content) {
+        Ok(s) => s,
+        // Not a suite file — likely a regular benchmark config. Fine.
+        Err(_) => return Ok(None),
+    };
+    if suite.suite.is_empty() {
+        return Ok(None);
+    }
+
+    let mut deps: Vec<PathBuf> = Vec::new();
+    deps.extend(suite.indexes.iter().cloned());
+    for entry in &suite.suite {
+        deps.push(entry.dataset.clone());
+        if let Some(ref overrides) = entry.indexes {
+            deps.extend(overrides.iter().cloned());
+        }
+    }
+    deps.sort();
+    deps.dedup();
+    Ok(Some(deps))
+}
+
 /// Build config groups from explicit dataset and index paths (anonymous suite).
 ///
 /// Each dataset is paired with all indexes, producing one `ConfigGroup` per dataset.
@@ -1117,6 +1158,62 @@ indexes = ["indexes/hnsw.toml"]
         assert_eq!(groups[0].config.index.len(), 2);
         assert_eq!(groups[1].config.index.len(), 1);
         assert_eq!(groups[1].config.index[0].name, "hnsw-m16");
+    }
+
+    #[test]
+    fn suite_dependencies_extracts_referenced_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+
+[[suite]]
+dataset = "datasets/ds-b.toml"
+indexes = ["indexes/hnsw.toml"]
+"#,
+        )
+        .unwrap();
+
+        let deps = suite_dependencies(&suite_path).unwrap().unwrap();
+        // Deduplicated + sorted; the per-entry override doesn't add a new entry
+        // because hnsw.toml is already in the top-level indexes list.
+        assert_eq!(
+            deps,
+            vec![
+                PathBuf::from("datasets/ds-a.toml"),
+                PathBuf::from("datasets/ds-b.toml"),
+                PathBuf::from("indexes/hnsw.toml"),
+                PathBuf::from("indexes/mkt.toml"),
+            ]
+        );
+    }
+
+    #[test]
+    fn suite_dependencies_returns_none_for_non_suite_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bench.toml");
+        std::fs::write(
+            &path,
+            r#"
+[dataset]
+name = "foo"
+path = "data/foo.hdf5"
+metric = "angular"
+dimension = 768
+
+[connection]
+dsn = "host=localhost"
+"#,
+        )
+        .unwrap();
+        // Regular benchmark config — has no [[suite]] entries.
+        assert!(suite_dependencies(&path).unwrap().is_none());
     }
 
     #[test]

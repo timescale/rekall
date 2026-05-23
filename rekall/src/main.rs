@@ -1455,6 +1455,92 @@ iam_instance_profile = "rekall-profile"
                             .status();
                     }
                 }
+
+                // If this is a suite file, also upload every index +
+                // dataset it references, preserving their relative paths
+                // so the suite's references resolve on the remote.
+                if !bench_path.is_dir() {
+                    if let Some(deps) = rekall_lib::config::suite_dependencies(bench_path)
+                        .map_err(|e| anyhow::anyhow!("{e}"))?
+                    {
+                        let suite_parent =
+                            bench_path.parent().unwrap_or(std::path::Path::new("."));
+                        // mkdir for each subdirectory referenced, dedup.
+                        let mut subdirs: std::collections::BTreeSet<String> =
+                            std::collections::BTreeSet::new();
+                        for dep in &deps {
+                            if let Some(d) = dep.parent() {
+                                let s = d.to_string_lossy().to_string();
+                                if !s.is_empty() {
+                                    subdirs.insert(s);
+                                }
+                            }
+                        }
+                        for sub in &subdirs {
+                            let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")])
+                                .status();
+                        }
+                        for dep in &deps {
+                            let local_dep = suite_parent.join(dep);
+                            if !local_dep.exists() {
+                                return Err(anyhow::anyhow!(
+                                    "Suite '{}' references missing file: {}",
+                                    bench_path.display(),
+                                    local_dep.display()
+                                ));
+                            }
+                            // Remote path mirrors the relative path from the
+                            // suite's parent dir.
+                            let remote_target = format!("{remote_dir}/{}", dep.display());
+                            let scp_status = std::process::Command::new("scp")
+                                .args([
+                                    "-o",
+                                    "StrictHostKeyChecking=no",
+                                    "-i",
+                                    &ssh_priv,
+                                    local_dep.to_str().unwrap(),
+                                    &format!("{ssh_target}:{remote_target}"),
+                                ])
+                                .status()?;
+                            if !scp_status.success() {
+                                return Err(anyhow::anyhow!(
+                                    "Failed to upload suite dep {}",
+                                    local_dep.display()
+                                ));
+                            }
+                            // Also push the dep's .local.toml if present.
+                            let stem = local_dep
+                                .file_stem()
+                                .unwrap_or_default()
+                                .to_string_lossy();
+                            let local_overlay = local_dep
+                                .parent()
+                                .unwrap_or(std::path::Path::new("."))
+                                .join(format!("{stem}.local.toml"));
+                            if local_overlay.exists() {
+                                let remote_overlay_dir = dep
+                                    .parent()
+                                    .map(|p| format!("{remote_dir}/{}", p.display()))
+                                    .unwrap_or_else(|| remote_dir.to_string());
+                                let _ = std::process::Command::new("scp")
+                                    .args([
+                                        "-o",
+                                        "StrictHostKeyChecking=no",
+                                        "-i",
+                                        &ssh_priv,
+                                        local_overlay.to_str().unwrap(),
+                                        &format!("{ssh_target}:{remote_overlay_dir}/"),
+                                    ])
+                                    .status();
+                            }
+                        }
+                        println!(
+                            "Uploaded {} suite dependency file(s) for {}",
+                            deps.len(),
+                            bench_path.display()
+                        );
+                    }
+                }
             }
 
             // Generate a .local.toml on the remote with the correct DSN
