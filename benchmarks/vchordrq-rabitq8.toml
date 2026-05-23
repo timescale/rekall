@@ -1,0 +1,9 @@
+# Suite: VectorChord vchordrq with 8-bit RaBitQ quantization.
+# Usage: rekall run benchmarks/vchordrq-rabitq8.toml [--dry-run]
+
+indexes = [
+    "indexes/vchordrq-rabitq8.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m.toml"

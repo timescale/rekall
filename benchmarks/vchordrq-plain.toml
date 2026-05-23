@@ -1,0 +1,9 @@
+# Suite: VectorChord vchordrq plain (no quantization) across datasets.
+# Usage: rekall run benchmarks/vchordrq-plain.toml [--dry-run]
+
+indexes = [
+    "indexes/vchordrq-plain.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m.toml"

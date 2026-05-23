@@ -1,0 +1,25 @@
+# VectorChord vchordrq with 4-bit RaBitQ quantization + exact-distance rerank.
+#
+# Builds the vchordrq index on a `v_rabitq4 rabitq4(d)` column. Search
+# is two-phase: pull `rerank_n` candidates by quantized cosine distance,
+# then ORDER BY exact cosine distance on the original `v` column and
+# LIMIT k. Recovers most of the recall lost to 4-bit quantization at
+# the cost of fetching a larger candidate pool per query.
+#
+# Tune rerank_n in tandem with vchordrq.probes — too small and recall
+# collapses; too large and you pay for results you discard.
+
+[[index]]
+type = "vchordrq-rabitq4"
+name = "vchordrq-rabitq4-rerank-200"
+[index.params]
+lists = [1000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 8
+rerank_n = 200
+
+[[search.sweep]]
+index = "vchordrq-rabitq4-rerank-200"
+[search.sweep.params]
+"vchordrq.probes" = ["5", "10", "20", "40", "80", "160"]
