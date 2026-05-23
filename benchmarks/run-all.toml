@@ -12,6 +12,9 @@ indexes = [
 dataset = "datasets/cohere-1m.toml"
 
 [[suite]]
+dataset = "datasets/cohere-5m.toml"
+
+[[suite]]
 dataset = "datasets/cohere-10m.toml"
 
 [[suite]]
