@@ -229,7 +229,7 @@ gives a confounded comparison.
 | `extensions` | `[]` | Extensions to install |
 | `huge_pages` | `false` | Reserve kernel huge pages + disable THP + set PG `huge_pages = on` |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
-| `ssh_key` | (required) | Path to your SSH public key |
+| `ssh_key` | `~/.ssh/id_ed25519.pub` | Path to your SSH public key |
 | `iam_instance_profile` | (required) | Pre-created IAM instance profile name |
 | `s3_bucket` | (all) | S3 bucket for IAM policy scoping |
 
@@ -431,7 +431,7 @@ https://developer.hashicorp.com/terraform/install
 **IAM instance profile missing**: Run `rekall infra init` and follow the
 instructions to apply the IAM template.
 
-**SSH key not found**: Set `[infra].ssh_key` in your `.local.toml` to the
+**SSH key not found**: Default is `~/.ssh/id_ed25519.pub`. Override `ssh_key` in your `.local.toml` to point at the
 path of your SSH public key (e.g., `~/.ssh/id_ed25519.pub`).
 
 **Deploy key not generated**: Run `rekall infra init` or

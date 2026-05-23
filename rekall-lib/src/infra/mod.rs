@@ -78,7 +78,7 @@ impl InfraManager {
         if !Path::new(&ssh_pub_path).exists() {
             return Err(Error::Config(format!(
                 "SSH public key not found: {ssh_pub_path}. \
-                 Check [infra].ssh_key in your .local.toml."
+                 Check `ssh_key` in your .local.toml override."
             )));
         }
         if !Path::new(&ssh_priv_path).exists() {
@@ -90,7 +90,7 @@ impl InfraManager {
 
         if self.config.iam_instance_profile.is_none() {
             return Err(Error::Config(
-                "[infra].iam_instance_profile is required. Run `rekall infra init` \
+                "iam_instance_profile is required. Run `rekall infra init` \
                  to generate the IAM template, apply it in your AWS account, then set \
                  iam_instance_profile = \"rekall-profile\" in your .local.toml."
                     .to_string(),
@@ -238,10 +238,7 @@ impl InfraManager {
     }
 
     fn check_pg_ready(&self, ip: &str) -> bool {
-        let ssh_priv = match self.config.ssh_private_key_path() {
-            Some(k) => k,
-            None => return false,
-        };
+        let ssh_priv = self.config.ssh_private_key_path();
         check_pg_via_ssh(ip, Path::new(&ssh_priv), self.config.pg_port)
     }
 }

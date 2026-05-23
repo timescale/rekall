@@ -76,6 +76,7 @@ fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct InfraConfig {
     #[serde(default = "default_provider")]
     pub provider: String,
@@ -275,33 +276,28 @@ impl InfraConfig {
         names
     }
 
-    pub fn ssh_public_key_path(&self) -> Option<String> {
-        self.ssh_key.as_ref().map(|k| {
-            let expanded = shellexpand::tilde(k).to_string();
-            if expanded.ends_with(".pub") {
-                expanded
-            } else {
-                format!("{expanded}.pub")
-            }
-        })
+    /// Default SSH public key path when `ssh_key` is not set in config.
+    /// Matches the standard ed25519 location used by ssh and git.
+    const DEFAULT_SSH_KEY: &'static str = "~/.ssh/id_ed25519.pub";
+
+    pub fn ssh_public_key_path(&self) -> String {
+        let raw = self.ssh_key.as_deref().unwrap_or(Self::DEFAULT_SSH_KEY);
+        let expanded = shellexpand::tilde(raw).to_string();
+        if expanded.ends_with(".pub") {
+            expanded
+        } else {
+            format!("{expanded}.pub")
+        }
     }
 
-    pub fn ssh_private_key_path(&self) -> Option<String> {
-        self.ssh_key.as_ref().map(|k| {
-            let expanded = shellexpand::tilde(k).to_string();
-            expanded.trim_end_matches(".pub").to_string()
-        })
+    pub fn ssh_private_key_path(&self) -> String {
+        let raw = self.ssh_key.as_deref().unwrap_or(Self::DEFAULT_SSH_KEY);
+        let expanded = shellexpand::tilde(raw).to_string();
+        expanded.trim_end_matches(".pub").to_string()
     }
 
     pub fn require_ssh_key(&self) -> std::result::Result<(String, String), String> {
-        let pub_path = self.ssh_public_key_path().ok_or_else(|| {
-            "[infra].ssh_key is required. Set it in a .local.toml override, e.g.:\n\n\
-             [infra]\n\
-             ssh_key = \"~/.ssh/id_ed25519.pub\""
-                .to_string()
-        })?;
-        let priv_path = self.ssh_private_key_path().unwrap();
-        Ok((pub_path, priv_path))
+        Ok((self.ssh_public_key_path(), self.ssh_private_key_path()))
     }
 
     /// Estimate instance RAM in GB from instance type name.
@@ -657,9 +653,12 @@ git_ref = "feat/parallel-build"
     }
 
     #[test]
-    fn require_ssh_key_missing() {
+    fn ssh_key_defaults_to_id_ed25519() {
         let cfg = InfraConfig::default();
-        assert!(cfg.require_ssh_key().is_err());
+        let (pub_path, priv_path) = cfg.require_ssh_key().unwrap();
+        assert!(pub_path.ends_with("/.ssh/id_ed25519.pub"));
+        assert!(priv_path.ends_with("/.ssh/id_ed25519"));
+        assert!(!priv_path.ends_with(".pub"));
     }
 
     #[test]

@@ -2,12 +2,18 @@
 #
 # To use: copy this file to `<instance-name>.local.toml` next to its
 # base TOML (e.g. `r7g.2xlarge.local.toml`) and fill in your values.
-# Any field from the base TOML can be overridden here. The two below
-# are required for `rekall infra up` to work.
+# Any field from the base TOML can be overridden here.
+#
+# TOML gotcha: top-level fields (ssh_key, iam_instance_profile,
+# ubuntu_version, huge_pages, ...) MUST appear before any [section]
+# header. Once you write [meerkat] etc., everything after belongs to
+# that section. The format is flat — there is no [infra] wrapper.
 
-# Path to your SSH public key. The corresponding private key (same path
-# without .pub) is what `infra ssh`/`attach` will use.
-ssh_key = "~/.ssh/id_ed25519.pub"
+# SSH public key. Defaults to ~/.ssh/id_ed25519.pub — only set this if
+# you use a different key. Both the public key (uploaded to AWS as the
+# EC2 key pair) and the corresponding private key (used by infra ssh /
+# attach) are derived from this single path.
+# ssh_key = "~/.ssh/id_ed25519.pub"
 
 # Name of the IAM instance profile created by `rekall infra iam-policy`.
 # Required so the launcher doesn't need iam:CreateRole.
