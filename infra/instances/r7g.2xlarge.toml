@@ -1,20 +1,83 @@
-# Infra config for a Graviton3 instance with 64 GB RAM.
+# Rekall benchmark instance: r7g.2xlarge (Graviton3, 8 vCPU, 64 GB RAM).
 #
-# Usage:
-#   rekall infra init -c examples/infra/r7g.2xlarge.toml
-#   rekall infra up -c examples/infra/r7g.2xlarge.toml
-#   rekall infra ssh -c examples/infra/r7g.2xlarge.toml
+# Launch with:
+#   rekall infra up -c infra/instances/r7g.2xlarge.toml
+#
+# This file is the canonical, committed config for this instance type.
+# Personal/machine-specific overrides go in `r7g.2xlarge.local.toml`
+# (same directory, gitignored). Any field below — set or commented —
+# can be overridden there. See `local.toml.example` for the bits that
+# always need to be set locally (ssh_key, iam_instance_profile, etc).
 
-provider = "aws"
-region = "us-east-1"
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
 instance_type = "r7g.2xlarge"
-disk_size_gb = 1000
+# disk_size_gb    = 1000       # gp3 root volume size in GB
+# disk_iops       = 3000       # gp3 IOPS (AWS default 3000)
+# disk_throughput = 125        # gp3 throughput MiB/s (AWS default 125)
+
+# Resource name prefix for security group, key pair, instance tag, and
+# the `rekall:suite` tag used by `infra list`. Use a distinct prefix per
+# config so simultaneous launches of different configs don't collide.
+name_prefix = "rekall-r7g"
+
+# ----- OS image ----------------------------------------------------------
+
+# Supported: "22.04" (jammy), "24.04" (noble), "26.04" (resolute).
+# Switching changes the kernel/glibc/compiler baseline — benchmark
+# numbers across the switch aren't directly comparable.
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
 pg_version = 18
+# pg_port  = 5432
+
+# Extensions to install. pgvector ships via PGDG apt; meerkat and
+# vectorchord are built from source by provision.sh (requires git_url
+# in .local.toml for meerkat).
 extensions = ["pgvector", "meerkat", "vectorchord"]
-name_prefix = "rekall-64gb"
+
+# Override PG GUC settings. Anything set here merges over the auto-
+# computed defaults (shared_buffers = 40% RAM, etc — see docs).
+# [pg_config]
+# shared_buffers   = "32GB"
+# work_mem         = "512MB"
+# max_wal_size     = "32GB"
+
+# Pre-allocate kernel huge pages + disable THP + set PG huge_pages=on.
+# Reserves the pool from normal RAM unconditionally — leave off for
+# A/B comparison runs. See docs/cloud-infrastructure.md.
+# huge_pages = false
+
+# ----- Extension version pins -------------------------------------------
 
 [pgvector]
 version = "v0.8.2"
 
 [vectorchord]
 version = "1.1.1"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# Build rekall from source on the instance instead of relying on
+# whatever's in /usr/local/bin. Set in .local.toml:
+#   [rekall]
+#   git_url = "git@github.com:timescale/rekall.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template
