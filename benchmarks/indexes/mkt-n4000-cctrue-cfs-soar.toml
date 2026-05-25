@@ -1,0 +1,19 @@
+# Meerkat: nlist=4000, centroid_fastscan (compressed centroid pages in
+# FASTSCAN layout), fastscan-16 posting pages, SOAR.
+[[index]]
+type = "meerkat"
+name = "mkt-n4000-cctrue-cfs-soar"
+[index.params]
+nlist = 4000
+centroid_compression = true
+centroid_fastscan = true
+fastscan = true
+soar_lambda = 1.0
+boundary_epsilon = 0.05
+[index.gucs]
+"mkt.fastscan_bits" = 16
+
+[[search.sweep]]
+index = "mkt-n4000-cctrue-cfs-soar"
+[search.sweep.params]
+"mkt.nprobe" = [5, 10, 20, 40, 80, 120, 200, 400, 600, 1000]

@@ -1,0 +1,10 @@
+# Suite: cohere-1m FASTSCAN-centroid vs RABITQ-centroid (iso-recall A/B).
+# Both indexes use centroid_compression=true + fastscan posting pages + SOAR;
+# they differ only on whether the centroid pages are FASTSCAN-laid-out.
+indexes = [
+    "indexes/mkt-n4000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n4000-cctrue-cfs-soar.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m-cfs-ab.toml"
