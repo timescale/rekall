@@ -22,6 +22,8 @@ struct MeerkatParams {
     #[serde(default)]
     centroid_compression: Option<bool>,
     #[serde(default)]
+    centroid_fastscan: Option<bool>,
+    #[serde(default)]
     rerank_vectors: Option<bool>,
     #[serde(default)]
     fastscan: Option<bool>,
@@ -93,6 +95,9 @@ impl MeerkatBackend {
         }
         if self.params.centroid_compression == Some(true) {
             opts.push("centroid_compression = true".to_string());
+        }
+        if self.params.centroid_fastscan == Some(true) {
+            opts.push("centroid_fastscan = true".to_string());
         }
         if self.params.rerank_vectors == Some(true) {
             opts.push("rerank_vectors = true".to_string());
