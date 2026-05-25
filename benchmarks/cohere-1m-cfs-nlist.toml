@@ -1,0 +1,11 @@
+# Suite: cohere-1m FASTSCAN-centroid + Hadamard, sweep nlist ∈ {2000, 4000, 8000}.
+# The 4000 index is the baseline already built; 2000 and 8000 get built
+# fresh against the FASTSCAN-centroid + Hadamard rotation path.
+indexes = [
+    "indexes/mkt-n2000-cctrue-cfs-soar.toml",
+    "indexes/mkt-n4000-cctrue-cfs-soar.toml",
+    "indexes/mkt-n8000-cctrue-cfs-soar.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m-cfs-nlist.toml"

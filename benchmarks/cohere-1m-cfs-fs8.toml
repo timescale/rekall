@@ -1,0 +1,9 @@
+# Suite: cfs index, 8-bit vs 16-bit fastscan LUT.
+# Same built index, queries differ only on mkt.fastscan_bits.
+indexes = [
+    "indexes/mkt-n4000-cctrue-cfs-soar.toml",
+    "indexes/mkt-n4000-cctrue-cfs-fs8.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m-cfs-fs8.toml"

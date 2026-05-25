@@ -1,0 +1,8 @@
+# Sweep-only entry: reuses the existing cfs-soar index but with 8-bit
+# fastscan LUT (mkt.fastscan_bits is a query-time GUC). Used to A/B
+# the cheaper LUT/accumulate kernel against the 16-bit baseline.
+[[search.sweep]]
+index = "mkt-n4000-cctrue-cfs-soar"
+[search.sweep.params]
+"mkt.nprobe" = [5, 10, 20, 40, 80, 120, 200, 400, 600, 1000]
+"mkt.fastscan_bits" = [8]
