@@ -23,15 +23,15 @@ pub fn render(
         match ext {
             "svg" => writeln!(
                 f,
-                "set terminal svg size 1200,800 enhanced font 'sans,12' background '#ffffff'"
+                "set terminal svg size 1200,800 dynamic enhanced font 'sans,12' background '#ffffff'"
             )?,
             "png" => writeln!(
                 f,
-                "set terminal pngcairo size 1200,800 enhanced font 'sans,12'"
+                "set terminal pngcairo size 1200,800 enhanced font 'sans,12' background '#ffffff'"
             )?,
             _ => writeln!(
                 f,
-                "set terminal svg size 1200,800 enhanced font 'sans,12' background '#ffffff'"
+                "set terminal svg size 1200,800 dynamic enhanced font 'sans,12' background '#ffffff'"
             )?,
         }
         writeln!(f, "set output '{}'", out.display())?;
