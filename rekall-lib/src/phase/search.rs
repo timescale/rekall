@@ -9,7 +9,7 @@ use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
 use crate::metrics::{
-    compute_recall, LatencyCollector, PgRuntimeInfo, RunEnvironment, SearchResult,
+    compute_recall, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment, SearchResult,
 };
 use crate::progress::{ProgressEvent, ProgressTx};
 
@@ -271,6 +271,7 @@ pub async fn run(
             let mut best_avg = f64::MAX;
             let mut best_wall_secs = 0.0;
             let mut total_recall = 0.0;
+            let mut query_results: Vec<QueryResult> = Vec::new();
 
             for run in 0..config.search.runs {
                 let mut collector = LatencyCollector::new();
@@ -288,7 +289,12 @@ pub async fn run(
                     collector.record(latency.as_micros() as u64);
 
                     if run == 0 {
-                        run_recall += compute_recall(&result_ids, &gt, k);
+                        let recall = compute_recall(&result_ids, &gt, k);
+                        run_recall += recall;
+                        query_results.push(QueryResult {
+                            neighbors: result_ids,
+                            recall,
+                        });
                     }
                 }
                 let wall_secs = wall_start.elapsed().as_secs_f64();
@@ -332,6 +338,7 @@ pub async fn run(
                 p999_latency_us: best_collector.percentile_us(99.9),
                 wall_time_secs: best_wall_secs,
                 qps_wall,
+                query_results,
             };
 
             let _ = progress.send(ProgressEvent::SearchEnd {

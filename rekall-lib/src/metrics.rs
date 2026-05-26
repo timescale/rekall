@@ -34,6 +34,12 @@ pub struct RunEnvironment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryResult {
+    pub neighbors: Vec<i64>,
+    pub recall: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub index_name: String,
     pub index_type: String,
@@ -52,6 +58,8 @@ pub struct SearchResult {
     pub wall_time_secs: f64,
     #[serde(default)]
     pub qps_wall: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub query_results: Vec<QueryResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +271,7 @@ mod tests {
             p999_latency_us: 0.0,
             wall_time_secs: 100.0 / qps,
             qps_wall: qps,
+            query_results: Vec::new(),
         }
     }
 

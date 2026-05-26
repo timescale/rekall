@@ -14,13 +14,21 @@ pub fn run(
 ) {
     let pareto = compute_pareto(&search_results);
 
+    let summary_results: Vec<SearchResult> = search_results
+        .into_iter()
+        .map(|mut r| {
+            r.query_results = Vec::new();
+            r
+        })
+        .collect();
+
     let summary = RunSummary {
         dataset: dataset.to_string(),
         environment,
         config,
         pg_runtime,
         index_builds,
-        search_results,
+        search_results: summary_results,
         pareto: pareto.clone(),
     };
 
