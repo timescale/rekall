@@ -285,4 +285,21 @@ impl DatasetReader for Hdf5Reader {
 
         Ok(raw.mapv(|v| v as i64))
     }
+
+    fn ground_truth_distances(&self) -> Result<Option<Array2<f32>>> {
+        let file = hdf5::File::open(&self.path).map_err(|e| Error::Hdf5 {
+            path: self.path.clone(),
+            detail: format!("cannot open file: {e}"),
+        })?;
+        match file.dataset("distances") {
+            Ok(ds) => {
+                let dists: Array2<f32> = ds.read_2d().map_err(|e| Error::Hdf5 {
+                    path: self.path.clone(),
+                    detail: format!("failed to read 'distances': {e}"),
+                })?;
+                Ok(Some(dists))
+            }
+            Err(_) => Ok(None),
+        }
+    }
 }

@@ -36,4 +36,8 @@ pub trait DatasetReader: Send {
     fn queries(&self) -> Result<Array2<f32>>;
 
     fn ground_truth(&self) -> Result<Array2<i64>>;
+
+    fn ground_truth_distances(&self) -> Result<Option<Array2<f32>>> {
+        Ok(None)
+    }
 }

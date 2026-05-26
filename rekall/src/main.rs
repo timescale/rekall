@@ -655,13 +655,42 @@ fn cmd_report(
         }
     }
 
-    // 3. Distance-based recall plot (if HDF5 dataset available)
-    if let Some(ds_path) = dataset {
-        let file = hdf5::File::open(ds_path)?;
-        let gt_raw: ndarray::Array2<i32> = file.dataset("neighbors")?.read_2d()?;
-        let gt_ids = gt_raw.mapv(|v| v as i64);
-        let gt_dists: ndarray::Array2<f32> = file.dataset("distances")?.read_2d()?;
+    // 3. Distance-based recall plot
+    //    Source: HDF5 dataset (--dataset) or ground-truth.json.gz with distances
+    let gt_data: Option<(ndarray::Array2<i64>, ndarray::Array2<f32>)> =
+        if let Some(ds_path) = dataset {
+            let file = hdf5::File::open(ds_path)?;
+            let gt_raw: ndarray::Array2<i32> = file.dataset("neighbors")?.read_2d()?;
+            let gt_dists: ndarray::Array2<f32> = file.dataset("distances")?.read_2d()?;
+            Some((gt_raw.mapv(|v| v as i64), gt_dists))
+        } else if let Some(ref gt_path) = gt_file {
+            use std::io::Read as _;
+            #[derive(serde::Deserialize)]
+            struct GT {
+                neighbors: Vec<Vec<i64>>,
+                #[serde(default)]
+                distances: Option<Vec<Vec<f32>>>,
+            }
+            let file = std::fs::File::open(gt_path)?;
+            let mut decoder = flate2::read::GzDecoder::new(file);
+            let mut s = String::new();
+            decoder.read_to_string(&mut s)?;
+            let gt: GT = serde_json::from_str(&s)?;
+            if let Some(dists) = gt.distances {
+                let nq = gt.neighbors.len();
+                let k_gt = if nq > 0 { gt.neighbors[0].len() } else { 0 };
+                let kd = if nq > 0 { dists[0].len() } else { 0 };
+                let ids = ndarray::Array2::from_shape_fn((nq, k_gt), |(i, j)| gt.neighbors[i][j]);
+                let ds = ndarray::Array2::from_shape_fn((nq, kd), |(i, j)| dists[i][j]);
+                Some((ids, ds))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
+    if let Some((gt_ids, gt_dists)) = gt_data {
         let mut dist_results = all_results.clone();
         for r in &mut dist_results {
             // Find original with query_results
@@ -713,8 +742,17 @@ fn cmd_report(
         } else {
             println!("Plot: {}", path.display());
         }
-    } else if gt_file.is_some() {
-        println!("\nNote: pass --dataset <hdf5> for distance-based recall plots");
+    } else {
+        let has_query_results = summaries
+            .iter()
+            .flat_map(|s| &s.search_results)
+            .any(|r| !r.query_results.is_empty());
+        if has_query_results {
+            println!(
+                "\nNote: pass --dataset <file.hdf5> to generate \
+                 distance-based recall plot (ann-benchmarks compatible)"
+            );
+        }
     }
 
     // 4. Index build time plot (if build results available)
@@ -806,10 +844,11 @@ fn cmd_recall(
             None
         };
     } else {
-        // ground-truth.json.gz or .json
         #[derive(serde::Deserialize)]
         struct GroundTruth {
             neighbors: Vec<Vec<i64>>,
+            #[serde(default)]
+            distances: Option<Vec<Vec<f32>>>,
         }
         let content = if gt_str.ends_with(".gz") {
             let file = std::fs::File::open(gt_path)?;
@@ -825,13 +864,18 @@ fn cmd_recall(
         let k_gt = if nq > 0 { gt.neighbors[0].len() } else { 0 };
         gt_ids = ndarray::Array2::from_shape_fn((nq, k_gt), |(i, j)| gt.neighbors[i][j]);
 
-        if method == "distance" {
+        if method == "distance" && gt.distances.is_none() {
             return Err(anyhow::anyhow!(
-                "--method distance requires an HDF5 dataset \
-                 (ground-truth.json.gz has no distances)"
+                "--method distance requires ground truth distances. \
+                 Re-run the benchmark to generate a new ground-truth.json.gz \
+                 with distances, or pass an HDF5 dataset."
             ));
         }
-        gt_dists = None;
+        gt_dists = gt.distances.map(|d| {
+            let nq = d.len();
+            let kd = if nq > 0 { d[0].len() } else { 0 };
+            ndarray::Array2::from_shape_fn((nq, kd), |(i, j)| d[i][j])
+        });
     };
 
     let mut all_results: Vec<SearchResult> = Vec::new();

@@ -96,6 +96,7 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
 fn save_ground_truth(
     config: &BenchmarkConfig,
     ground_truth: &ndarray::Array2<i64>,
+    gt_distances: Option<&ndarray::Array2<f32>>,
     num_queries: usize,
     k: usize,
 ) {
@@ -109,9 +110,15 @@ fn save_ground_truth(
         let _ = std::fs::create_dir_all(parent);
     }
 
-    let gt: Vec<Vec<i64>> = (0..num_queries)
+    let neighbors: Vec<Vec<i64>> = (0..num_queries)
         .map(|qi| ground_truth.row(qi).iter().take(k).copied().collect())
         .collect();
+
+    let distances: Option<Vec<Vec<f32>>> = gt_distances.map(|d| {
+        (0..num_queries)
+            .map(|qi| d.row(qi).iter().take(k).copied().collect())
+            .collect()
+    });
 
     #[derive(serde::Serialize)]
     struct GroundTruth {
@@ -119,13 +126,16 @@ fn save_ground_truth(
         k: usize,
         num_queries: usize,
         neighbors: Vec<Vec<i64>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        distances: Option<Vec<Vec<f32>>>,
     }
 
     let data = GroundTruth {
         dataset: config.dataset.name.clone(),
         k,
         num_queries,
-        neighbors: gt,
+        neighbors,
+        distances,
     };
 
     match write_json_gz(&path, &data) {
@@ -191,6 +201,7 @@ pub async fn run(
 
     let queries = reader.queries()?;
     let ground_truth = reader.ground_truth()?;
+    let gt_distances = reader.ground_truth_distances()?;
 
     let num_queries = config
         .search
@@ -200,8 +211,7 @@ pub async fn run(
 
     let k = config.search.k;
 
-    // Save ground truth for offline recall recomputation
-    save_ground_truth(config, &ground_truth, num_queries, k);
+    save_ground_truth(config, &ground_truth, gt_distances.as_ref(), num_queries, k);
 
     let existing = load_existing_results(config);
     let mut all_results = existing.clone();
