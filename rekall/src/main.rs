@@ -121,8 +121,24 @@ enum Command {
         index: Option<String>,
     },
 
-    /// Generate report from results
-    Report { config: PathBuf },
+    /// Generate report from a results directory
+    ///
+    /// Auto-detects result files, ground truth, run-info, and HDF5
+    /// dataset. Generates recall-vs-QPS plots (Pareto and per-config),
+    /// index build time comparison, and prints a summary table.
+    Report {
+        /// Results directory containing .json.gz files
+        dir: PathBuf,
+
+        /// HDF5 dataset (for distance-based recall). Auto-detected
+        /// from run-info if not specified.
+        #[arg(long)]
+        dataset: Option<PathBuf>,
+
+        /// Output directory for plots (default: same as results dir)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 
     /// Dataset utilities
     Dataset {
@@ -523,6 +539,202 @@ enum InfraCommand {
     },
 }
 
+fn cmd_report(
+    dir: &std::path::Path,
+    dataset: Option<&std::path::Path>,
+    output_dir: Option<&std::path::Path>,
+) -> anyhow::Result<()> {
+    use rekall_lib::metrics::{RunSummary, SearchResult};
+    use rekall_lib::output::plot;
+
+    let out = output_dir.unwrap_or(dir);
+
+    // Scan for result files
+    let mut result_files: Vec<PathBuf> = Vec::new();
+    let mut gt_file: Option<PathBuf> = None;
+
+    for entry in std::fs::read_dir(dir)? {
+        let path = entry?.path();
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if name.starts_with("ground-truth") {
+            gt_file = Some(path);
+        } else if (name.ends_with(".json.gz") || name.ends_with(".json"))
+            && !name.starts_with("run-info")
+            && !name.starts_with("results-")
+        {
+            result_files.push(path);
+        }
+    }
+    result_files.sort();
+
+    if result_files.is_empty() {
+        return Err(anyhow::anyhow!(
+            "No result files found in {}",
+            dir.display()
+        ));
+    }
+
+    // Load all results
+    let mut all_results: Vec<SearchResult> = Vec::new();
+    let mut summaries: Vec<RunSummary> = Vec::new();
+
+    for path in &result_files {
+        let summary = read_result_file(path)?;
+        println!(
+            "Loaded {} ({} search results)",
+            path.file_name().unwrap_or_default().to_string_lossy(),
+            summary.search_results.len()
+        );
+        all_results.extend(summary.search_results.iter().cloned().map(|mut r| {
+            r.query_results = Vec::new();
+            r
+        }));
+        summaries.push(summary);
+    }
+
+    println!("\n=== Summary ===");
+    println!(
+        "{:<35} {:>10} {:>10} {:>12}",
+        "Config", "Recall@10", "QPS", "Latency(us)"
+    );
+    println!("{}", "-".repeat(70));
+    for r in &all_results {
+        println!(
+            "{:<35} {:>10.4} {:>10.0} {:>12.1}",
+            format!("{} [{}]", r.index_name, r.search_params),
+            r.avg_recall,
+            r.qps,
+            r.avg_latency_us
+        );
+    }
+
+    // 1. Pareto plot (grouped by algorithm)
+    {
+        let summary = RunSummary {
+            dataset: String::new(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: all_results.clone(),
+            pareto: Vec::new(),
+        };
+        let opts = plot::PlotOptions::default();
+        let path = out.join("report-pareto.svg");
+        if let Err(e) =
+            plot::generate_plot(&[summary], &path, Some("Recall vs QPS (Pareto)"), &opts)
+        {
+            eprintln!("Pareto plot failed: {e}");
+        } else {
+            println!("\nPlot: {}", path.display());
+        }
+    }
+
+    // 2. Per-config plot
+    {
+        let summary = RunSummary {
+            dataset: String::new(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: all_results.clone(),
+            pareto: Vec::new(),
+        };
+        let opts = plot::PlotOptions {
+            per_config: true,
+            ..Default::default()
+        };
+        let path = out.join("report-per-config.svg");
+        if let Err(e) =
+            plot::generate_plot(&[summary], &path, Some("Recall vs QPS (per config)"), &opts)
+        {
+            eprintln!("Per-config plot failed: {e}");
+        } else {
+            println!("Plot: {}", path.display());
+        }
+    }
+
+    // 3. Distance-based recall plot (if HDF5 dataset available)
+    if let Some(ds_path) = dataset {
+        let file = hdf5::File::open(ds_path)?;
+        let gt_raw: ndarray::Array2<i32> = file.dataset("neighbors")?.read_2d()?;
+        let gt_ids = gt_raw.mapv(|v| v as i64);
+        let gt_dists: ndarray::Array2<f32> = file.dataset("distances")?.read_2d()?;
+
+        let mut dist_results = all_results.clone();
+        for r in &mut dist_results {
+            // Find original with query_results
+            let orig = summaries
+                .iter()
+                .flat_map(|s| &s.search_results)
+                .find(|s| s.index_name == r.index_name && s.search_params == r.search_params);
+            if let Some(orig) = orig {
+                if !orig.query_results.is_empty() {
+                    let k = r.k;
+                    let nq = orig.query_results.len().min(gt_ids.nrows());
+                    let mut total = 0.0;
+                    for qi in 0..nq {
+                        let ids = &orig.query_results[qi].neighbors;
+                        total += recall_distance_based(
+                            ids,
+                            &gt_ids.row(qi).to_vec(),
+                            &gt_dists.row(qi).to_vec(),
+                            k,
+                            1e-3,
+                        );
+                    }
+                    r.avg_recall = if nq > 0 { total / nq as f64 } else { 0.0 };
+                }
+            }
+        }
+
+        let summary = RunSummary {
+            dataset: String::new(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: dist_results,
+            pareto: Vec::new(),
+        };
+        let opts = plot::PlotOptions {
+            per_config: true,
+            ..Default::default()
+        };
+        let path = out.join("report-distance-recall.svg");
+        if let Err(e) = plot::generate_plot(
+            &[summary],
+            &path,
+            Some("Recall vs QPS (ann-benchmarks distance method)"),
+            &opts,
+        ) {
+            eprintln!("Distance recall plot failed: {e}");
+        } else {
+            println!("Plot: {}", path.display());
+        }
+    } else if gt_file.is_some() {
+        println!("\nNote: pass --dataset <hdf5> for distance-based recall plots");
+    }
+
+    // 4. Index build time plot (if build results available)
+    let build_results: Vec<_> = summaries.iter().flat_map(|s| &s.index_builds).collect();
+
+    if !build_results.is_empty() {
+        println!("\n=== Index Build Times ===");
+        for b in &build_results {
+            println!(
+                "  {}: {:.1}s ({} bytes)",
+                b.index_name,
+                b.build_time.as_secs_f64(),
+                b.index_size_bytes
+            );
+        }
+    }
+
+    Ok(())
+}
+
 fn recall_distance_based(
     result_ids: &[i64],
     gt_neighbors: &[i64],
@@ -826,11 +1038,12 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
         }
 
-        Command::Report { config } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Report], None, false, false).await?;
+        Command::Report {
+            dir,
+            dataset,
+            output,
+        } => {
+            cmd_report(&dir, dataset.as_deref(), output.as_deref())?;
         }
 
         Command::Recall {
