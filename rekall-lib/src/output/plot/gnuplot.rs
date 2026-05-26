@@ -11,11 +11,30 @@ pub fn render(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut f = std::fs::File::create(gp_path)?;
 
-    let min_r = if opts.min_recall > 0.0 {
-        opts.min_recall
-    } else {
-        0.5
-    };
+    // Compute data range for x-axis
+    let mut data_min = 1.0_f64;
+    let mut data_max = 0.0_f64;
+    for s in &data.series {
+        for &(r, _) in &s.pareto_points {
+            if r < data_min {
+                data_min = r;
+            }
+            if r > data_max {
+                data_max = r;
+            }
+        }
+        for &(r, _) in &s.other_points {
+            if r < data_min {
+                data_min = r;
+            }
+            if r > data_max {
+                data_max = r;
+            }
+        }
+    }
+    if opts.min_recall > 0.0 {
+        data_min = opts.min_recall;
+    }
 
     // Terminal
     if let Some(out) = output_path {
@@ -57,20 +76,60 @@ pub fn render(
 
     // X-axis: logit scale via gnuplot's nonlinear axis
     if opts.log_x {
+        let all_ticks: &[(f64, &str)] = &[
+            (0.5, "0.5"),
+            (0.6, "0.6"),
+            (0.7, "0.7"),
+            (0.8, "0.8"),
+            (0.85, "0.85"),
+            (0.9, "0.9"),
+            (0.925, "0.925"),
+            (0.95, "0.95"),
+            (0.975, "0.975"),
+            (0.99, "0.99"),
+            (0.995, "0.995"),
+            (0.999, "0.999"),
+            (0.9999, "0.9999"),
+        ];
+
+        /* Pick range: snap to tick below data_min and above data_max */
+        let mut x_min = data_min;
+        for &(v, _) in all_ticks.iter().rev() {
+            if v <= data_min {
+                x_min = v;
+                break;
+            }
+        }
+        let mut x_max = data_max;
+        for &(v, _) in all_ticks {
+            if v >= data_max {
+                x_max = v;
+                break;
+            }
+        }
+        if x_max <= x_min {
+            x_max = 0.999;
+        }
+
+        let visible: Vec<_> = all_ticks
+            .iter()
+            .filter(|(v, _)| *v >= x_min && *v <= x_max)
+            .collect();
+
         writeln!(f, "# Logit scale for recall axis")?;
         writeln!(
             f,
             "set nonlinear x via log(x/(1.0-x)) inverse 1.0/(1.0+exp(-x))"
         )?;
-        writeln!(f, "set xrange [{}:0.999]", min_r)?;
-        writeln!(
-            f,
-            "set xtics (\"0.5\" 0.5, \"0.6\" 0.6, \"0.7\" 0.7, \"0.8\" 0.8, \
-             \"0.85\" 0.85, \"0.9\" 0.9, \"0.925\" 0.925, \"0.95\" 0.95, \
-             \"0.975\" 0.975, \"0.99\" 0.99, \"0.995\" 0.995, \"0.999\" 0.999)"
-        )?;
+        writeln!(f, "set xrange [{}:{}]", x_min, x_max)?;
+
+        let tick_str: Vec<String> = visible
+            .iter()
+            .map(|(v, label)| format!("\"{}\" {}", label, v))
+            .collect();
+        writeln!(f, "set xtics ({})", tick_str.join(", "))?;
     } else {
-        writeln!(f, "set xrange [{}:1.0]", min_r)?;
+        writeln!(f, "set xrange [{}:1.0]", data_min)?;
     }
 
     writeln!(f)?;
