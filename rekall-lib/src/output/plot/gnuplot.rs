@@ -41,10 +41,12 @@ pub fn render(
 
     writeln!(f)?;
     writeln!(f, "set title '{}'", data.title)?;
-    writeln!(f, "set xlabel 'Recall@10'")?;
+    writeln!(f, "set xlabel 'Recall@10' offset 0,0")?;
     writeln!(f, "set ylabel 'Queries per second'")?;
     writeln!(f, "set grid")?;
     writeln!(f, "set key left bottom box opaque")?;
+    writeln!(f, "set bmargin 5")?;
+    writeln!(f, "set xtics rotate by -45")?;
     writeln!(f)?;
 
     // Y-axis
