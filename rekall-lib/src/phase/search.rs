@@ -91,6 +91,49 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
     all
 }
 
+/// Save ground truth to a separate file for offline recall recomputation.
+/// Written once per run — skipped if the file already exists.
+fn save_ground_truth(
+    config: &BenchmarkConfig,
+    ground_truth: &ndarray::Array2<i64>,
+    num_queries: usize,
+    k: usize,
+) {
+    let dir = &config.output.results_dir;
+    let path = format!("{dir}/ground-truth.json.gz");
+
+    if std::path::Path::new(&path).exists() {
+        return;
+    }
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    let gt: Vec<Vec<i64>> = (0..num_queries)
+        .map(|qi| ground_truth.row(qi).iter().take(k).copied().collect())
+        .collect();
+
+    #[derive(serde::Serialize)]
+    struct GroundTruth {
+        dataset: String,
+        k: usize,
+        num_queries: usize,
+        neighbors: Vec<Vec<i64>>,
+    }
+
+    let data = GroundTruth {
+        dataset: config.dataset.name.clone(),
+        k,
+        num_queries,
+        neighbors: gt,
+    };
+
+    match write_json_gz(&path, &data) {
+        Ok(()) => tracing::info!("Ground truth saved to {path}"),
+        Err(e) => tracing::error!("Failed to save ground truth to {path}: {e}"),
+    }
+}
+
 /// Save results for a specific index to its own timestamped file.
 fn save_index_results(
     config: &BenchmarkConfig,
@@ -156,6 +199,10 @@ pub async fn run(
         .min(queries.nrows());
 
     let k = config.search.k;
+
+    // Save ground truth for offline recall recomputation
+    save_ground_truth(config, &ground_truth, num_queries, k);
+
     let existing = load_existing_results(config);
     let mut all_results = existing.clone();
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
