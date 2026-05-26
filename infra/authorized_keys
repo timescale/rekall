@@ -16,3 +16,4 @@
 #   ssh-rsa     AAAAB3NzaC1yc2EAAAADAQAB...example joe@example.com
 
 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFYF/LFf4e6TnT9gQuAU6KR/XRoqJ5YYz2OyFM7DCNhA emnord@protonmail.com
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILIjMi2Fme50GyrUkYxtZG5A4zI8QjCRqxnnBIx4wZrC emnord@protonmail.com
