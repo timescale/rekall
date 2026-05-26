@@ -41,7 +41,7 @@ pub fn render(
 
     writeln!(f)?;
     writeln!(f, "set title '{}'", data.title)?;
-    writeln!(f, "set xlabel 'Recall@10' offset 0,-1")?;
+    writeln!(f, "set xlabel noenhanced 'Recall@10' offset 0,-1")?;
     writeln!(f, "set ylabel 'Queries per second'")?;
     writeln!(f, "set grid")?;
     writeln!(f, "set key left bottom box opaque")?;
