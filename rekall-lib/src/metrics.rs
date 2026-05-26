@@ -5,6 +5,34 @@ use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostInfo {
+    pub hostname: String,
+    pub os: String,
+    pub kernel: String,
+    pub cpu_model: String,
+    pub cpu_count: usize,
+    pub memory_gb: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip_address: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RekallInfo {
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_commit: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_branch: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunEnvironment {
+    pub host: HostInfo,
+    pub rekall: RekallInfo,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub index_name: String,
     pub index_type: String,
@@ -62,6 +90,8 @@ pub struct PgRuntimeInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSummary {
     pub dataset: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<RunEnvironment>,
     pub config: serde_json::Value,
     pub pg_runtime: Option<PgRuntimeInfo>,
     pub index_builds: Vec<IndexBuildResult>,

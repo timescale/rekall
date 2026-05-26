@@ -3,6 +3,7 @@
 pub mod backend;
 pub mod config;
 pub mod dataset;
+pub mod environment;
 pub mod error;
 pub mod infra;
 pub mod metrics;
@@ -17,7 +18,7 @@ use backend::DataLoader;
 use config::{BenchmarkConfig, CacheMode};
 use dataset::DatasetReader;
 use error::Result;
-use metrics::{IndexBuildResult, PgRuntimeInfo, SearchResult};
+use metrics::{IndexBuildResult, PgRuntimeInfo, RunEnvironment, SearchResult};
 use output::OutputSink;
 use phase::Phase;
 use progress::{progress_channel, ProgressEvent};
@@ -130,6 +131,8 @@ impl Agent {
     ) -> Result<()> {
         self.ensure_dataset(phases).await?;
 
+        let run_env = environment::collect();
+
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
         let mut pg_runtime: Option<PgRuntimeInfo> = None;
@@ -224,8 +227,14 @@ impl Agent {
                 continue;
             }
 
-            self.run_phase(phase, filter_index, &mut index_builds, &mut search_results)
-                .await?;
+            self.run_phase(
+                phase,
+                filter_index,
+                &mut index_builds,
+                &mut search_results,
+                &run_env,
+            )
+            .await?;
         }
 
         if interleave {
@@ -234,6 +243,7 @@ impl Agent {
                 rebuild_indexes,
                 &mut index_builds,
                 &mut search_results,
+                &run_env,
             )
             .await?;
         }
@@ -243,6 +253,7 @@ impl Agent {
             let config_value = serde_json::to_value(&self.config).unwrap_or_default();
             phase::report::run(
                 &self.config.dataset.name,
+                Some(run_env),
                 config_value,
                 pg_runtime,
                 index_builds,
@@ -260,6 +271,7 @@ impl Agent {
         filter_index: Option<&str>,
         index_builds: &mut Vec<IndexBuildResult>,
         search_results: &mut Vec<SearchResult>,
+        run_env: &RunEnvironment,
     ) -> Result<()> {
         let start = Instant::now();
 
@@ -294,7 +306,7 @@ impl Agent {
                 index_builds.extend(results);
             }
             Phase::Search => {
-                let results = self.run_search(filter_index).await?;
+                let results = self.run_search(filter_index, Some(run_env.clone())).await?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
                         output.on_search_result(result);
@@ -307,6 +319,7 @@ impl Agent {
                 let config_value = serde_json::to_value(&self.config).unwrap_or_default();
                 phase::report::run(
                     &self.config.dataset.name,
+                    Some(run_env.clone()),
                     config_value,
                     pg_runtime,
                     index_builds.clone(),
@@ -333,6 +346,7 @@ impl Agent {
         rebuild: bool,
         index_builds: &mut Vec<IndexBuildResult>,
         search_results: &mut Vec<SearchResult>,
+        run_env: &RunEnvironment,
     ) -> Result<()> {
         let index_configs: Vec<_> = self
             .config
@@ -462,8 +476,9 @@ impl Agent {
             let registry = backend::BackendRegistry::new();
             let idx_name = idx_config.name.clone();
 
+            let env_clone = run_env.clone();
             let search_handle = tokio::spawn(async move {
-                phase::search::run(&config, &registry, &tx, Some(&idx_name)).await
+                phase::search::run(&config, &registry, &tx, Some(&idx_name), Some(&env_clone)).await
             });
 
             let outputs = &mut self.outputs;
@@ -495,14 +510,25 @@ impl Agent {
         Ok(())
     }
 
-    async fn run_search(&mut self, filter_index: Option<&str>) -> Result<Vec<SearchResult>> {
+    async fn run_search(
+        &mut self,
+        filter_index: Option<&str>,
+        environment: Option<RunEnvironment>,
+    ) -> Result<Vec<SearchResult>> {
         let (tx, mut rx) = progress_channel();
         let config = self.config.clone();
         let registry = backend::BackendRegistry::new();
         let filter = filter_index.map(|s| s.to_string());
 
         let search_handle = tokio::spawn(async move {
-            phase::search::run(&config, &registry, &tx, filter.as_deref()).await
+            phase::search::run(
+                &config,
+                &registry,
+                &tx,
+                filter.as_deref(),
+                environment.as_ref(),
+            )
+            .await
         });
 
         let outputs = &mut self.outputs;

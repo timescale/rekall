@@ -1293,7 +1293,11 @@ iam_instance_profile = "rekall-profile"
             let region = effective_region(region.as_deref(), config.as_ref());
             let (header, status) = if let Some(id) = instance_id.as_deref() {
                 let inst = rekall_lib::infra::find_instance(&region, id)?;
-                let h = inst.status.instance_name.clone().unwrap_or_else(|| id.to_string());
+                let h = inst
+                    .status
+                    .instance_name
+                    .clone()
+                    .unwrap_or_else(|| id.to_string());
                 (h, inst.status)
             } else if let Some(n) = instance_name.as_deref() {
                 let inst = rekall_lib::infra::find_instance_by_name(&region, n)?;
@@ -1382,11 +1386,9 @@ iam_instance_profile = "rekall-profile"
             s3_dataset,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
-            let (ip, ssh_priv): (String, String) = if let Some(ip) = aws_side_lookup_ip(
-                &region,
-                instance_id.as_deref(),
-                instance_name.as_deref(),
-            )? {
+            let (ip, ssh_priv): (String, String) = if let Some(ip) =
+                aws_side_lookup_ip(&region, instance_id.as_deref(), instance_name.as_deref())?
+            {
                 // AWS-side lookup. SSH key from --config if provided, else default.
                 let cfg = if config.is_some() || suite.is_some() {
                     resolve_infra_config(config.as_ref(), suite.as_ref()).unwrap_or_default()
@@ -1421,7 +1423,7 @@ iam_instance_profile = "rekall-profile"
                     "-o",
                     "StrictHostKeyChecking=no",
                     "-i",
-                    &ssh_priv,
+                    ssh_priv,
                     &ssh_target,
                 ]);
                 cmd.args(extra);
@@ -1446,7 +1448,7 @@ iam_instance_profile = "rekall-profile"
                             "-o",
                             "StrictHostKeyChecking=no",
                             "-i",
-                            &ssh_priv,
+                            ssh_priv,
                             "-r",
                             bench_path.to_str().unwrap(),
                             &format!("{ssh_target}:{remote_dir}/"),
@@ -1458,7 +1460,7 @@ iam_instance_profile = "rekall-profile"
                             "-o",
                             "StrictHostKeyChecking=no",
                             "-i",
-                            &ssh_priv,
+                            ssh_priv,
                             bench_path.to_str().unwrap(),
                             &format!("{ssh_target}:{remote_dir}/"),
                         ])
@@ -1481,7 +1483,7 @@ iam_instance_profile = "rekall-profile"
                                 "-o",
                                 "StrictHostKeyChecking=no",
                                 "-i",
-                                &ssh_priv,
+                                ssh_priv,
                                 local_path.to_str().unwrap(),
                                 &format!("{ssh_target}:{remote_dir}/"),
                             ])
@@ -1496,8 +1498,7 @@ iam_instance_profile = "rekall-profile"
                     if let Some(deps) = rekall_lib::config::suite_dependencies(bench_path)
                         .map_err(|e| anyhow::anyhow!("{e}"))?
                     {
-                        let suite_parent =
-                            bench_path.parent().unwrap_or(std::path::Path::new("."));
+                        let suite_parent = bench_path.parent().unwrap_or(std::path::Path::new("."));
                         // mkdir for each subdirectory referenced, dedup.
                         let mut subdirs: std::collections::BTreeSet<String> =
                             std::collections::BTreeSet::new();
@@ -1510,8 +1511,7 @@ iam_instance_profile = "rekall-profile"
                             }
                         }
                         for sub in &subdirs {
-                            let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")])
-                                .status();
+                            let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")]).status();
                         }
                         for dep in &deps {
                             let local_dep = suite_parent.join(dep);
@@ -1530,7 +1530,7 @@ iam_instance_profile = "rekall-profile"
                                     "-o",
                                     "StrictHostKeyChecking=no",
                                     "-i",
-                                    &ssh_priv,
+                                    ssh_priv,
                                     local_dep.to_str().unwrap(),
                                     &format!("{ssh_target}:{remote_target}"),
                                 ])
@@ -1542,10 +1542,7 @@ iam_instance_profile = "rekall-profile"
                                 ));
                             }
                             // Also push the dep's .local.toml if present.
-                            let stem = local_dep
-                                .file_stem()
-                                .unwrap_or_default()
-                                .to_string_lossy();
+                            let stem = local_dep.file_stem().unwrap_or_default().to_string_lossy();
                             let local_overlay = local_dep
                                 .parent()
                                 .unwrap_or(std::path::Path::new("."))
@@ -1560,7 +1557,7 @@ iam_instance_profile = "rekall-profile"
                                         "-o",
                                         "StrictHostKeyChecking=no",
                                         "-i",
-                                        &ssh_priv,
+                                        ssh_priv,
                                         local_overlay.to_str().unwrap(),
                                         &format!("{ssh_target}:{remote_overlay_dir}/"),
                                     ])
@@ -1741,11 +1738,9 @@ done"#
             region,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
-            if let Some(ip) = aws_side_lookup_ip(
-                &region,
-                instance_id.as_deref(),
-                instance_name.as_deref(),
-            )? {
+            if let Some(ip) =
+                aws_side_lookup_ip(&region, instance_id.as_deref(), instance_name.as_deref())?
+            {
                 // Default pg_port — we don't have config context with --instance-id/-name.
                 let dsn = format!(
                     "host={ip} port=5432 dbname=rekall user=rekall password=rekall sslmode=disable"

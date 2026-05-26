@@ -1,8 +1,11 @@
-use crate::metrics::{compute_pareto, IndexBuildResult, PgRuntimeInfo, RunSummary, SearchResult};
+use crate::metrics::{
+    compute_pareto, IndexBuildResult, PgRuntimeInfo, RunEnvironment, RunSummary, SearchResult,
+};
 use crate::output::OutputSink;
 
 pub fn run(
     dataset: &str,
+    environment: Option<RunEnvironment>,
     config: serde_json::Value,
     pg_runtime: Option<PgRuntimeInfo>,
     index_builds: Vec<IndexBuildResult>,
@@ -13,6 +16,7 @@ pub fn run(
 
     let summary = RunSummary {
         dataset: dataset.to_string(),
+        environment,
         config,
         pg_runtime,
         index_builds,

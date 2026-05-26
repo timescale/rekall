@@ -4,7 +4,7 @@ use crate::error::Result;
 
 use super::{InfraOutput, InfraStatus};
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::too_many_arguments)]
 pub trait InfraBackend {
     fn name(&self) -> &str;
     fn up(

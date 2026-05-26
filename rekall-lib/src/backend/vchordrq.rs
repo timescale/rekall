@@ -251,7 +251,10 @@ impl VchordrqBackend {
         let table = &self.pg.table_name;
         client
             .execute(
-                &format!("ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ty}({})", self.pg.dimension),
+                &format!(
+                    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ty}({})",
+                    self.pg.dimension
+                ),
                 &[],
             )
             .await?;
@@ -314,11 +317,7 @@ async fn prepare_quantized_query(
     pg.client()
         .prepare_typed(&sql, &param_types)
         .await
-        .map_err(|e| {
-            Error::Config(format!(
-                "Cannot prepare vchordrq query: {e}\n  SQL: {sql}"
-            ))
-        })
+        .map_err(|e| Error::Config(format!("Cannot prepare vchordrq query: {e}\n  SQL: {sql}")))
 }
 
 #[async_trait]
@@ -547,7 +546,10 @@ mod tests {
             internal.push_str("spherical_centroids = true\n");
         }
         if backend_params.build_threads > 1 {
-            internal.push_str(&format!("build_threads = {}\n", backend_params.build_threads));
+            internal.push_str(&format!(
+                "build_threads = {}\n",
+                backend_params.build_threads
+            ));
         }
         let mut body = top;
         body.push_str("[build.internal]\n");

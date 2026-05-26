@@ -484,10 +484,7 @@ impl AwsNativeBackend {
 
     /// Look up instances with a given Name tag. Returns all matches so
     /// the caller can error helpfully if there's a name collision.
-    pub fn find_instances_by_name(
-        &self,
-        instance_name: &str,
-    ) -> Result<Vec<DiscoveredInstance>> {
+    pub fn find_instances_by_name(&self, instance_name: &str) -> Result<Vec<DiscoveredInstance>> {
         let result = self.run_aws_json(&[
             "ec2",
             "describe-instances",
@@ -506,12 +503,34 @@ impl AwsNativeBackend {
             for item in arr {
                 if let Some(fields) = item.as_array() {
                     instances.push(DiscoveredInstance {
-                        instance_id: fields.first().and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        instance_type: fields.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        public_ip: fields.get(2).and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        state: fields.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        suite: fields.get(4).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-                        name: fields.get(5).and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        instance_id: fields
+                            .first()
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        instance_type: fields
+                            .get(1)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        public_ip: fields
+                            .get(2)
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
+                        state: fields
+                            .get(3)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        suite: fields
+                            .get(4)
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string(),
+                        name: fields
+                            .get(5)
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string()),
                     });
                 }
             }
@@ -522,10 +541,7 @@ impl AwsNativeBackend {
     /// Look up a specific instance by its AWS instance-id. Returns the
     /// IP if it's running, or an error otherwise. Used by `--instance-id`
     /// on attach/ssh/dsn/status to bypass local state entirely.
-    pub fn find_instance_by_id(
-        &self,
-        instance_id: &str,
-    ) -> Result<Option<DiscoveredInstance>> {
+    pub fn find_instance_by_id(&self, instance_id: &str) -> Result<Option<DiscoveredInstance>> {
         let result = self.run_aws_json(&[
             "ec2",
             "describe-instances",
@@ -538,17 +554,43 @@ impl AwsNativeBackend {
                Tags[?Key==`Name`].Value|[0]]",
         ])?;
 
-        let fields = match result.as_array().and_then(|a| a.first()).and_then(|i| i.as_array()) {
+        let fields = match result
+            .as_array()
+            .and_then(|a| a.first())
+            .and_then(|i| i.as_array())
+        {
             Some(f) => f,
             None => return Ok(None),
         };
         Ok(Some(DiscoveredInstance {
-            instance_id: fields.first().and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            instance_type: fields.get(1).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            public_ip: fields.get(2).and_then(|v| v.as_str()).map(|s| s.to_string()),
-            state: fields.get(3).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            suite: fields.get(4).and_then(|v| v.as_str()).unwrap_or("").to_string(),
-            name: fields.get(5).and_then(|v| v.as_str()).map(|s| s.to_string()),
+            instance_id: fields
+                .first()
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            instance_type: fields
+                .get(1)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            public_ip: fields
+                .get(2)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            state: fields
+                .get(3)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            suite: fields
+                .get(4)
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+            name: fields
+                .get(5)
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
         }))
     }
 

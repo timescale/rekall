@@ -8,7 +8,7 @@ use crate::config::{BenchmarkConfig, CacheMode};
 use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
-use crate::metrics::{compute_recall, LatencyCollector, SearchResult};
+use crate::metrics::{compute_recall, LatencyCollector, RunEnvironment, SearchResult};
 use crate::progress::{ProgressEvent, ProgressTx};
 
 /// Check if a result already exists for this index + params combination.
@@ -76,6 +76,7 @@ fn save_index_results(
     index_name: &str,
     timestamp: &str,
     all_results: &[SearchResult],
+    environment: Option<&RunEnvironment>,
 ) {
     let index_results: Vec<_> = all_results
         .iter()
@@ -94,6 +95,7 @@ fn save_index_results(
 
     let summary = crate::metrics::RunSummary {
         dataset: config.dataset.name.clone(),
+        environment: environment.cloned(),
         config: serde_json::Value::Null,
         pg_runtime: None,
         index_builds: Vec::new(),
@@ -112,6 +114,7 @@ pub async fn run(
     registry: &BackendRegistry,
     progress: &ProgressTx,
     filter_index: Option<&str>,
+    environment: Option<&RunEnvironment>,
 ) -> Result<Vec<SearchResult>> {
     let dataset_path = config.dataset.resolved_path();
     let reader = Hdf5Reader::open(
@@ -341,7 +344,7 @@ pub async fn run(
             all_results.push(result);
 
             // Save incrementally per-index so progress survives crashes
-            save_index_results(config, &sweep.index, &timestamp, &all_results);
+            save_index_results(config, &sweep.index, &timestamp, &all_results, environment);
         }
     }
 
