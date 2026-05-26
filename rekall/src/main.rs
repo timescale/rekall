@@ -4,7 +4,6 @@ use clap::{Parser, Subcommand};
 
 use rekall_lib::config::{self, BenchmarkConfig};
 use rekall_lib::dataset::hdf5::Hdf5Reader;
-use rekall_lib::dataset::DatasetReader;
 use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
 use rekall_lib::output::OutputSink;
@@ -131,22 +130,35 @@ enum Command {
         command: DatasetCommand,
     },
 
-    /// Recompute recall from saved query results
+    /// Recompute recall from saved query results and optionally plot
     ///
     /// Loads per-query neighbor IDs from result files and recomputes
-    /// recall against the dataset ground truth. Supports different
-    /// recall metrics.
+    /// recall against the dataset ground truth. Supports ID-based
+    /// (default) and distance-based (ann-benchmarks compatible) methods.
     Recall {
         /// Result file(s) (.json or .json.gz)
         results: Vec<PathBuf>,
 
-        /// Ground truth source: ground-truth.json.gz or HDF5 dataset
+        /// HDF5 dataset (for ground truth neighbors + distances)
         #[arg(long)]
-        ground_truth: PathBuf,
+        dataset: PathBuf,
 
         /// k for recall@k (default: use k from results)
         #[arg(long)]
         k: Option<usize>,
+
+        /// Recall method: "id" (set intersection, default) or
+        /// "distance" (ann-benchmarks, handles ties)
+        #[arg(long, default_value = "id")]
+        method: String,
+
+        /// Output plot file (svg, png). Omit for text-only output.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Plot title
+        #[arg(short, long)]
+        title: Option<String>,
     },
 
     /// Generate recall-vs-QPS plot from result JSON files
@@ -511,55 +523,73 @@ enum InfraCommand {
     },
 }
 
+fn recall_distance_based(
+    result_ids: &[i64],
+    gt_neighbors: &[i64],
+    gt_distances: &[f32],
+    k: usize,
+    epsilon: f64,
+) -> f64 {
+    use std::collections::HashSet;
+
+    if gt_distances.len() < k || gt_neighbors.len() < k {
+        return 0.0;
+    }
+
+    let threshold = gt_distances[k - 1] as f64 + epsilon;
+
+    let correct_set: HashSet<i64> = gt_neighbors
+        .iter()
+        .zip(gt_distances.iter())
+        .filter(|(_, d)| (**d as f64) <= threshold)
+        .map(|(id, _)| *id)
+        .collect();
+
+    let hits = result_ids
+        .iter()
+        .take(k)
+        .filter(|id| correct_set.contains(id))
+        .count();
+
+    hits as f64 / k as f64
+}
+
 fn cmd_recall(
     result_paths: &[PathBuf],
-    dataset_or_gt: &PathBuf,
+    dataset_path: &PathBuf,
     k_override: Option<usize>,
+    method: &str,
+    plot_output: Option<&std::path::Path>,
+    plot_title: Option<&str>,
 ) -> anyhow::Result<()> {
-    use rekall_lib::metrics::{compute_recall, RunSummary};
-    use std::io::Read as _;
+    use rekall_lib::metrics::{compute_recall, SearchResult};
 
-    // Load ground truth — either from ground-truth.json.gz or HDF5 dataset
-    let gt_path = dataset_or_gt.to_string_lossy();
-    let ground_truth: Vec<Vec<i64>> = if gt_path.ends_with(".json.gz") || gt_path.ends_with(".json")
-    {
-        #[derive(serde::Deserialize)]
-        struct GroundTruth {
-            neighbors: Vec<Vec<i64>>,
-        }
-        let content = if gt_path.ends_with(".gz") {
-            let file = std::fs::File::open(dataset_or_gt)?;
-            let mut decoder = flate2::read::GzDecoder::new(file);
-            let mut s = String::new();
-            decoder.read_to_string(&mut s)?;
-            s
-        } else {
-            std::fs::read_to_string(dataset_or_gt)?
-        };
-        let gt: GroundTruth = serde_json::from_str(&content)?;
-        gt.neighbors
+    let file = hdf5::File::open(dataset_path)
+        .map_err(|e| anyhow::anyhow!("Cannot open HDF5 '{}': {e}", dataset_path.display()))?;
+
+    let gt_raw: ndarray::Array2<i32> = file
+        .dataset("neighbors")
+        .map_err(|e| anyhow::anyhow!("Missing 'neighbors' dataset: {e}"))?
+        .read_2d()
+        .map_err(|e| anyhow::anyhow!("Failed to read 'neighbors': {e}"))?;
+    let gt_ids = gt_raw.mapv(|v| v as i64);
+
+    let gt_dists: Option<ndarray::Array2<f32>> = if method == "distance" {
+        let ds = file
+            .dataset("distances")
+            .map_err(|e| anyhow::anyhow!("Missing 'distances' dataset: {e}"))?;
+        Some(
+            ds.read_2d::<f32>()
+                .map_err(|e| anyhow::anyhow!("Failed to read 'distances': {e}"))?,
+        )
     } else {
-        // HDF5 dataset
-        let reader = Hdf5Reader::open(dataset_or_gt, rekall_lib::config::Metric::Euclidean, 0)?;
-        let gt = reader.ground_truth()?;
-        (0..gt.nrows()).map(|i| gt.row(i).to_vec()).collect()
+        None
     };
 
-    // Load and recompute recall for each result file
+    let mut all_results: Vec<SearchResult> = Vec::new();
+
     for path in result_paths {
-        let summary: RunSummary = {
-            let path_str = path.to_string_lossy();
-            if path_str.ends_with(".gz") {
-                let file = std::fs::File::open(path)?;
-                let mut decoder = flate2::read::GzDecoder::new(file);
-                let mut s = String::new();
-                decoder.read_to_string(&mut s)?;
-                serde_json::from_str(&s)?
-            } else {
-                let content = std::fs::read_to_string(path)?;
-                serde_json::from_str(&content)?
-            }
-        };
+        let summary = read_result_file(path)?;
 
         println!("{}:", path.display());
 
@@ -573,16 +603,23 @@ fn cmd_recall(
             }
 
             let k = k_override.unwrap_or(result.k);
+            let num_queries = result.query_results.len().min(gt_ids.nrows());
             let mut total_recall = 0.0;
 
-            for (qi, qr) in result.query_results.iter().enumerate() {
-                if qi >= ground_truth.len() {
-                    break;
-                }
-                total_recall += compute_recall(&qr.neighbors, &ground_truth[qi], k);
+            for qi in 0..num_queries {
+                let ids = &result.query_results[qi].neighbors;
+                let gt_row = gt_ids.row(qi);
+                let gt_vec: Vec<i64> = gt_row.to_vec();
+
+                total_recall += match (&gt_dists, method) {
+                    (Some(dists), "distance") => {
+                        let d_row: Vec<f32> = dists.row(qi).to_vec();
+                        recall_distance_based(ids, &gt_vec, &d_row, k, 1e-3)
+                    }
+                    _ => compute_recall(ids, &gt_vec, k),
+                };
             }
 
-            let num_queries = result.query_results.len().min(ground_truth.len());
             let avg_recall = if num_queries > 0 {
                 total_recall / num_queries as f64
             } else {
@@ -590,10 +627,44 @@ fn cmd_recall(
             };
 
             println!(
-                "  {} [{}]: recall@{}={:.4} (was {:.4})",
-                result.index_name, result.search_params, k, avg_recall, result.avg_recall
+                "  {} [{}]: recall@{}={:.4} (was {:.4}, method={})",
+                result.index_name, result.search_params, k, avg_recall, result.avg_recall, method
             );
+
+            let mut updated = result.clone();
+            updated.avg_recall = avg_recall;
+            updated.query_results = Vec::new();
+            all_results.push(updated);
         }
+    }
+
+    if let Some(out_path) = plot_output {
+        use rekall_lib::output::plot;
+
+        let summary = rekall_lib::metrics::RunSummary {
+            dataset: String::new(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: all_results,
+            pareto: Vec::new(),
+        };
+
+        let opts = plot::PlotOptions {
+            per_config: true,
+            ..Default::default()
+        };
+
+        plot::generate_plot(
+            &[summary],
+            out_path,
+            Some(plot_title.unwrap_or("Recall vs QPS (recomputed)")),
+            &opts,
+        )
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+        println!("Plot written to {}", out_path.display());
     }
 
     Ok(())
@@ -728,10 +799,20 @@ async fn main() -> anyhow::Result<()> {
 
         Command::Recall {
             results,
-            ground_truth,
+            dataset,
             k: k_override,
+            method,
+            output,
+            title,
         } => {
-            cmd_recall(&results, &ground_truth, k_override)?;
+            cmd_recall(
+                &results,
+                &dataset,
+                k_override,
+                &method,
+                output.as_deref(),
+                title.as_deref(),
+            )?;
         }
 
         Command::Dataset { command } => match command {

@@ -18,4 +18,6 @@ serde_json = { workspace = true }
 toml = { workspace = true }
 dirs = { workspace = true }
 flate2 = { workspace = true }
+hdf5 = { workspace = true }
+ndarray = { workspace = true }
 serde = { workspace = true }

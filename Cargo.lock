@@ -2631,6 +2631,8 @@ dependencies = [
  "clap",
  "dirs 5.0.1",
  "flate2",
+ "hdf5-metno",
+ "ndarray",
  "rekall-lib",
  "serde",
  "serde_json",
