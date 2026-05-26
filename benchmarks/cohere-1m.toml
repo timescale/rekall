@@ -4,6 +4,8 @@
 indexes = [
     "indexes/hnsw-m16.toml",
     "indexes/hnsw-m24.toml",
+    "indexes/mkt-n1000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n2000-cctrue-fs16-soar.toml",
     "indexes/mkt-n4000-cctrue-fs16-soar.toml",
     "indexes/mkt-n8000-cctrue-fs16-soar.toml",
 ]
