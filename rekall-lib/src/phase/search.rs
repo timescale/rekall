@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io::{Read as _, Write as _};
 use std::time::Instant;
 
 use tracing::info;
@@ -9,9 +10,35 @@ use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
 use crate::metrics::{
-    compute_recall, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment, SearchResult,
+    compute_recall, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment, RunSummary,
+    SearchResult,
 };
 use crate::progress::{ProgressEvent, ProgressTx};
+
+fn write_json_gz(path: &str, value: &impl serde::Serialize) -> std::io::Result<()> {
+    let json = serde_json::to_vec(value).map_err(|e| std::io::Error::other(e.to_string()))?;
+    let file = std::fs::File::create(path)?;
+    let mut encoder = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+    encoder.write_all(&json)?;
+    encoder.finish()?;
+    Ok(())
+}
+
+fn read_json_file(path: &std::path::Path) -> Option<RunSummary> {
+    let ext = path.extension()?.to_str()?;
+    if ext == "gz" {
+        let file = std::fs::File::open(path).ok()?;
+        let mut decoder = flate2::read::GzDecoder::new(file);
+        let mut json = String::new();
+        decoder.read_to_string(&mut json).ok()?;
+        serde_json::from_str(&json).ok()
+    } else if ext == "json" {
+        let content = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&content).ok()
+    } else {
+        None
+    }
+}
 
 /// Check if a result already exists for this index + params combination.
 fn is_completed(
@@ -26,7 +53,7 @@ fn is_completed(
 }
 
 /// Load previously completed results from per-index result files in results_dir.
-/// Scans for all {index_name}-*.json files and loads the most recent for each index.
+/// Scans for {index_name}-*.json and {index_name}-*.json.gz files.
 pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
     let dir = &config.output.results_dir;
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -34,29 +61,21 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
     };
 
     let mut all = Vec::new();
-    let mut seen_indexes: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
 
-    // Find the most recent file per index (sorted by name = by timestamp)
     let mut files: Vec<_> = entries
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "json"))
+        .filter(|p| {
+            let name = p.to_string_lossy();
+            name.ends_with(".json") || name.ends_with(".json.gz")
+        })
         .collect();
     files.sort();
 
     for path in &files {
-        let Ok(content) = std::fs::read_to_string(path) else {
+        let Some(summary) = read_json_file(path) else {
             continue;
         };
-        let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) else {
-            continue;
-        };
-        for r in &summary.search_results {
-            seen_indexes
-                .entry(r.index_name.clone())
-                .or_insert_with(|| path.to_string_lossy().to_string());
-        }
         all.extend(summary.search_results);
     }
 
@@ -106,9 +125,9 @@ fn save_index_results(
         pareto: Vec::new(),
     };
 
-    if let Ok(json) = serde_json::to_string_pretty(&summary) {
-        let _ = std::fs::write(&path, json);
-        tracing::info!("Results saved to {path}");
+    match write_json_gz(&path, &summary) {
+        Ok(()) => tracing::info!("Results saved to {path}"),
+        Err(e) => tracing::error!("Failed to save results to {path}: {e}"),
     }
 }
 

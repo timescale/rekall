@@ -22,6 +22,7 @@ hdrhistogram = { workspace = true }
 async-trait = { workspace = true }
 byteorder = { workspace = true }
 bytes = { workspace = true }
+flate2 = { workspace = true }
 futures-util = { workspace = true }
 shellexpand = { workspace = true }
 minijinja = { workspace = true }

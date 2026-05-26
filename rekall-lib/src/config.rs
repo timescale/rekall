@@ -199,9 +199,9 @@ fn default_results_dir() -> String {
 
 impl OutputConfig {
     /// Get the output path for a specific index's results.
-    /// Format: {results_dir}/{index_name}-{timestamp}.json
+    /// Format: {results_dir}/{index_name}-{timestamp}.json.gz
     pub fn index_results_path(&self, index_name: &str, timestamp: &str) -> String {
-        format!("{}/{}-{}.json", self.results_dir, index_name, timestamp)
+        format!("{}/{}-{}.json.gz", self.results_dir, index_name, timestamp)
     }
 }
 
