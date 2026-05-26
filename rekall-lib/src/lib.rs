@@ -331,7 +331,21 @@ impl Agent {
                 load_handle.await.unwrap()?;
             }
             Phase::Index => {
-                let results = phase::index::run(&self.config, &self.registry, filter_index).await?;
+                let (tx, mut rx) = progress_channel();
+                let config = self.config.clone();
+                let registry = backend::BackendRegistry::new();
+                let filter = filter_index.map(|s| s.to_string());
+                let build_handle = tokio::spawn(async move {
+                    phase::index::run(&config, &registry, filter.as_deref(), Some(&tx)).await
+                });
+
+                let outputs = &mut self.outputs;
+                while let Some(event) = rx.recv().await {
+                    for output in outputs.iter_mut() {
+                        output.on_progress(&event);
+                    }
+                }
+                let results = build_handle.await.unwrap()?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
                         output.on_index_built(result);
@@ -406,6 +420,7 @@ impl Agent {
 
         // Phase 1: Build any indexes that don't exist yet
         for idx_config in &index_configs {
+            let (progress_tx, mut progress_rx) = progress_channel();
             let backend = self
                 .registry
                 .create(
@@ -415,6 +430,7 @@ impl Agent {
                     self.config.dataset.metric,
                     idx_config,
                     Some(&self.cancel_registry),
+                    Some(progress_tx),
                 )
                 .await?;
 
@@ -447,7 +463,16 @@ impl Agent {
                     output.on_phase_start("index", &idx_config.name);
                 }
 
-                let build_result = backend.build_index().await?;
+                let build_handle = tokio::spawn(async move { backend.build_index().await });
+
+                let outputs = &mut self.outputs;
+                while let Some(event) = progress_rx.recv().await {
+                    for output in outputs.iter_mut() {
+                        output.on_progress(&event);
+                    }
+                }
+                let build_result = build_handle.await.unwrap()?;
+
                 for output in self.outputs.iter_mut() {
                     output.on_index_built(&build_result);
                 }

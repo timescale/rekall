@@ -3,6 +3,7 @@ use crate::backend::{BackendRegistry, DataLoader};
 use crate::config::BenchmarkConfig;
 use crate::error::{Error, Result};
 use crate::metrics::IndexBuildResult;
+use crate::progress::ProgressTx;
 
 fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
     let dir = &config.output.results_dir;
@@ -20,6 +21,7 @@ pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
     filter_name: Option<&str>,
+    progress: Option<&ProgressTx>,
 ) -> Result<Vec<IndexBuildResult>> {
     let pg = PgConnection::new(
         &config.connection,
@@ -58,6 +60,7 @@ pub async fn run(
                 config.dataset.metric,
                 idx_config,
                 None,
+                progress.cloned(),
             )
             .await?;
 

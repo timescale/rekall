@@ -259,6 +259,12 @@ pub trait IndexBackend: Send + Sync {
 
         info!("Building {} index: {sql}", self.type_name());
 
+        if let Some(ref tx) = self.pg().progress {
+            let _ = tx.send(crate::progress::ProgressEvent::IndexBuildStart {
+                index_name: self.index_name().to_string(),
+            });
+        }
+
         let monitor =
             build_monitor::BuildMonitor::new(&self.pg().dsn).await;
         let progress_tx = self.pg().progress.clone();
@@ -271,6 +277,13 @@ pub trait IndexBackend: Send + Sync {
         let start = Instant::now();
         self.pg().client().execute(&sql, &[]).await?;
         let build_time = start.elapsed();
+
+        if let Some(ref tx) = self.pg().progress {
+            let _ = tx.send(crate::progress::ProgressEvent::IndexBuildEnd {
+                index_name: self.index_name().to_string(),
+                elapsed_secs: build_time.as_secs_f64(),
+            });
+        }
 
         let monitor_result = match monitor_handle {
             Some(handle) => handle.await.ok(),
@@ -379,6 +392,7 @@ impl BackendRegistry {
         Self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub async fn create(
         &self,
         conn: &ConnectionConfig,
@@ -387,10 +401,11 @@ impl BackendRegistry {
         metric: Metric,
         index_config: &IndexConfig,
         cancel_registry: Option<&crate::CancelRegistry>,
+        progress: Option<ProgressTx>,
     ) -> Result<Box<dyn IndexBackend>> {
-        match index_config.index_type.as_str() {
+        let mut backend: Box<dyn IndexBackend> = match index_config.index_type.as_str() {
             "meerkat" => {
-                let backend = meerkat::MeerkatBackend::create(
+                let b = meerkat::MeerkatBackend::create(
                     conn,
                     table,
                     dimension,
@@ -399,10 +414,10 @@ impl BackendRegistry {
                     cancel_registry,
                 )
                 .await?;
-                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+                Box::new(b)
             }
             "pgvector-hnsw" => {
-                let backend = pgvector_hnsw::PgvectorHnswBackend::create(
+                let b = pgvector_hnsw::PgvectorHnswBackend::create(
                     conn,
                     table,
                     dimension,
@@ -411,7 +426,7 @@ impl BackendRegistry {
                     cancel_registry,
                 )
                 .await?;
-                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+                Box::new(b)
             }
             t @ ("vchordrq" | "vchordrq-rabitq8" | "vchordrq-rabitq4") => {
                 let variant = match t {
@@ -420,7 +435,7 @@ impl BackendRegistry {
                     "vchordrq-rabitq4" => vchordrq::Variant::Rabitq4Rerank,
                     _ => unreachable!(),
                 };
-                let backend = vchordrq::VchordrqBackend::create(
+                let b = vchordrq::VchordrqBackend::create(
                     conn,
                     table,
                     dimension,
@@ -430,12 +445,18 @@ impl BackendRegistry {
                     variant,
                 )
                 .await?;
-                Ok(Box::new(backend) as Box<dyn IndexBackend>)
+                Box::new(b)
             }
-            other => Err(Error::UnknownBackend {
-                backend_type: other.to_string(),
-            }),
+            other => {
+                return Err(Error::UnknownBackend {
+                    backend_type: other.to_string(),
+                })
+            }
+        };
+        if let Some(tx) = progress {
+            backend.pg_mut().set_progress(tx);
         }
+        Ok(backend)
     }
 }
 

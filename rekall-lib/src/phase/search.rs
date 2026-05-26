@@ -266,6 +266,7 @@ pub async fn run(
                 config.dataset.metric,
                 idx_config,
                 None,
+                None,
             )
             .await?;
 
