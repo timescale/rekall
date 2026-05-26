@@ -139,9 +139,9 @@ enum Command {
         /// Result file(s) (.json or .json.gz)
         results: Vec<PathBuf>,
 
-        /// HDF5 dataset (for ground truth neighbors + distances)
+        /// Ground truth source: HDF5 dataset or ground-truth.json.gz
         #[arg(long)]
-        dataset: PathBuf,
+        ground_truth: PathBuf,
 
         /// k for recall@k (default: use k from results)
         #[arg(long)]
@@ -556,34 +556,70 @@ fn recall_distance_based(
 
 fn cmd_recall(
     result_paths: &[PathBuf],
-    dataset_path: &PathBuf,
+    gt_path: &PathBuf,
     k_override: Option<usize>,
     method: &str,
     plot_output: Option<&std::path::Path>,
     plot_title: Option<&str>,
 ) -> anyhow::Result<()> {
     use rekall_lib::metrics::{compute_recall, SearchResult};
+    use std::io::Read as _;
 
-    let file = hdf5::File::open(dataset_path)
-        .map_err(|e| anyhow::anyhow!("Cannot open HDF5 '{}': {e}", dataset_path.display()))?;
+    let gt_str = gt_path.to_string_lossy();
+    let is_hdf5 = gt_str.ends_with(".hdf5") || gt_str.ends_with(".h5");
 
-    let gt_raw: ndarray::Array2<i32> = file
-        .dataset("neighbors")
-        .map_err(|e| anyhow::anyhow!("Missing 'neighbors' dataset: {e}"))?
-        .read_2d()
-        .map_err(|e| anyhow::anyhow!("Failed to read 'neighbors': {e}"))?;
-    let gt_ids = gt_raw.mapv(|v| v as i64);
+    // Load ground truth IDs
+    let gt_ids: ndarray::Array2<i64>;
+    let gt_dists: Option<ndarray::Array2<f32>>;
 
-    let gt_dists: Option<ndarray::Array2<f32>> = if method == "distance" {
-        let ds = file
-            .dataset("distances")
-            .map_err(|e| anyhow::anyhow!("Missing 'distances' dataset: {e}"))?;
-        Some(
-            ds.read_2d::<f32>()
-                .map_err(|e| anyhow::anyhow!("Failed to read 'distances': {e}"))?,
-        )
+    if is_hdf5 {
+        let file = hdf5::File::open(gt_path)
+            .map_err(|e| anyhow::anyhow!("Cannot open '{}': {e}", gt_path.display()))?;
+
+        let raw: ndarray::Array2<i32> = file
+            .dataset("neighbors")
+            .map_err(|e| anyhow::anyhow!("Missing 'neighbors': {e}"))?
+            .read_2d()
+            .map_err(|e| anyhow::anyhow!("Failed to read 'neighbors': {e}"))?;
+        gt_ids = raw.mapv(|v| v as i64);
+
+        gt_dists = if method == "distance" {
+            Some(
+                file.dataset("distances")
+                    .map_err(|e| anyhow::anyhow!("Missing 'distances': {e}"))?
+                    .read_2d::<f32>()
+                    .map_err(|e| anyhow::anyhow!("Failed to read 'distances': {e}"))?,
+            )
+        } else {
+            None
+        };
     } else {
-        None
+        // ground-truth.json.gz or .json
+        #[derive(serde::Deserialize)]
+        struct GroundTruth {
+            neighbors: Vec<Vec<i64>>,
+        }
+        let content = if gt_str.ends_with(".gz") {
+            let file = std::fs::File::open(gt_path)?;
+            let mut decoder = flate2::read::GzDecoder::new(file);
+            let mut s = String::new();
+            decoder.read_to_string(&mut s)?;
+            s
+        } else {
+            std::fs::read_to_string(gt_path)?
+        };
+        let gt: GroundTruth = serde_json::from_str(&content)?;
+        let nq = gt.neighbors.len();
+        let k_gt = if nq > 0 { gt.neighbors[0].len() } else { 0 };
+        gt_ids = ndarray::Array2::from_shape_fn((nq, k_gt), |(i, j)| gt.neighbors[i][j]);
+
+        if method == "distance" {
+            return Err(anyhow::anyhow!(
+                "--method distance requires an HDF5 dataset \
+                 (ground-truth.json.gz has no distances)"
+            ));
+        }
+        gt_dists = None;
     };
 
     let mut all_results: Vec<SearchResult> = Vec::new();
@@ -799,7 +835,7 @@ async fn main() -> anyhow::Result<()> {
 
         Command::Recall {
             results,
-            dataset,
+            ground_truth,
             k: k_override,
             method,
             output,
@@ -807,7 +843,7 @@ async fn main() -> anyhow::Result<()> {
         } => {
             cmd_recall(
                 &results,
-                &dataset,
+                &ground_truth,
                 k_override,
                 &method,
                 output.as_deref(),
