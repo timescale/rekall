@@ -8,6 +8,7 @@ use super::OutputSink;
 
 pub struct StdoutSink {
     progress_bar: Option<indicatif::ProgressBar>,
+    current_phase: String,
 }
 
 impl Default for StdoutSink {
@@ -18,13 +19,20 @@ impl Default for StdoutSink {
 
 impl StdoutSink {
     pub fn new() -> Self {
-        Self { progress_bar: None }
+        Self {
+            progress_bar: None,
+            current_phase: String::new(),
+        }
     }
 
     fn finish_progress(&mut self) {
         if let Some(pb) = self.progress_bar.take() {
             pb.finish_and_clear();
         }
+    }
+
+    fn strip_phase_prefix(phase: &str) -> &str {
+        phase.strip_prefix("building index: ").unwrap_or(phase)
     }
 }
 
@@ -87,9 +95,8 @@ impl OutputSink for StdoutSink {
                 pb.set_position(*loaded);
             }
             ProgressEvent::IndexBuildStart { index_name } => {
-                if let Some(pb) = self.progress_bar.take() {
-                    pb.finish_and_clear();
-                }
+                self.finish_progress();
+                self.current_phase.clear();
                 println!("  Building index '{index_name}'...");
             }
             ProgressEvent::IndexBuildProgress {
@@ -99,8 +106,21 @@ impl OutputSink for StdoutSink {
                 workers,
                 rss_bytes,
             } => {
+                let phase = Self::strip_phase_prefix(phase);
                 let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
-                if *tuples_total > 0 {
+
+                if phase != self.current_phase {
+                    self.finish_progress();
+                    self.current_phase = phase.to_string();
+                }
+
+                let status = if rss_mb > 0.0 {
+                    format!("{phase} [{workers}w, {rss_mb:.0}MB]")
+                } else {
+                    format!("{phase} [{workers}w]")
+                };
+
+                if *tuples_total > 0 && *tuples_done <= *tuples_total {
                     let pb = self.progress_bar.get_or_insert_with(|| {
                         let pb = indicatif::ProgressBar::new(*tuples_total as u64);
                         pb.set_style(
@@ -114,19 +134,15 @@ impl OutputSink for StdoutSink {
                         );
                         pb
                     });
+                    pb.set_message(status);
                     pb.set_length(*tuples_total as u64);
                     pb.set_position(*tuples_done as u64);
-                    if rss_mb > 0.0 {
-                        pb.set_message(format!("{phase} [{workers}w, {rss_mb:.0}MB]"));
-                    } else {
-                        pb.set_message(format!("{phase} [{workers}w]"));
-                    }
+                    pb.tick();
                 } else {
-                    if let Some(pb) = &self.progress_bar {
-                        pb.set_message(format!("{phase} [{workers}w, {rss_mb:.0}MB]"));
-                    } else {
-                        eprint!("\r    {phase} [{workers} workers, {rss_mb:.0} MB]");
-                    }
+                    use std::io::Write;
+                    let mut stderr = std::io::stderr().lock();
+                    let _ = write!(stderr, "\r\x1b[K    {status}");
+                    let _ = stderr.flush();
                 }
             }
             ProgressEvent::IndexBuildEnd {
