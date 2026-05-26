@@ -23,29 +23,29 @@ pub fn render(
         match ext {
             "svg" => writeln!(
                 f,
-                "set terminal svg size 1200,700 enhanced font 'sans,12' background '#ffffff'"
+                "set terminal svg size 1200,800 enhanced font 'sans,12' background '#ffffff'"
             )?,
             "png" => writeln!(
                 f,
-                "set terminal pngcairo size 1200,700 enhanced font 'sans,12'"
+                "set terminal pngcairo size 1200,800 enhanced font 'sans,12'"
             )?,
             _ => writeln!(
                 f,
-                "set terminal svg size 1200,700 enhanced font 'sans,12' background '#ffffff'"
+                "set terminal svg size 1200,800 enhanced font 'sans,12' background '#ffffff'"
             )?,
         }
         writeln!(f, "set output '{}'", out.display())?;
     } else {
-        writeln!(f, "set terminal qt size 1200,700 enhanced font 'sans,12'")?;
+        writeln!(f, "set terminal qt size 1200,800 enhanced font 'sans,12'")?;
     }
 
     writeln!(f)?;
     writeln!(f, "set title '{}'", data.title)?;
-    writeln!(f, "set xlabel 'Recall@10' offset 0,0")?;
+    writeln!(f, "set xlabel 'Recall@10' offset 0,-1")?;
     writeln!(f, "set ylabel 'Queries per second'")?;
     writeln!(f, "set grid")?;
     writeln!(f, "set key left bottom box opaque")?;
-    writeln!(f, "set bmargin 5")?;
+    writeln!(f, "set bmargin 7")?;
     writeln!(f, "set xtics rotate by -45")?;
     writeln!(f)?;
 
