@@ -99,12 +99,17 @@ pub struct PgRuntimeInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunSummary {
     pub dataset: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub environment: Option<RunEnvironment>,
+    #[serde(default)]
     pub config: serde_json::Value,
+    #[serde(default)]
     pub pg_runtime: Option<PgRuntimeInfo>,
+    #[serde(default)]
     pub index_builds: Vec<IndexBuildResult>,
+    #[serde(default)]
     pub search_results: Vec<SearchResult>,
+    #[serde(default)]
     pub pareto: Vec<ParetoPoint>,
 }
 
