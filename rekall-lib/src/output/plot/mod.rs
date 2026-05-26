@@ -77,7 +77,11 @@ pub fn generate_plot(
             let gp_path = output_path.with_extension("gnuplot");
             gnuplot::render(&gp_path, Some(output_path), &data, opts)?;
             match std::process::Command::new("gnuplot").arg(&gp_path).status() {
-                Ok(s) if s.success() => {}
+                Ok(s) if s.success() => {
+                    if ext == "svg" {
+                        fix_svg_text(output_path);
+                    }
+                }
                 _ => {
                     eprintln!(
                         "gnuplot not found or failed. Run manually:\n  gnuplot {}",
@@ -215,6 +219,18 @@ fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
 
     frontier.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
     frontier
+}
+
+/// Strip textLength/lengthAdjust from SVG to prevent gnuplot's
+/// text squeezing. Gnuplot's SVG terminal emits fixed textLength
+/// attributes that compress text horizontally in some viewers.
+fn fix_svg_text(path: &Path) {
+    if let Ok(svg) = std::fs::read_to_string(path) {
+        let fixed = svg
+            .replace(" textLength='", " _textLength='")
+            .replace(" lengthAdjust='", " _lengthAdjust='");
+        let _ = std::fs::write(path, fixed);
+    }
 }
 
 pub(crate) fn logit(p: f64) -> f64 {
