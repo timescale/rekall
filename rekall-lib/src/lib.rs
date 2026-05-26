@@ -41,7 +41,8 @@ fn save_run_info(
     };
 
     let dir = &config.output.results_dir;
-    let path = format!("{dir}/run-info.json");
+    let ts = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let path = format!("{dir}/run-info-{ts}.json");
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
