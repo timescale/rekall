@@ -261,21 +261,11 @@ pub trait IndexBackend: Send + Sync {
 
         let monitor =
             build_monitor::BuildMonitor::new(&self.pg().dsn).await;
+        let progress_tx = self.pg().progress.clone();
         let monitor_handle = monitor.map(|m| {
-            tokio::spawn(async move {
-                m.monitor_until_done(|phase, done, total, workers| {
-                    if total > 0 {
-                        let pct = done as f64 / total as f64 * 100.0;
-                        tracing::info!(
-                            "  {phase}: {done}/{total} ({pct:.0}%) \
-                             [{workers} workers]"
-                        );
-                    } else {
-                        tracing::info!("  {phase} [{workers} workers]");
-                    }
-                })
-                .await
-            })
+            tokio::spawn(
+                async move { m.monitor_until_done(progress_tx.as_ref()).await },
+            )
         });
 
         let start = Instant::now();

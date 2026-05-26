@@ -19,6 +19,13 @@ pub enum ProgressEvent {
     IndexBuildStart {
         index_name: String,
     },
+    IndexBuildProgress {
+        phase: String,
+        tuples_done: i64,
+        tuples_total: i64,
+        workers: u32,
+        rss_bytes: u64,
+    },
     IndexBuildEnd {
         index_name: String,
         elapsed_secs: f64,

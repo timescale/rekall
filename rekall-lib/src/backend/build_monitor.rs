@@ -13,6 +13,8 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio_postgres::Client;
 
+use crate::progress::{ProgressEvent, ProgressTx};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BuildPhase {
     pub phase: String,
@@ -82,10 +84,7 @@ impl BuildMonitor {
         })
     }
 
-    pub async fn monitor_until_done(
-        &self,
-        progress_fn: impl Fn(&str, i64, i64, u32),
-    ) -> BuildMonitorResult {
+    pub async fn monitor_until_done(&self, progress_tx: Option<&ProgressTx>) -> BuildMonitorResult {
         let mut phases: Vec<BuildPhase> = Vec::new();
         let mut memory_samples: Vec<MemorySample> = Vec::new();
         let mut peak_workers: u32 = 0;
@@ -181,7 +180,15 @@ impl BuildMonitor {
             last_tuples_done = tuples_done;
             last_tuples_total = tuples_total;
 
-            progress_fn(&phase, tuples_done, tuples_total, workers);
+            if let Some(tx) = progress_tx {
+                let _ = tx.send(ProgressEvent::IndexBuildProgress {
+                    phase: phase.clone(),
+                    tuples_done,
+                    tuples_total,
+                    workers,
+                    rss_bytes: rss,
+                });
+            }
         }
 
         if !current_phase.is_empty() {

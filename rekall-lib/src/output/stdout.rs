@@ -87,12 +87,55 @@ impl OutputSink for StdoutSink {
                 pb.set_position(*loaded);
             }
             ProgressEvent::IndexBuildStart { index_name } => {
+                if let Some(pb) = self.progress_bar.take() {
+                    pb.finish_and_clear();
+                }
                 println!("  Building index '{index_name}'...");
+            }
+            ProgressEvent::IndexBuildProgress {
+                phase,
+                tuples_done,
+                tuples_total,
+                workers,
+                rss_bytes,
+            } => {
+                let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
+                if *tuples_total > 0 {
+                    let pb = self.progress_bar.get_or_insert_with(|| {
+                        let pb = indicatif::ProgressBar::new(*tuples_total as u64);
+                        pb.set_style(
+                            indicatif::ProgressStyle::default_bar()
+                                .template(
+                                    "    {msg} [{bar:30}] {pos}/{len} \
+                                     ({per_sec}, ETA {eta})",
+                                )
+                                .unwrap()
+                                .progress_chars("=> "),
+                        );
+                        pb
+                    });
+                    pb.set_length(*tuples_total as u64);
+                    pb.set_position(*tuples_done as u64);
+                    if rss_mb > 0.0 {
+                        pb.set_message(format!("{phase} [{workers}w, {rss_mb:.0}MB]"));
+                    } else {
+                        pb.set_message(format!("{phase} [{workers}w]"));
+                    }
+                } else {
+                    if let Some(pb) = &self.progress_bar {
+                        pb.set_message(format!("{phase} [{workers}w, {rss_mb:.0}MB]"));
+                    } else {
+                        eprint!("\r    {phase} [{workers} workers, {rss_mb:.0} MB]");
+                    }
+                }
             }
             ProgressEvent::IndexBuildEnd {
                 index_name,
                 elapsed_secs,
             } => {
+                if let Some(pb) = self.progress_bar.take() {
+                    pb.finish_and_clear();
+                }
                 println!("  Index '{index_name}' built in {:.1}s", elapsed_secs);
             }
             ProgressEvent::SearchStart { index_name, params } => {

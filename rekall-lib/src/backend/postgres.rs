@@ -26,6 +26,7 @@ pub struct PgConnection {
     pub query_stmt: Option<Statement>,
     order_operator: Option<String>,
     cancel_registry: Option<crate::CancelRegistry>,
+    pub(crate) progress: Option<ProgressTx>,
 }
 
 impl PgConnection {
@@ -39,12 +40,18 @@ impl PgConnection {
             query_stmt: None,
             order_operator: None,
             cancel_registry: None,
+            progress: None,
         }
     }
 
     /// Set the cancel registry so connections register their tokens.
     pub fn set_cancel_registry(&mut self, registry: crate::CancelRegistry) {
         self.cancel_registry = Some(registry);
+    }
+
+    /// Set the progress channel for build monitoring.
+    pub fn set_progress(&mut self, tx: ProgressTx) {
+        self.progress = Some(tx);
     }
 
     /// Open a new connection (used for loading and DDL before connect() is called).
