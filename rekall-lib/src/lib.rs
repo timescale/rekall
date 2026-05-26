@@ -341,7 +341,12 @@ impl Agent {
             }
             Phase::Search => {
                 let results = self
-                    .run_search(filter_index, Some(run_env.clone()), pg_runtime.clone())
+                    .run_search(
+                        filter_index,
+                        Some(run_env.clone()),
+                        pg_runtime.clone(),
+                        index_builds.clone(),
+                    )
                     .await?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
@@ -515,6 +520,7 @@ impl Agent {
 
             let env_clone = run_env.clone();
             let pg_clone = pg_runtime.clone();
+            let builds_clone = index_builds.clone();
             let search_handle = tokio::spawn(async move {
                 phase::search::run(
                     &config,
@@ -523,6 +529,7 @@ impl Agent {
                     Some(&idx_name),
                     Some(&env_clone),
                     pg_clone.as_ref(),
+                    &builds_clone,
                 )
                 .await
             });
@@ -561,6 +568,7 @@ impl Agent {
         filter_index: Option<&str>,
         environment: Option<RunEnvironment>,
         pg_runtime: Option<PgRuntimeInfo>,
+        index_builds: Vec<IndexBuildResult>,
     ) -> Result<Vec<SearchResult>> {
         let (tx, mut rx) = progress_channel();
         let config = self.config.clone();
@@ -575,6 +583,7 @@ impl Agent {
                 filter.as_deref(),
                 environment.as_ref(),
                 pg_runtime.as_ref(),
+                &index_builds,
             )
             .await
         });

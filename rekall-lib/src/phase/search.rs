@@ -10,8 +10,8 @@ use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
 use crate::metrics::{
-    compute_recall, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment, RunSummary,
-    SearchResult,
+    compute_recall, IndexBuildResult, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment,
+    RunSummary, SearchResult,
 };
 use crate::progress::{ProgressEvent, ProgressTx};
 
@@ -150,6 +150,7 @@ fn save_index_results(
     index_name: &str,
     timestamp: &str,
     all_results: &[SearchResult],
+    all_builds: &[IndexBuildResult],
     environment: Option<&RunEnvironment>,
     pg_runtime: Option<&PgRuntimeInfo>,
 ) {
@@ -163,6 +164,12 @@ fn save_index_results(
         return;
     }
 
+    let index_builds: Vec<_> = all_builds
+        .iter()
+        .filter(|b| b.index_name == index_name)
+        .cloned()
+        .collect();
+
     let path = config.output.index_results_path(index_name, timestamp);
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
@@ -173,7 +180,7 @@ fn save_index_results(
         environment: environment.cloned(),
         config: serde_json::Value::Null,
         pg_runtime: pg_runtime.cloned(),
-        index_builds: Vec::new(),
+        index_builds,
         search_results: index_results,
         pareto: Vec::new(),
     };
@@ -191,6 +198,7 @@ pub async fn run(
     filter_index: Option<&str>,
     environment: Option<&RunEnvironment>,
     pg_runtime: Option<&PgRuntimeInfo>,
+    index_builds: &[IndexBuildResult],
 ) -> Result<Vec<SearchResult>> {
     let dataset_path = config.dataset.resolved_path();
     let reader = Hdf5Reader::open(
@@ -436,6 +444,7 @@ pub async fn run(
                 &sweep.index,
                 &timestamp,
                 &all_results,
+                index_builds,
                 environment,
                 pg_runtime,
             );
