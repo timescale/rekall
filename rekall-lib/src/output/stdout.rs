@@ -110,7 +110,10 @@ impl OutputSink for StdoutSink {
                 let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
 
                 if phase != self.current_phase {
-                    self.finish_progress();
+                    if let Some(pb) = &self.progress_bar {
+                        pb.set_position(0);
+                        pb.reset_eta();
+                    }
                     self.current_phase = phase.to_string();
                 }
 
@@ -120,30 +123,28 @@ impl OutputSink for StdoutSink {
                     format!("{phase} [{workers}w]")
                 };
 
-                if *tuples_total > 0 && *tuples_done <= *tuples_total {
-                    let pb = self.progress_bar.get_or_insert_with(|| {
-                        let pb = indicatif::ProgressBar::new(*tuples_total as u64);
-                        pb.set_style(
-                            indicatif::ProgressStyle::default_bar()
-                                .template(
-                                    "    {msg} [{bar:30}] {pos}/{len} \
-                                     ({per_sec}, ETA {eta})",
-                                )
-                                .unwrap()
-                                .progress_chars("=> "),
-                        );
-                        pb
-                    });
-                    pb.set_message(status);
-                    pb.set_length(*tuples_total as u64);
-                    pb.set_position(*tuples_done as u64);
-                    pb.tick();
-                } else {
-                    use std::io::Write;
-                    let mut stderr = std::io::stderr().lock();
-                    let _ = write!(stderr, "\r\x1b[K    {status}");
-                    let _ = stderr.flush();
+                let pb = self.progress_bar.get_or_insert_with(|| {
+                    let pb = indicatif::ProgressBar::new(0);
+                    pb.set_style(
+                        indicatif::ProgressStyle::default_bar()
+                            .template(
+                                "    {msg} [{bar:30}] {pos}/{len} \
+                                 ({per_sec}, ETA {eta})",
+                            )
+                            .unwrap()
+                            .progress_chars("=> "),
+                    );
+                    pb
+                });
+                pb.set_message(status.clone());
+
+                if *tuples_total > 0 {
+                    let total = *tuples_total as u64;
+                    let done = (*tuples_done as u64).min(total);
+                    pb.set_length(total);
+                    pb.set_position(done);
                 }
+                pb.tick();
             }
             ProgressEvent::IndexBuildEnd {
                 index_name,
