@@ -11,6 +11,27 @@ use rekall_lib::output::OutputSink;
 use rekall_lib::phase::Phase;
 use rekall_lib::{install_signal_handler, new_cancel_registry, Agent};
 
+fn read_result_file(path: &std::path::Path) -> anyhow::Result<rekall_lib::metrics::RunSummary> {
+    use std::io::Read as _;
+    let path_str = path.to_string_lossy();
+    if path_str.ends_with(".gz") {
+        let file = std::fs::File::open(path)
+            .map_err(|e| anyhow::anyhow!("Cannot read '{}': {e}", path.display()))?;
+        let mut decoder = flate2::read::GzDecoder::new(file);
+        let mut s = String::new();
+        decoder
+            .read_to_string(&mut s)
+            .map_err(|e| anyhow::anyhow!("Cannot decompress '{}': {e}", path.display()))?;
+        serde_json::from_str(&s)
+            .map_err(|e| anyhow::anyhow!("Invalid JSON '{}': {e}", path.display()))
+    } else {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| anyhow::anyhow!("Cannot read '{}': {e}", path.display()))?;
+        serde_json::from_str(&content)
+            .map_err(|e| anyhow::anyhow!("Invalid JSON '{}': {e}", path.display()))
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "rekall", about = "Vector search benchmark tool")]
 #[command(version)]
@@ -746,10 +767,7 @@ async fn main() -> anyhow::Result<()> {
             let use_wall = qps_method == "wall";
             let mut summaries = Vec::new();
             for path in &results {
-                let content = std::fs::read_to_string(path)
-                    .map_err(|e| anyhow::anyhow!("Cannot read '{}': {e}", path.display()))?;
-                let summary: rekall_lib::metrics::RunSummary = serde_json::from_str(&content)
-                    .map_err(|e| anyhow::anyhow!("Invalid JSON '{}': {e}", path.display()))?;
+                let summary: rekall_lib::metrics::RunSummary = read_result_file(path)?;
                 summaries.push(summary);
             }
 
