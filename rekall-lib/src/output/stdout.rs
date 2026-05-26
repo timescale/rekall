@@ -9,6 +9,7 @@ use super::OutputSink;
 pub struct StdoutSink {
     progress_bar: Option<indicatif::ProgressBar>,
     current_phase: String,
+    has_bar: bool,
 }
 
 impl Default for StdoutSink {
@@ -22,6 +23,7 @@ impl StdoutSink {
         Self {
             progress_bar: None,
             current_phase: String::new(),
+            has_bar: false,
         }
     }
 
@@ -97,6 +99,7 @@ impl OutputSink for StdoutSink {
             ProgressEvent::IndexBuildStart { index_name } => {
                 self.finish_progress();
                 self.current_phase.clear();
+                self.has_bar = false;
                 println!("  Building index '{index_name}'...");
             }
             ProgressEvent::IndexBuildProgress {
@@ -108,13 +111,12 @@ impl OutputSink for StdoutSink {
             } => {
                 let phase = Self::strip_phase_prefix(phase);
                 let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
+                let want_bar = *tuples_total > 0;
 
-                if phase != self.current_phase {
-                    if let Some(pb) = &self.progress_bar {
-                        pb.set_position(0);
-                        pb.reset_eta();
-                    }
+                if phase != self.current_phase || want_bar != self.has_bar {
+                    self.finish_progress();
                     self.current_phase = phase.to_string();
+                    self.has_bar = want_bar;
                 }
 
                 let status = if rss_mb > 0.0 {
@@ -124,21 +126,31 @@ impl OutputSink for StdoutSink {
                 };
 
                 let pb = self.progress_bar.get_or_insert_with(|| {
-                    let pb = indicatif::ProgressBar::new(0);
-                    pb.set_style(
-                        indicatif::ProgressStyle::default_bar()
-                            .template(
-                                "    {msg} [{bar:30}] {pos}/{len} \
-                                 ({per_sec}, ETA {eta})",
-                            )
-                            .unwrap()
-                            .progress_chars("=> "),
-                    );
-                    pb
+                    if want_bar {
+                        let pb = indicatif::ProgressBar::new(*tuples_total as u64);
+                        pb.set_style(
+                            indicatif::ProgressStyle::default_bar()
+                                .template(
+                                    "    {msg} [{bar:30}] {pos}/{len} \
+                                     ({per_sec}, ETA {eta})",
+                                )
+                                .unwrap()
+                                .progress_chars("=> "),
+                        );
+                        pb
+                    } else {
+                        let pb = indicatif::ProgressBar::new_spinner();
+                        pb.set_style(
+                            indicatif::ProgressStyle::default_spinner()
+                                .template("    {spinner} {msg} ({elapsed})")
+                                .unwrap(),
+                        );
+                        pb
+                    }
                 });
-                pb.set_message(status.clone());
+                pb.set_message(status);
 
-                if *tuples_total > 0 {
+                if want_bar {
                     let total = *tuples_total as u64;
                     let done = (*tuples_done as u64).min(total);
                     pb.set_length(total);
