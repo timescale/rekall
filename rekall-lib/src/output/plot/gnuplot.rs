@@ -21,12 +21,18 @@ pub fn render(
     if let Some(out) = output_path {
         let ext = out.extension().and_then(|e| e.to_str()).unwrap_or("svg");
         match ext {
-            "svg" => writeln!(f, "set terminal svg size 1200,700 enhanced font 'sans,12'")?,
+            "svg" => writeln!(
+                f,
+                "set terminal svg size 1200,700 enhanced font 'sans,12' background '#ffffff'"
+            )?,
             "png" => writeln!(
                 f,
                 "set terminal pngcairo size 1200,700 enhanced font 'sans,12'"
             )?,
-            _ => writeln!(f, "set terminal svg size 1200,700 enhanced font 'sans,12'")?,
+            _ => writeln!(
+                f,
+                "set terminal svg size 1200,700 enhanced font 'sans,12' background '#ffffff'"
+            )?,
         }
         writeln!(f, "set output '{}'", out.display())?;
     } else {
