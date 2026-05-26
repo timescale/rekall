@@ -24,6 +24,33 @@ use phase::Phase;
 use progress::{progress_channel, ProgressEvent};
 use tokio_postgres::CancelToken;
 
+fn save_run_info(
+    config: &BenchmarkConfig,
+    env: &RunEnvironment,
+    pg_runtime: Option<&PgRuntimeInfo>,
+) {
+    #[derive(serde::Serialize)]
+    struct RunInfo<'a> {
+        environment: &'a RunEnvironment,
+        pg_runtime: Option<&'a PgRuntimeInfo>,
+    }
+
+    let info = RunInfo {
+        environment: env,
+        pg_runtime,
+    };
+
+    let dir = &config.output.results_dir;
+    let path = format!("{dir}/run-info.json");
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(&info) {
+        let _ = std::fs::write(&path, json);
+        tracing::info!("Run info saved to {path}");
+    }
+}
+
 /// Shared registry of active PG cancel tokens. On Ctrl+C, all
 /// registered tokens are cancelled to stop in-flight PG queries.
 pub type CancelRegistry = Arc<tokio::sync::Mutex<Vec<CancelToken>>>;
@@ -149,6 +176,9 @@ impl Agent {
             }
         }
 
+        // Write run-info.json early so metadata survives crashes
+        save_run_info(&self.config, &run_env, pg_runtime.as_ref());
+
         // When both Index and Search are requested, interleave them
         // per-index: build → search → drop → next. This allows exploring
         // multiple index configs on the same column in one run.
@@ -233,6 +263,7 @@ impl Agent {
                 &mut index_builds,
                 &mut search_results,
                 &run_env,
+                &pg_runtime,
             )
             .await?;
         }
@@ -244,6 +275,7 @@ impl Agent {
                 &mut index_builds,
                 &mut search_results,
                 &run_env,
+                &pg_runtime,
             )
             .await?;
         }
@@ -272,6 +304,7 @@ impl Agent {
         index_builds: &mut Vec<IndexBuildResult>,
         search_results: &mut Vec<SearchResult>,
         run_env: &RunEnvironment,
+        pg_runtime: &Option<PgRuntimeInfo>,
     ) -> Result<()> {
         let start = Instant::now();
 
@@ -306,7 +339,9 @@ impl Agent {
                 index_builds.extend(results);
             }
             Phase::Search => {
-                let results = self.run_search(filter_index, Some(run_env.clone())).await?;
+                let results = self
+                    .run_search(filter_index, Some(run_env.clone()), pg_runtime.clone())
+                    .await?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
                         output.on_search_result(result);
@@ -347,6 +382,7 @@ impl Agent {
         index_builds: &mut Vec<IndexBuildResult>,
         search_results: &mut Vec<SearchResult>,
         run_env: &RunEnvironment,
+        pg_runtime: &Option<PgRuntimeInfo>,
     ) -> Result<()> {
         let index_configs: Vec<_> = self
             .config
@@ -477,8 +513,17 @@ impl Agent {
             let idx_name = idx_config.name.clone();
 
             let env_clone = run_env.clone();
+            let pg_clone = pg_runtime.clone();
             let search_handle = tokio::spawn(async move {
-                phase::search::run(&config, &registry, &tx, Some(&idx_name), Some(&env_clone)).await
+                phase::search::run(
+                    &config,
+                    &registry,
+                    &tx,
+                    Some(&idx_name),
+                    Some(&env_clone),
+                    pg_clone.as_ref(),
+                )
+                .await
             });
 
             let outputs = &mut self.outputs;
@@ -514,6 +559,7 @@ impl Agent {
         &mut self,
         filter_index: Option<&str>,
         environment: Option<RunEnvironment>,
+        pg_runtime: Option<PgRuntimeInfo>,
     ) -> Result<Vec<SearchResult>> {
         let (tx, mut rx) = progress_channel();
         let config = self.config.clone();
@@ -527,6 +573,7 @@ impl Agent {
                 &tx,
                 filter.as_deref(),
                 environment.as_ref(),
+                pg_runtime.as_ref(),
             )
             .await
         });

@@ -101,6 +101,10 @@ pub fn collect_rekall_info() -> RekallInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
         git_commit: command_output("git", &["rev-parse", "--short", "HEAD"]),
         git_branch: command_output("git", &["rev-parse", "--abbrev-ref", "HEAD"]),
+        note: "git info is from the local repo at benchmark time; \
+               extension versions in pg_runtime.extensions are \
+               authoritative (queried from the running PG instance)"
+            .to_string(),
     }
 }
 
