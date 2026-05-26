@@ -4,6 +4,7 @@ use clap::{Parser, Subcommand};
 
 use rekall_lib::config::{self, BenchmarkConfig};
 use rekall_lib::dataset::hdf5::Hdf5Reader;
+use rekall_lib::dataset::DatasetReader;
 use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
 use rekall_lib::output::OutputSink;
@@ -107,6 +108,24 @@ enum Command {
     Dataset {
         #[command(subcommand)]
         command: DatasetCommand,
+    },
+
+    /// Recompute recall from saved query results
+    ///
+    /// Loads per-query neighbor IDs from result files and recomputes
+    /// recall against the dataset ground truth. Supports different
+    /// recall metrics.
+    Recall {
+        /// Result file(s) (.json or .json.gz)
+        results: Vec<PathBuf>,
+
+        /// Ground truth source: ground-truth.json.gz or HDF5 dataset
+        #[arg(long)]
+        ground_truth: PathBuf,
+
+        /// k for recall@k (default: use k from results)
+        #[arg(long)]
+        k: Option<usize>,
     },
 
     /// Generate recall-vs-QPS plot from result JSON files
@@ -471,6 +490,94 @@ enum InfraCommand {
     },
 }
 
+fn cmd_recall(
+    result_paths: &[PathBuf],
+    dataset_or_gt: &PathBuf,
+    k_override: Option<usize>,
+) -> anyhow::Result<()> {
+    use rekall_lib::metrics::{compute_recall, RunSummary};
+    use std::io::Read as _;
+
+    // Load ground truth — either from ground-truth.json.gz or HDF5 dataset
+    let gt_path = dataset_or_gt.to_string_lossy();
+    let ground_truth: Vec<Vec<i64>> = if gt_path.ends_with(".json.gz") || gt_path.ends_with(".json")
+    {
+        #[derive(serde::Deserialize)]
+        struct GroundTruth {
+            neighbors: Vec<Vec<i64>>,
+        }
+        let content = if gt_path.ends_with(".gz") {
+            let file = std::fs::File::open(dataset_or_gt)?;
+            let mut decoder = flate2::read::GzDecoder::new(file);
+            let mut s = String::new();
+            decoder.read_to_string(&mut s)?;
+            s
+        } else {
+            std::fs::read_to_string(dataset_or_gt)?
+        };
+        let gt: GroundTruth = serde_json::from_str(&content)?;
+        gt.neighbors
+    } else {
+        // HDF5 dataset
+        let reader = Hdf5Reader::open(dataset_or_gt, rekall_lib::config::Metric::Euclidean, 0)?;
+        let gt = reader.ground_truth()?;
+        (0..gt.nrows()).map(|i| gt.row(i).to_vec()).collect()
+    };
+
+    // Load and recompute recall for each result file
+    for path in result_paths {
+        let summary: RunSummary = {
+            let path_str = path.to_string_lossy();
+            if path_str.ends_with(".gz") {
+                let file = std::fs::File::open(path)?;
+                let mut decoder = flate2::read::GzDecoder::new(file);
+                let mut s = String::new();
+                decoder.read_to_string(&mut s)?;
+                serde_json::from_str(&s)?
+            } else {
+                let content = std::fs::read_to_string(path)?;
+                serde_json::from_str(&content)?
+            }
+        };
+
+        println!("{}:", path.display());
+
+        for result in &summary.search_results {
+            if result.query_results.is_empty() {
+                println!(
+                    "  {} [{}]: no query results saved, skipping",
+                    result.index_name, result.search_params
+                );
+                continue;
+            }
+
+            let k = k_override.unwrap_or(result.k);
+            let mut total_recall = 0.0;
+
+            for (qi, qr) in result.query_results.iter().enumerate() {
+                if qi >= ground_truth.len() {
+                    break;
+                }
+                total_recall += compute_recall(&qr.neighbors, &ground_truth[qi], k);
+            }
+
+            let num_queries = result.query_results.len().min(ground_truth.len());
+            let avg_recall = if num_queries > 0 {
+                total_recall / num_queries as f64
+            } else {
+                0.0
+            };
+
+            println!(
+                "  {} [{}]: recall@{}={:.4} (was {:.4})",
+                result.index_name, result.search_params, k, avg_recall, result.avg_recall
+            );
+        }
+    }
+
+    Ok(())
+}
+
 #[derive(Subcommand)]
 enum DatasetCommand {
     /// Show HDF5 dataset metadata
@@ -596,6 +703,14 @@ async fn main() -> anyhow::Result<()> {
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
             agent.run(&[Phase::Report], None, false, false).await?;
+        }
+
+        Command::Recall {
+            results,
+            ground_truth,
+            k: k_override,
+        } => {
+            cmd_recall(&results, &ground_truth, k_override)?;
         }
 
         Command::Dataset { command } => match command {
