@@ -18,7 +18,7 @@ use super::DataLoader;
 /// Holds a persistent client, vector type info, and a prepared query
 /// statement so that concrete backends don't duplicate this setup.
 pub struct PgConnection {
-    dsn: String,
+    pub(crate) dsn: String,
     pub table_name: String,
     pub dimension: u32,
     pub metric: Metric,

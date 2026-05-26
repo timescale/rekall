@@ -69,6 +69,10 @@ pub struct IndexBuildResult {
     pub params: serde_json::Value,
     pub build_time: Duration,
     pub index_size_bytes: u64,
+    #[serde(default)]
+    pub parallel_workers: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitor: Option<crate::backend::build_monitor::BuildMonitorResult>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

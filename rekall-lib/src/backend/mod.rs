@@ -1,3 +1,4 @@
+pub mod build_monitor;
 pub mod meerkat;
 pub mod pg_vector_type;
 pub mod pgvector_hnsw;
@@ -257,9 +258,39 @@ pub trait IndexBackend: Send + Sync {
         );
 
         info!("Building {} index: {sql}", self.type_name());
+
+        let monitor =
+            build_monitor::BuildMonitor::new(&self.pg().dsn).await;
+        let monitor_handle = monitor.map(|m| {
+            tokio::spawn(async move {
+                m.monitor_until_done(|phase, done, total, workers| {
+                    if total > 0 {
+                        let pct = done as f64 / total as f64 * 100.0;
+                        tracing::info!(
+                            "  {phase}: {done}/{total} ({pct:.0}%) \
+                             [{workers} workers]"
+                        );
+                    } else {
+                        tracing::info!("  {phase} [{workers} workers]");
+                    }
+                })
+                .await
+            })
+        });
+
         let start = Instant::now();
         self.pg().client().execute(&sql, &[]).await?;
         let build_time = start.elapsed();
+
+        let monitor_result = match monitor_handle {
+            Some(handle) => handle.await.ok(),
+            None => None,
+        };
+        let peak_workers = monitor_result
+            .as_ref()
+            .map(|m| m.peak_workers)
+            .unwrap_or(0);
+
         let size = self.index_size().await?;
 
         Ok(IndexBuildResult {
@@ -268,6 +299,8 @@ pub trait IndexBackend: Send + Sync {
             params: self.build_params_json(),
             build_time,
             index_size_bytes: size,
+            parallel_workers: peak_workers,
+            monitor: monitor_result,
         })
     }
 
