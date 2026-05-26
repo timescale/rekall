@@ -4,6 +4,18 @@ use crate::config::BenchmarkConfig;
 use crate::error::{Error, Result};
 use crate::metrics::IndexBuildResult;
 
+fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
+    let dir = &config.output.results_dir;
+    let path = format!("{dir}/build-{}.json", result.index_name);
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(json) = serde_json::to_string_pretty(result) {
+        let _ = std::fs::write(&path, json);
+        tracing::info!("Build result saved to {path}");
+    }
+}
+
 pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
@@ -51,6 +63,8 @@ pub async fn run(
 
         backend.drop_index().await?;
         let result = backend.build_index().await?;
+
+        save_build_result(config, &result);
         results.push(result);
     }
 

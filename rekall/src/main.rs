@@ -551,6 +551,7 @@ fn cmd_report(
 
     // Scan for result files
     let mut result_files: Vec<PathBuf> = Vec::new();
+    let mut build_files: Vec<PathBuf> = Vec::new();
     let mut gt_file: Option<PathBuf> = None;
 
     for entry in std::fs::read_dir(dir)? {
@@ -558,6 +559,8 @@ fn cmd_report(
         let name = path.file_name().unwrap_or_default().to_string_lossy();
         if name.starts_with("ground-truth") {
             gt_file = Some(path);
+        } else if name.starts_with("build-") && name.ends_with(".json") {
+            build_files.push(path);
         } else if (name.ends_with(".json.gz") || name.ends_with(".json"))
             && !name.starts_with("run-info")
             && !name.starts_with("results-")
@@ -566,6 +569,7 @@ fn cmd_report(
         }
     }
     result_files.sort();
+    build_files.sort();
 
     if result_files.is_empty() {
         return Err(anyhow::anyhow!(
@@ -756,16 +760,30 @@ fn cmd_report(
     }
 
     // 4. Index build time plot (if build results available)
-    let build_results: Vec<_> = summaries.iter().flat_map(|s| &s.index_builds).collect();
+    // 4. Load build results from build-*.json files
+    let mut build_results: Vec<rekall_lib::metrics::IndexBuildResult> = summaries
+        .iter()
+        .flat_map(|s| s.index_builds.clone())
+        .collect();
+
+    for path in &build_files {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            if let Ok(br) = serde_json::from_str::<rekall_lib::metrics::IndexBuildResult>(&content)
+            {
+                build_results.push(br);
+            }
+        }
+    }
 
     if !build_results.is_empty() {
         println!("\n=== Index Build Times ===");
         for b in &build_results {
+            let size_mb = b.index_size_bytes as f64 / (1024.0 * 1024.0);
             println!(
-                "  {}: {:.1}s ({} bytes)",
+                "  {}: {:.1}s ({:.1} MB)",
                 b.index_name,
                 b.build_time.as_secs_f64(),
-                b.index_size_bytes
+                size_mb
             );
         }
     }
