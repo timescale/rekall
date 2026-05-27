@@ -421,10 +421,7 @@ mod tests {
 
     #[test]
     fn variant_quantized_accessors_for_rabitq4_rerank() {
-        assert_eq!(
-            Variant::Rabitq4Rerank.quantized_column(),
-            Some("v_rabitq4")
-        );
+        assert_eq!(Variant::Rabitq4Rerank.quantized_column(), Some("v_rabitq4"));
         assert_eq!(Variant::Rabitq4Rerank.quantized_type(), Some("rabitq4"));
         assert_eq!(
             Variant::Rabitq4Rerank.quantize_fn(),

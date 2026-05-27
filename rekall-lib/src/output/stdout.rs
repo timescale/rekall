@@ -119,10 +119,11 @@ impl OutputSink for StdoutSink {
                     self.has_bar = want_bar;
                 }
 
+                let procs = format!("1+{workers}w");
                 let status = if rss_mb > 0.0 {
-                    format!("{phase} [{workers}w, {rss_mb:.0}MB]")
+                    format!("{phase} [{procs}, {rss_mb:.0}MB]")
                 } else {
-                    format!("{phase} [{workers}w]")
+                    format!("{phase} [{procs}]")
                 };
 
                 let pb = self.progress_bar.get_or_insert_with(|| {

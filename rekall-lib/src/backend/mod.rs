@@ -265,14 +265,10 @@ pub trait IndexBackend: Send + Sync {
             });
         }
 
-        let monitor =
-            build_monitor::BuildMonitor::new(&self.pg().dsn).await;
+        let monitor = build_monitor::BuildMonitor::new(&self.pg().dsn).await;
         let progress_tx = self.pg().progress.clone();
-        let monitor_handle = monitor.map(|m| {
-            tokio::spawn(
-                async move { m.monitor_until_done(progress_tx.as_ref()).await },
-            )
-        });
+        let monitor_handle = monitor
+            .map(|m| tokio::spawn(async move { m.monitor_until_done(progress_tx.as_ref()).await }));
 
         let start = Instant::now();
         self.pg().client().execute(&sql, &[]).await?;
@@ -289,10 +285,7 @@ pub trait IndexBackend: Send + Sync {
             Some(handle) => handle.await.ok(),
             None => None,
         };
-        let peak_workers = monitor_result
-            .as_ref()
-            .map(|m| m.peak_workers)
-            .unwrap_or(0);
+        let peak_workers = monitor_result.as_ref().map(|m| m.peak_workers).unwrap_or(0);
 
         let size = self.index_size().await?;
 
@@ -481,9 +474,7 @@ fn build_create_index_sql(
             .join(", ");
         format!(" WITH ({body})")
     };
-    format!(
-        "CREATE INDEX {idx_name} ON {table} USING {method} ({column} {opclass}){with_clause}"
-    )
+    format!("CREATE INDEX {idx_name} ON {table} USING {method} ({column} {opclass}){with_clause}")
 }
 
 /// Shared interface for data loading (PG backends share this via PgConnection).

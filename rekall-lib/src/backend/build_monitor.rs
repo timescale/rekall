@@ -96,6 +96,7 @@ impl BuildMonitor {
         let mut last_tuples_done: i64 = 0;
         let mut last_tuples_total: i64 = 0;
         let mut started = false;
+        let mut estimated_total: Option<i64> = None;
 
         loop {
             tokio::time::sleep(self.poll_interval).await;
@@ -128,9 +129,45 @@ impl BuildMonitor {
             }
 
             let phase: String = row.get(0);
-            let tuples_done: i64 = row.get(1);
-            let tuples_total: i64 = row.get(2);
+            let raw_tuples_done: i64 = row.get(1);
+            let raw_tuples_total: i64 = row.get(2);
+            let blocks_done: i64 = row.get(3);
+            let blocks_total: i64 = row.get(4);
             let pid: i32 = row.get(5);
+
+            let (tuples_done, tuples_total) = if raw_tuples_total > 0 {
+                (raw_tuples_done, raw_tuples_total)
+            } else if raw_tuples_done > 0 {
+                // Extension reports tuples_done but not tuples_total
+                // (e.g. pgvector HNSW). Estimate from pg_class.reltuples.
+                if estimated_total.is_none() {
+                    estimated_total = self
+                        .client
+                        .query_opt(
+                            "SELECT reltuples::bigint FROM pg_class \
+                             WHERE oid = (SELECT relid \
+                                          FROM pg_stat_progress_create_index \
+                                          LIMIT 1)",
+                            &[],
+                        )
+                        .await
+                        .ok()
+                        .flatten()
+                        .and_then(|r| {
+                            let n: i64 = r.get(0);
+                            if n > 0 {
+                                Some(n)
+                            } else {
+                                None
+                            }
+                        });
+                }
+                (raw_tuples_done, estimated_total.unwrap_or(0))
+            } else if blocks_total > 0 {
+                (blocks_done, blocks_total)
+            } else {
+                (0, 0)
+            };
 
             // Count parallel workers and collect PIDs
             let worker_rows = self

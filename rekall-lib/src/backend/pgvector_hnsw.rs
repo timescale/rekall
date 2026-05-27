@@ -238,10 +238,7 @@ mod tests {
             ColumnType::Halfvec.opclass(Metric::Euclidean),
             "halfvec_l2_ops"
         );
-        assert_eq!(
-            ColumnType::Bit.opclass(Metric::Angular),
-            "bit_hamming_ops"
-        );
+        assert_eq!(ColumnType::Bit.opclass(Metric::Angular), "bit_hamming_ops");
         assert_eq!(
             ColumnType::Bit.opclass(Metric::Euclidean),
             "bit_hamming_ops"

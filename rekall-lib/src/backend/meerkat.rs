@@ -195,7 +195,9 @@ mod tests {
         p.boundary_epsilon = Some(0.5);
         p.soar_lambda = Some(2.0);
         let opts = options_from_params(&p);
-        assert!(opts.iter().any(|(k, v)| *k == "boundary_epsilon" && v == "0.5"));
+        assert!(opts
+            .iter()
+            .any(|(k, v)| *k == "boundary_epsilon" && v == "0.5"));
         assert!(opts.iter().any(|(k, v)| *k == "soar_lambda" && v == "2"));
     }
 }
