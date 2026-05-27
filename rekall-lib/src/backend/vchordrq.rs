@@ -235,10 +235,8 @@ impl VchordrqBackend {
         body
     }
 
-    /// Add the quantized column and populate it from `v`. Idempotent —
-    /// `ADD COLUMN IF NOT EXISTS` and we only repopulate if the column
-    /// was just added (best-effort: we always run the UPDATE since the
-    /// cost is bounded and we'd rather pay it than risk stale data).
+    /// Add the quantized column and populate it from `v` via the
+    /// shared `PgConnection::ensure_derived_column` helper.
     async fn ensure_quantized_column(&self) -> Result<()> {
         let (Some(col), Some(ty), Some(fnname)) = (
             self.variant.quantized_column(),
@@ -247,26 +245,13 @@ impl VchordrqBackend {
         ) else {
             return Ok(());
         };
-        let client = self.pg.client();
-        let table = &self.pg.table_name;
-        client
-            .execute(
-                &format!(
-                    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ty}({})",
-                    self.pg.dimension
-                ),
-                &[],
+        self.pg
+            .ensure_derived_column(
+                col,
+                &format!("{ty}({})", self.pg.dimension),
+                &format!("{fnname}(v)"),
             )
-            .await?;
-        // Populate any rows that don't yet have a quantized value.
-        // Cheap if already populated (UPDATE ... WHERE col IS NULL).
-        client
-            .execute(
-                &format!("UPDATE {table} SET {col} = {fnname}(v) WHERE {col} IS NULL"),
-                &[],
-            )
-            .await?;
-        Ok(())
+            .await
     }
 }
 
@@ -307,17 +292,11 @@ async fn prepare_quantized_query(
     };
 
     use postgres_types::Type;
-    let vec_type = super::pg_vector_type::lookup_vector_type(pg.client())
-        .await
-        .map_err(|e| Error::Config(format!("Cannot find pgvector 'vector' type: {e}")))?;
-    let param_types: Vec<Type> = match variant {
-        Variant::Rabitq4Rerank => vec![vec_type, Type::INT8, Type::INT8],
-        _ => vec![vec_type, Type::INT8],
+    let extra: &[Type] = match variant {
+        Variant::Rabitq4Rerank => &[Type::INT8],
+        _ => &[],
     };
-    pg.client()
-        .prepare_typed(&sql, &param_types)
-        .await
-        .map_err(|e| Error::Config(format!("Cannot prepare vchordrq query: {e}\n  SQL: {sql}")))
+    pg.prepare_vector_search(&sql, extra).await
 }
 
 #[async_trait]
@@ -377,15 +356,7 @@ impl IndexBackend for VchordrqBackend {
         if let Some(col) = self.variant.quantized_column() {
             // Drop the column too — next build_index will re-add and
             // re-populate. Keeps the table clean across sweeps.
-            client
-                .execute(
-                    &format!(
-                        "ALTER TABLE {} DROP COLUMN IF EXISTS {col}",
-                        self.pg.table_name
-                    ),
-                    &[],
-                )
-                .await?;
+            self.pg.drop_derived_column(col).await?;
         }
         Ok(())
     }

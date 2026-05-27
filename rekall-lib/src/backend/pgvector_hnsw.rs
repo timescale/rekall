@@ -177,9 +177,8 @@ impl PgvectorHnswBackend {
         self.params.column_type.quantized_column().unwrap_or("v")
     }
 
-    /// Add the quantized column and populate it from `v`. Idempotent.
-    /// Mirrors vchordrq's pattern: `ADD COLUMN IF NOT EXISTS`, then
-    /// `UPDATE ... WHERE col IS NULL` so re-runs are cheap.
+    /// Add the quantized column and populate it from `v` via the
+    /// shared `PgConnection::ensure_derived_column` helper.
     async fn ensure_quantized_column(&self) -> Result<()> {
         let (Some(col), Some(ty), Some(expr)) = (
             self.params.column_type.quantized_column(),
@@ -188,24 +187,9 @@ impl PgvectorHnswBackend {
         ) else {
             return Ok(());
         };
-        let client = self.pg.client();
-        let table = &self.pg.table_name;
-        client
-            .execute(
-                &format!(
-                    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {col} {ty}({})",
-                    self.pg.dimension
-                ),
-                &[],
-            )
-            .await?;
-        client
-            .execute(
-                &format!("UPDATE {table} SET {col} = {expr} WHERE {col} IS NULL"),
-                &[],
-            )
-            .await?;
-        Ok(())
+        self.pg
+            .ensure_derived_column(col, &format!("{ty}({})", self.pg.dimension), &expr)
+            .await
     }
 }
 
@@ -223,22 +207,8 @@ async fn prepare_quantized_query(
     let order_op = column_type.order_op(metric);
     let bind = column_type.bind_expr(dim);
 
-    let sql = format!(
-        "SELECT id FROM {table} ORDER BY {qcol} {order_op} {bind} LIMIT $2"
-    );
-
-    use postgres_types::Type;
-    let vec_type = super::pg_vector_type::lookup_vector_type(pg.client())
-        .await
-        .map_err(|e| Error::Config(format!("Cannot find pgvector 'vector' type: {e}")))?;
-    pg.client()
-        .prepare_typed(&sql, &[vec_type, Type::INT8])
-        .await
-        .map_err(|e| {
-            Error::Config(format!(
-                "Cannot prepare pgvector-hnsw query: {e}\n  SQL: {sql}"
-            ))
-        })
+    let sql = format!("SELECT id FROM {table} ORDER BY {qcol} {order_op} {bind} LIMIT $2");
+    pg.prepare_vector_search(&sql, &[]).await
 }
 
 #[async_trait]
@@ -290,15 +260,7 @@ impl IndexBackend for PgvectorHnswBackend {
             .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
             .await?;
         if let Some(col) = self.params.column_type.quantized_column() {
-            client
-                .execute(
-                    &format!(
-                        "ALTER TABLE {} DROP COLUMN IF EXISTS {col}",
-                        self.pg.table_name
-                    ),
-                    &[],
-                )
-                .await?;
+            self.pg.drop_derived_column(col).await?;
         }
         Ok(())
     }

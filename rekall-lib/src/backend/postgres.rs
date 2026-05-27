@@ -500,6 +500,76 @@ impl PgConnection {
         Ok(())
     }
 
+    /// Add a derived column to the table and populate it from `v`.
+    /// Used by backends that index a quantized/cast representation
+    /// (halfvec, bit, rabitq{4,8}, ...). Idempotent: `ADD COLUMN IF
+    /// NOT EXISTS` + `UPDATE WHERE col IS NULL`, so re-runs are cheap.
+    ///
+    /// `type_decl` is the full PG type with its modifier — e.g.
+    /// `"halfvec(768)"`, `"bit(768)"`, `"rabitq8(768)"`.
+    /// `from_v_expr` is the SQL expression that produces a value of
+    /// `type_decl` from the existing `v` column — e.g.
+    /// `"v::halfvec(768)"`, `"binary_quantize(v)::bit(768)"`,
+    /// `"quantize_to_rabitq8(v)"`.
+    pub async fn ensure_derived_column(
+        &self,
+        column: &str,
+        type_decl: &str,
+        from_v_expr: &str,
+    ) -> Result<()> {
+        let client = self.client();
+        let table = &self.table_name;
+        client
+            .execute(
+                &format!("ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {type_decl}"),
+                &[],
+            )
+            .await?;
+        client
+            .execute(
+                &format!("UPDATE {table} SET {column} = {from_v_expr} WHERE {column} IS NULL"),
+                &[],
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Drop a column previously added by `ensure_derived_column`.
+    /// Called from a backend's `drop_index` so sweeps stay idempotent.
+    pub async fn drop_derived_column(&self, column: &str) -> Result<()> {
+        self.client()
+            .execute(
+                &format!(
+                    "ALTER TABLE {} DROP COLUMN IF EXISTS {column}",
+                    self.table_name
+                ),
+                &[],
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Prepare a search statement whose first parameter is a `vector`
+    /// (matching pgvector's binary wire format via `PgVector`). `$2` is
+    /// always `INT8` (the LIMIT). Additional parameter types can be
+    /// passed for queries with extra placeholders (e.g. a candidate
+    /// pool size for rerank queries).
+    pub async fn prepare_vector_search(
+        &self,
+        sql: &str,
+        extra_param_types: &[Type],
+    ) -> Result<Statement> {
+        let vec_type = super::pg_vector_type::lookup_vector_type(self.client())
+            .await
+            .map_err(|e| Error::Config(format!("Cannot find pgvector 'vector' type: {e}")))?;
+        let mut types: Vec<Type> = vec![vec_type, Type::INT8];
+        types.extend_from_slice(extra_param_types);
+        self.client()
+            .prepare_typed(sql, &types)
+            .await
+            .map_err(|e| Error::Config(format!("Cannot prepare search query: {e}\n  SQL: {sql}")))
+    }
+
     /// Get SQL names of all rekall-managed indexes on this table.
     pub async fn list_rekall_indexes(&self) -> Result<Vec<String>> {
         let client = self.client();
