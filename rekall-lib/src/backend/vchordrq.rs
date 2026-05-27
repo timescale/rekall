@@ -14,7 +14,6 @@
 //! never modified, so other backends operating on the same table see
 //! the schema they expect.
 
-use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -347,97 +346,43 @@ impl IndexBackend for VchordrqBackend {
         })
     }
 
-    async fn drop_index(&self) -> Result<()> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let client = self.pg.client();
-        client
-            .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
-            .await?;
-        if let Some(col) = self.variant.quantized_column() {
-            // Drop the column too — next build_index will re-add and
-            // re-populate. Keeps the table clean across sweeps.
-            self.pg.drop_derived_column(col).await?;
-        }
-        Ok(())
+    fn pg(&self) -> &PgConnection {
+        &self.pg
     }
 
-    async fn index_size(&self) -> Result<u64> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(&format!("SELECT pg_relation_size('{idx_name}')"), &[])
-            .await?;
-        let size: i64 = row.get(0);
-        Ok(size as u64)
+    fn derived_column(&self) -> Option<&str> {
+        self.variant.quantized_column()
     }
 
-    async fn index_exists(&self) -> Result<bool> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(
-                "SELECT EXISTS(
-                    SELECT 1 FROM pg_indexes
-                    WHERE tablename = $1 AND indexname = $2
-                )",
-                &[&self.pg.table_name, &idx_name],
-            )
-            .await?;
-        Ok(row.get(0))
+    fn custom_search_stmt(&self) -> Option<&Statement> {
+        self.custom_query.as_ref()
     }
 
-    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
-        self.pg.set_gucs(params).await
-    }
-
-    async fn validate_search_params(
-        &self,
-        params: &HashMap<String, Vec<toml::Value>>,
-    ) -> Result<()> {
-        self.pg.validate_gucs(params).await
-    }
-
+    /// Override the trait default because rabitq4-rerank takes an
+    /// extra `$3` candidate-pool-size parameter. Plain and rabitq8
+    /// share the standard two-param bind that the trait default uses.
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
         let k_i64 = k as i64;
-        let rows = match (&self.custom_query, self.variant) {
-            (None, _) => {
-                self.pg
-                    .client()
-                    .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64])
-                    .await?
-            }
-            (Some(stmt), Variant::Rabitq4Rerank) => {
-                let pool = self.params.rerank_n.max(k as u32) as i64;
-                self.pg
-                    .client()
-                    .query(stmt, &[&PgVector(vector), &k_i64, &pool])
-                    .await?
-            }
-            (Some(stmt), _) => {
-                self.pg
-                    .client()
-                    .query(stmt, &[&PgVector(vector), &k_i64])
-                    .await?
-            }
+        let rows = if self.variant == Variant::Rabitq4Rerank {
+            let stmt = self
+                .custom_query
+                .as_ref()
+                .expect("rabitq4-rerank prepares a custom statement at create time");
+            let pool = self.params.rerank_n.max(k as u32) as i64;
+            self.pg
+                .client()
+                .query(stmt, &[&PgVector(vector), &k_i64, &pool])
+                .await?
+        } else {
+            let stmt = self
+                .custom_search_stmt()
+                .unwrap_or_else(|| self.pg.query_stmt());
+            self.pg
+                .client()
+                .query(stmt, &[&PgVector(vector), &k_i64])
+                .await?
         };
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
-    }
-
-    async fn validate_query_plan(&self, sample_vector: &[f32], k: usize) -> Result<()> {
-        // Plain variant follows the standard pattern PgConnection knows
-        // how to validate. Rabitq variants use custom SQL referencing
-        // a different column (and rabitq4 uses a subquery) so the
-        // built-in validator's heuristic won't match — skip it. The
-        // SET vchordrq.enable_scan = on default gives us reasonable
-        // confidence the index is used.
-        if self.variant == Variant::Plain {
-            self.pg
-                .validate_query_plan(&self.name, sample_vector, k)
-                .await?;
-        }
-        Ok(())
     }
 }
 

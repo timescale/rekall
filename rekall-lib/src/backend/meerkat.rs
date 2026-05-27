@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -9,7 +8,6 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
 use crate::metrics::IndexBuildResult;
 
-use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
 use super::IndexBackend;
 
@@ -169,67 +167,7 @@ impl IndexBackend for MeerkatBackend {
         })
     }
 
-    async fn drop_index(&self) -> Result<()> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        self.pg
-            .client()
-            .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
-            .await?;
-        Ok(())
-    }
-
-    async fn index_size(&self) -> Result<u64> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(&format!("SELECT pg_relation_size('{idx_name}')"), &[])
-            .await?;
-        let size: i64 = row.get(0);
-        Ok(size as u64)
-    }
-
-    async fn index_exists(&self) -> Result<bool> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(
-                "SELECT EXISTS(
-                    SELECT 1 FROM pg_indexes
-                    WHERE tablename = $1 AND indexname = $2
-                )",
-                &[&self.pg.table_name, &idx_name],
-            )
-            .await?;
-        Ok(row.get(0))
-    }
-
-    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
-        self.pg.set_gucs(params).await
-    }
-
-    async fn validate_search_params(
-        &self,
-        params: &HashMap<String, Vec<toml::Value>>,
-    ) -> Result<()> {
-        self.pg.validate_gucs(params).await
-    }
-
-    async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
-        let k_i64 = k as i64;
-        let rows = self
-            .pg
-            .client()
-            .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64])
-            .await?;
-        Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
-    }
-
-    async fn validate_query_plan(&self, sample_vector: &[f32], k: usize) -> Result<()> {
-        self.pg
-            .validate_query_plan(&self.name, sample_vector, k)
-            .await?;
-        Ok(())
+    fn pg(&self) -> &PgConnection {
+        &self.pg
     }
 }

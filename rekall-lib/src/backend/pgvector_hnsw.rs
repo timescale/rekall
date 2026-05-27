@@ -13,7 +13,6 @@
 //! schema they expect. The quantized column is dropped in `drop_index`
 //! to keep sweeps idempotent.
 
-use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -25,7 +24,6 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
 use crate::metrics::IndexBuildResult;
 
-use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
 use super::IndexBackend;
 
@@ -253,78 +251,16 @@ impl IndexBackend for PgvectorHnswBackend {
         })
     }
 
-    async fn drop_index(&self) -> Result<()> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let client = self.pg.client();
-        client
-            .execute(&format!("DROP INDEX IF EXISTS {idx_name}"), &[])
-            .await?;
-        if let Some(col) = self.params.column_type.quantized_column() {
-            self.pg.drop_derived_column(col).await?;
-        }
-        Ok(())
+    fn pg(&self) -> &PgConnection {
+        &self.pg
     }
 
-    async fn index_size(&self) -> Result<u64> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(&format!("SELECT pg_relation_size('{idx_name}')"), &[])
-            .await?;
-        let size: i64 = row.get(0);
-        Ok(size as u64)
+    fn derived_column(&self) -> Option<&str> {
+        self.params.column_type.quantized_column()
     }
 
-    async fn index_exists(&self) -> Result<bool> {
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let row = self
-            .pg
-            .client()
-            .query_one(
-                "SELECT EXISTS(
-                    SELECT 1 FROM pg_indexes
-                    WHERE tablename = $1 AND indexname = $2
-                )",
-                &[&self.pg.table_name, &idx_name],
-            )
-            .await?;
-        Ok(row.get(0))
-    }
-
-    async fn set_search_params(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
-        self.pg.set_gucs(params).await
-    }
-
-    async fn validate_search_params(
-        &self,
-        params: &HashMap<String, Vec<toml::Value>>,
-    ) -> Result<()> {
-        self.pg.validate_gucs(params).await
-    }
-
-    async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
-        let k_i64 = k as i64;
-        let stmt = self.custom_query.as_ref().unwrap_or_else(|| self.pg.query_stmt());
-        let rows = self
-            .pg
-            .client()
-            .query(stmt, &[&PgVector(vector), &k_i64])
-            .await?;
-        Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
-    }
-
-    async fn validate_query_plan(&self, sample_vector: &[f32], k: usize) -> Result<()> {
-        // PgConnection's validator EXPLAINs `ORDER BY v <op> ...`, which
-        // only matches the index for the Vector variant. Halfvec/bit
-        // use a different column and a casted bind expression; skip the
-        // built-in check rather than maintain a parallel EXPLAIN here.
-        if self.params.column_type == ColumnType::Vector {
-            self.pg
-                .validate_query_plan(&self.name, sample_vector, k)
-                .await?;
-        }
-        Ok(())
+    fn custom_search_stmt(&self) -> Option<&Statement> {
+        self.custom_query.as_ref()
     }
 }
 
