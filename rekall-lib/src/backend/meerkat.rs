@@ -55,12 +55,7 @@ impl MeerkatBackend {
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        pg.connect_with_setup(
-            order_op,
-            Some("meerkat"),
-            &["CREATE EXTENSION IF NOT EXISTS meerkat"],
-        )
-        .await?;
+        pg.connect_with_setup(order_op, &["meerkat"]).await?;
 
         Ok(Self {
             pg,

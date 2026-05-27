@@ -229,7 +229,7 @@ pub async fn run(
             config.dataset.dimension,
             config.dataset.metric,
         );
-        pg_mgmt.connect("<=>", None).await?;
+        pg_mgmt.connect("<=>").await?;
         let active_idx = pg_mgmt.index_sql_name(&sweep.index);
         let all_indexes = pg_mgmt.list_rekall_indexes().await?;
         for idx_sql in &all_indexes {
@@ -320,7 +320,7 @@ pub async fn run(
                         config.dataset.dimension,
                         config.dataset.metric,
                     );
-                    pg_evict.connect("<=>", None).await?;
+                    pg_evict.connect("<=>").await?;
                     let idx_sql = pg_evict.index_sql_name(&sweep.index);
                     pg_evict
                         .evict_relation_buffers(&config.table_name())
@@ -439,7 +439,7 @@ pub async fn run(
         config.dataset.dimension,
         config.dataset.metric,
     );
-    pg_cleanup.connect("<=>", None).await?;
+    pg_cleanup.connect("<=>").await?;
     for idx_sql in pg_cleanup.list_rekall_indexes().await? {
         let _ = pg_cleanup.enable_index(&idx_sql).await;
     }

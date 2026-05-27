@@ -149,16 +149,10 @@ impl VchordrqBackend {
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        // vchord depends on pgvector for the `vector` type.
-        pg.connect_with_setup(
-            order_op,
-            Some("vchord"),
-            &[
-                "CREATE EXTENSION IF NOT EXISTS vector",
-                "CREATE EXTENSION IF NOT EXISTS vchord CASCADE",
-            ],
-        )
-        .await?;
+        // vchord depends on pgvector for the `vector` type — list in
+        // dependency order so `vector` is created first.
+        pg.connect_with_setup(order_op, &["vector", "vchord"])
+            .await?;
 
         // Plain variant uses the default `SELECT id FROM t ORDER BY v <=> $1
         // LIMIT $2` statement that PgConnection already prepared. Rabitq

@@ -144,12 +144,8 @@ impl PgvectorHnswBackend {
         // statement against the existing `vector` column. Vector
         // variants reuse it; halfvec/bit prepare a custom one below.
         let order_op_for_setup = params.column_type.order_op(metric);
-        pg.connect_with_setup(
-            order_op_for_setup,
-            Some("vector"),
-            &["CREATE EXTENSION IF NOT EXISTS vector"],
-        )
-        .await?;
+        pg.connect_with_setup(order_op_for_setup, &["vector"])
+            .await?;
 
         let custom_query = if params.column_type == ColumnType::Vector {
             None

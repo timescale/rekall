@@ -67,39 +67,48 @@ impl PgConnection {
         Ok(client)
     }
 
-    /// Connect and prepare a query statement for the given order operator.
-    /// Call this once during backend creation; then use client() and
-    /// query_stmt() for all subsequent operations.
-    pub async fn connect(&mut self, order_operator: &str, extension: Option<&str>) -> Result<()> {
-        self.connect_with_setup(order_operator, extension, &[])
-            .await
+    /// Connect with no extension setup. Used for read-only probes
+    /// (e.g. capturing runtime info) that don't need any PG extension.
+    pub async fn connect(&mut self, order_operator: &str) -> Result<()> {
+        self.connect_with_setup(order_operator, &[]).await
     }
 
+    /// Connect, ensure the given extensions exist (in order), LOAD the
+    /// last one (the "primary" extension whose operators we need at
+    /// query time), and prepare the standard search statement.
+    ///
+    /// Extensions are listed in dependency order — e.g. vchordrq passes
+    /// `&["vector", "vchord"]` so `vector` is created first. No
+    /// `CASCADE` is needed when callers list dependencies explicitly.
     pub async fn connect_with_setup(
         &mut self,
         order_operator: &str,
-        extension: Option<&str>,
-        setup_sqls: &[&str],
+        extensions: &[&str],
     ) -> Result<()> {
         let client = self.open_connection().await?;
 
-        if let Some(ext) = extension {
+        for ext in extensions {
+            client
+                .execute(&format!("CREATE EXTENSION IF NOT EXISTS {ext}"), &[])
+                .await
+                .map_err(|e| {
+                    tracing::error!("CREATE EXTENSION {ext} failed: {e}");
+                    Error::ExtensionMissing {
+                        extension: (*ext).to_string(),
+                    }
+                })?;
+        }
+
+        if let Some(ext) = extensions.last() {
             client
                 .execute(&format!("LOAD '{ext}'"), &[])
                 .await
                 .map_err(|e| {
                     tracing::error!("LOAD '{ext}' failed: {e}");
                     Error::ExtensionMissing {
-                        extension: ext.to_string(),
+                        extension: (*ext).to_string(),
                     }
                 })?;
-        }
-
-        for sql in setup_sqls {
-            client
-                .execute(*sql, &[])
-                .await
-                .map_err(|e| Error::Config(format!("Setup SQL failed: {e}\n  SQL: {sql}")))?;
         }
 
         let vec_type = lookup_vector_type(&client)
