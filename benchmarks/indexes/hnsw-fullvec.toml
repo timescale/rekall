@@ -1,0 +1,15 @@
+# pgvector HNSW on the plain `vector` column with pgvector's CREATE INDEX
+# defaults (m=16, ef_construction=64). Useful as a baseline for what
+# users get out-of-the-box without tuning, and as the full-precision
+# counterpart to hnsw-halfvec / hnsw-bq.
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-fullvec"
+[index.params]
+m = 16
+ef_construction = 64
+
+[[search.sweep]]
+index = "hnsw-fullvec"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]

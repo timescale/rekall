@@ -1,0 +1,16 @@
+# pgvector HNSW on a binary-quantized bit column (`binary_quantize(v)`),
+# indexed with `bit_hamming_ops`. ~32x smaller index; significant recall
+# loss — most useful as a coarse candidate filter or for memory-bound
+# workloads where the recall floor is acceptable.
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-bq"
+[index.params]
+m = 16
+ef_construction = 200
+column_type = "bit"
+
+[[search.sweep]]
+index = "hnsw-bq"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]

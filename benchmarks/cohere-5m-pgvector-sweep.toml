@@ -1,0 +1,21 @@
+# Suite: cohere-5m × pgvector HNSW only.
+#
+# Variants:
+#   - hnsw-fullvec   plain vector column, pgvector defaults (m=16, ef_construction=64)
+#   - hnsw-m16       ann_benchmarks config: m=16, ef_construction=200
+#   - hnsw-m24       ann_benchmarks config: m=24, ef_construction=200
+#   - hnsw-halfvec   halfvec column (m=16, ef_construction=200)
+#   - hnsw-bq        binary-quantized bit column with bit_hamming_ops
+#
+# Usage: rekall run benchmarks/cohere-5m-pgvector-sweep.toml [--dry-run]
+
+indexes = [
+    "indexes/hnsw-fullvec.toml",
+    "indexes/hnsw-m16.toml",
+    "indexes/hnsw-m24.toml",
+    "indexes/hnsw-halfvec.toml",
+    "indexes/hnsw-bq.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-5m.toml"
