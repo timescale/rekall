@@ -15,8 +15,8 @@
 //! the schema they expect.
 
 use async_trait::async_trait;
+use postgres_types::Type;
 use serde::{Deserialize, Serialize};
-use tokio_postgres::Statement;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
@@ -117,9 +117,6 @@ pub struct VchordrqBackend {
     name: String,
     variant: Variant,
     params: VchordrqParams,
-    /// For non-plain variants we prepare a custom statement that
-    /// references the quantized column. Plain uses `pg.query_stmt()`.
-    custom_query: Option<Statement>,
 }
 
 impl VchordrqBackend {
@@ -149,18 +146,11 @@ impl VchordrqBackend {
             name: idx.name.clone(),
             variant,
             params,
-            custom_query: None,
         };
-        // Default `connect` reads order_op() and extensions() off
-        // backend. Plain variant then reuses the standard search stmt;
-        // rabitq variants prepare a custom one below.
+        // Trait-default connect builds the right search statement for
+        // this variant from query_column()/query_bind() (plain, rabitq8)
+        // or custom_search_sql() (rabitq4-rerank's subquery shape).
         backend.connect().await?;
-
-        if variant != Variant::Plain {
-            let stmt =
-                prepare_quantized_query(&backend.pg, variant, table, backend.order_op()).await?;
-            backend.custom_query = Some(stmt);
-        }
         Ok(backend)
     }
 
@@ -197,50 +187,6 @@ impl VchordrqBackend {
         }
         body
     }
-}
-
-/// Prepare the search statement for non-plain variants.
-///
-/// rabitq8: `SELECT id FROM t ORDER BY v_rabitq8 <=> quantize_to_rabitq8($1::vector) LIMIT $2`
-/// rabitq4-rerank: two-phase candidate pool → exact rerank.
-async fn prepare_quantized_query(
-    pg: &PgConnection,
-    variant: Variant,
-    table: &str,
-    order_op: &str,
-) -> Result<Statement> {
-    let qcol = variant.quantized_column().expect("non-plain variant");
-    let qfn = variant.quantize_fn().expect("non-plain variant");
-
-    let sql = match variant {
-        Variant::Plain => unreachable!(),
-        Variant::Rabitq8 => format!(
-            "SELECT id FROM {table} \
-             ORDER BY {qcol} {order_op} {qfn}($1::vector) \
-             LIMIT $2"
-        ),
-        Variant::Rabitq4Rerank => {
-            // Two-phase: pull a larger candidate pool by quantized
-            // distance, then re-order by exact distance on the
-            // original vector column. $3 = candidate pool size.
-            format!(
-                "SELECT id FROM ( \
-                     SELECT id, v FROM {table} \
-                     ORDER BY {qcol} {order_op} {qfn}($1::vector) \
-                     LIMIT $3 \
-                 ) candidates \
-                 ORDER BY v {order_op} $1::vector \
-                 LIMIT $2"
-            )
-        }
-    };
-
-    use postgres_types::Type;
-    let extra: &[Type] = match variant {
-        Variant::Rabitq4Rerank => &[Type::INT8],
-        _ => &[],
-    };
-    pg.prepare_vector_search(&sql, extra).await
 }
 
 #[async_trait]
@@ -315,34 +261,59 @@ impl IndexBackend for VchordrqBackend {
         self.variant.quantize_fn().map(|f| format!("{f}(v)"))
     }
 
-    fn custom_search_stmt(&self) -> Option<&Statement> {
-        self.custom_query.as_ref()
+    fn query_column(&self) -> &'static str {
+        self.variant.quantized_column().unwrap_or("v")
     }
 
-    /// Override the trait default because rabitq4-rerank takes an
-    /// extra `$3` candidate-pool-size parameter. Plain and rabitq8
-    /// share the standard two-param bind that the trait default uses.
+    fn query_bind(&self) -> String {
+        match self.variant.quantize_fn() {
+            None => "$1".to_string(),
+            Some(f) => format!("{f}($1::vector)"),
+        }
+    }
+
+    /// Rabitq4-rerank wraps a candidate-pool subquery and binds a
+    /// third `$3` param for the pool LIMIT. The default `query_column`
+    /// / `query_bind` template can't express that shape, so override.
+    fn custom_search_sql(&self) -> Option<(String, Vec<Type>)> {
+        if self.variant != Variant::Rabitq4Rerank {
+            return None;
+        }
+        let qcol = self.variant.quantized_column().unwrap();
+        let qfn = self.variant.quantize_fn().unwrap();
+        let order_op = self.order_op();
+        let table = &self.pg.table_name;
+        let sql = format!(
+            "SELECT id FROM ( \
+                 SELECT id, v FROM {table} \
+                 ORDER BY {qcol} {order_op} {qfn}($1::vector) \
+                 LIMIT $3 \
+             ) candidates \
+             ORDER BY v {order_op} $1::vector \
+             LIMIT $2"
+        );
+        Some((sql, vec![Type::INT8]))
+    }
+
+    /// Rabitq4-rerank binds an extra `$3` for the candidate pool. All
+    /// other variants share the trait-default two-param bind.
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
+        if self.variant != Variant::Rabitq4Rerank {
+            let k_i64 = k as i64;
+            let rows = self
+                .pg
+                .client()
+                .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64])
+                .await?;
+            return Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect());
+        }
         let k_i64 = k as i64;
-        let rows = if self.variant == Variant::Rabitq4Rerank {
-            let stmt = self
-                .custom_query
-                .as_ref()
-                .expect("rabitq4-rerank prepares a custom statement at create time");
-            let pool = self.params.rerank_n.max(k as u32) as i64;
-            self.pg
-                .client()
-                .query(stmt, &[&PgVector(vector), &k_i64, &pool])
-                .await?
-        } else {
-            let stmt = self
-                .custom_search_stmt()
-                .unwrap_or_else(|| self.pg.query_stmt());
-            self.pg
-                .client()
-                .query(stmt, &[&PgVector(vector), &k_i64])
-                .await?
-        };
+        let pool = self.params.rerank_n.max(k as u32) as i64;
+        let rows = self
+            .pg
+            .client()
+            .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64, &pool])
+            .await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 }

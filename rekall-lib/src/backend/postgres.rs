@@ -12,7 +12,6 @@ use crate::error::{Error, Result};
 use crate::metrics::{ExtensionInfo, PgRuntimeInfo};
 use crate::progress::{ProgressEvent, ProgressTx};
 
-use super::pg_vector_type::lookup_vector_type;
 use super::DataLoader;
 
 /// Shared PostgreSQL connection state for all PG-based index backends.
@@ -67,24 +66,20 @@ impl PgConnection {
         Ok(client)
     }
 
-    /// Connect with no extension setup. Used for read-only probes
-    /// (e.g. capturing runtime info) that don't need any PG extension.
-    pub async fn connect(&mut self, order_operator: &str) -> Result<()> {
-        self.connect_with_setup(order_operator, &[]).await
+    /// Open the underlying client without any extension setup or
+    /// statement preparation. Used for read-only probes that just
+    /// need a session (e.g. `runtime_info()`).
+    pub async fn connect(&mut self) -> Result<()> {
+        self.connect_with_setup(&[]).await
     }
 
-    /// Connect, ensure the given extensions exist (in order), LOAD the
-    /// last one (the "primary" extension whose operators we need at
-    /// query time), and prepare the standard search statement.
-    ///
-    /// Extensions are listed in dependency order — e.g. vchordrq passes
-    /// `&["vector", "vchord"]` so `vector` is created first. No
-    /// `CASCADE` is needed when callers list dependencies explicitly.
-    pub async fn connect_with_setup(
-        &mut self,
-        order_operator: &str,
-        extensions: &[&str],
-    ) -> Result<()> {
+    /// Open the client, then `CREATE EXTENSION IF NOT EXISTS` for each
+    /// entry in dependency order and `LOAD` the last (the primary
+    /// extension whose operators are needed at query time). Does NOT
+    /// prepare the search statement — that's done by the IndexBackend
+    /// trait's `connect()` default, which has access to the backend's
+    /// query column/bind hooks.
+    pub async fn connect_with_setup(&mut self, extensions: &[&str]) -> Result<()> {
         let client = self.open_connection().await?;
 
         for ext in extensions {
@@ -111,24 +106,6 @@ impl PgConnection {
                 })?;
         }
 
-        let vec_type = lookup_vector_type(&client)
-            .await
-            .map_err(|e| Error::Config(format!("Cannot find pgvector 'vector' type: {e}")))?;
-
-        let sql = format!(
-            "SELECT id FROM {} ORDER BY v {} $1 LIMIT $2",
-            self.table_name, order_operator,
-        );
-        let stmt = client
-            .prepare_typed(&sql, &[vec_type, Type::INT8])
-            .await
-            .map_err(|e| {
-                Error::Config(format!(
-                    "Cannot prepare query: {e}\n  SQL: {sql}\n  \
-                     Hint: is the extension loaded and the operator available?"
-                ))
-            })?;
-
         // Register cancel token for Ctrl+C handling
         if let Some(ref registry) = self.cancel_registry {
             let token = client.cancel_token();
@@ -139,9 +116,15 @@ impl PgConnection {
         }
 
         self.client = Some(client);
+        Ok(())
+    }
+
+    /// Install a prepared search statement and its order operator.
+    /// Called by the IndexBackend trait's default `connect()` after
+    /// the connection is open and the statement is prepared.
+    pub fn install_query_stmt(&mut self, stmt: Statement, order_operator: &str) {
         self.query_stmt = Some(stmt);
         self.order_operator = Some(order_operator.to_string());
-        Ok(())
     }
 
     pub fn client(&self) -> &Client {

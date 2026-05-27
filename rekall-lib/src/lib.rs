@@ -104,7 +104,7 @@ impl Agent {
             self.config.dataset.dimension,
             self.config.dataset.metric,
         );
-        if pg.connect("<=>").await.is_err() {
+        if pg.connect().await.is_err() {
             return None;
         }
         pg.runtime_info().await.ok()
@@ -469,7 +469,7 @@ impl Agent {
             self.config.dataset.dimension,
             self.config.dataset.metric,
         );
-        pg_mgmt.connect("<=>").await?;
+        pg_mgmt.connect().await?;
 
         // Get ALL rekall indexes on the table, not just the ones in this config.
         // Other indexes from previous runs must also be disabled.

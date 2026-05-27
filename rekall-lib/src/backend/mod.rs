@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use async_trait::async_trait;
-use tokio_postgres::Statement;
+use postgres_types::Type;
 use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
@@ -31,13 +31,17 @@ use postgres::PgConnection;
 ///
 /// Hooks for derived-column workflows (halfvec, bit, rabitq{4,8}, ...):
 ///   - `derived_column()` + `derived_column_type()` +
-///     `derive_from_v_expr()`: drive the default build_index to call
+///     `derive_from_v_expr()`: drive the default `build_index` to call
 ///     `PgConnection::ensure_derived_column` before CREATE INDEX, and
-///     the default drop_index to drop the column afterwards.
-///   - `custom_search_stmt()`: replaces the standard search statement
-///     for both `query` and `validate_query_plan` (the latter is
-///     skipped because the custom shape doesn't match the default
-///     EXPLAIN check).
+///     the default `drop_index` to drop the column afterwards.
+///   - `query_column()` + `query_bind()`: customize the search SQL
+///     template (`SELECT id FROM t ORDER BY <col> <op> <bind> LIMIT $2`)
+///     so the standard query path can target a derived column with a
+///     casted bind expression. Default plan validation is skipped
+///     unless both are at their defaults (`v` and `$1`).
+///   - `custom_search_sql()`: escape hatch for query shapes that don't
+///     fit the standard template (e.g. rabitq4-rerank's candidate
+///     subquery).
 #[async_trait]
 pub trait IndexBackend: Send + Sync {
     fn type_name(&self) -> &str;
@@ -99,24 +103,58 @@ pub trait IndexBackend: Send + Sync {
         None
     }
 
-    /// Custom prepared statement for the search query, if any. When
-    /// `Some`, both `query` and `validate_query_plan` switch to the
-    /// custom path; the default plan validator is skipped because it
-    /// EXPLAINs the standard shape.
-    fn custom_search_stmt(&self) -> Option<&Statement> {
+    /// Column expression in the standard search query's
+    /// `ORDER BY <col> <op> <bind>`. Default: `v` (the loaded vector).
+    /// Backends indexing a derived column return its name.
+    fn query_column(&self) -> &'static str {
+        "v"
+    }
+
+    /// Bind expression for `$1` in the search query. Default: `"$1"`
+    /// (parameter is a `vector` with no cast). Backends using a
+    /// different column type return e.g.
+    /// `"($1::vector(768))::halfvec(768)"` so the bound vector is
+    /// cast to the column's type.
+    fn query_bind(&self) -> String {
+        "$1".to_string()
+    }
+
+    /// Override the entire search SQL plus its extra parameter types
+    /// (beyond the implicit `[vector, INT8]`). Used by query shapes
+    /// that don't fit the standard
+    /// `SELECT id FROM t ORDER BY <col> <op> <bind> LIMIT $2`
+    /// template — e.g. vchordrq's rabitq4-rerank, which wraps a
+    /// candidate-pool subquery and binds a third `$3` LIMIT.
+    fn custom_search_sql(&self) -> Option<(String, Vec<Type>)> {
         None
     }
 
-    /// Wire up the PG connection: CREATE EXTENSION for each entry in
-    /// `extensions()`, LOAD the last, prepare the standard search
-    /// statement using `order_op()`. Backends call this from their
-    /// `create()` after building `Self` with all fields populated —
-    /// the trait reads `order_op` and `extensions` off `self` rather
-    /// than receiving them as arguments.
+    /// Wire up the PG connection. Reads `extensions()`, `order_op()`,
+    /// `query_column()`, `query_bind()`, and `custom_search_sql()` off
+    /// `self` to (1) CREATE EXTENSION + LOAD, and (2) prepare the
+    /// search statement that backs `query()` and `validate_query_plan()`.
+    ///
+    /// Backends call this from their `create()` after building `Self`
+    /// with all fields populated.
     async fn connect(&mut self) -> Result<()> {
         let order_op = self.order_op();
         let extensions = self.extensions();
-        self.pg_mut().connect_with_setup(order_op, extensions).await
+        let column = self.query_column();
+        let bind = self.query_bind();
+        let custom = self.custom_search_sql();
+        let table = self.pg().table_name.clone();
+
+        self.pg_mut().connect_with_setup(extensions).await?;
+
+        let (sql, extra) = custom.unwrap_or_else(|| {
+            (
+                format!("SELECT id FROM {table} ORDER BY {column} {order_op} {bind} LIMIT $2"),
+                Vec::new(),
+            )
+        });
+        let stmt = self.pg().prepare_vector_search(&sql, &extra).await?;
+        self.pg_mut().install_query_stmt(stmt, order_op);
+        Ok(())
     }
 
     /// Build the index. Default impl assembles
@@ -221,19 +259,22 @@ pub trait IndexBackend: Send + Sync {
 
     async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
         let k_i64 = k as i64;
-        let stmt = self
-            .custom_search_stmt()
-            .unwrap_or_else(|| self.pg().query_stmt());
         let rows = self
             .pg()
             .client()
-            .query(stmt, &[&PgVector(vector), &k_i64])
+            .query(self.pg().query_stmt(), &[&PgVector(vector), &k_i64])
             .await?;
         Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 
     async fn validate_query_plan(&self, sample_vector: &[f32], k: usize) -> Result<()> {
-        if self.custom_search_stmt().is_none() {
+        // The default EXPLAIN check assumes the standard shape
+        // (`ORDER BY v <op> $1`). Skip when the backend uses a derived
+        // column, a casted bind, or a fully custom SQL.
+        let standard_shape = self.custom_search_sql().is_none()
+            && self.query_column() == "v"
+            && self.query_bind() == "$1";
+        if standard_shape {
             self.pg()
                 .validate_query_plan(self.index_name(), sample_vector, k)
                 .await?;

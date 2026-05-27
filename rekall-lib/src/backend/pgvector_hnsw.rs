@@ -15,7 +15,6 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tokio_postgres::Statement;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
@@ -115,9 +114,6 @@ pub struct PgvectorHnswBackend {
     pg: PgConnection,
     name: String,
     params: HnswParams,
-    /// For non-Vector column types we prepare a custom statement that
-    /// references the quantized column. Vector uses `pg.query_stmt()`.
-    custom_query: Option<Statement>,
 }
 
 impl PgvectorHnswBackend {
@@ -144,45 +140,13 @@ impl PgvectorHnswBackend {
             pg,
             name: idx.name.clone(),
             params,
-            custom_query: None,
         };
-        // Default `connect` reads order_op() / extensions() off backend
-        // and prepares the standard `ORDER BY v <op> $1` statement
-        // against the `vector` column. Vector variants reuse it;
-        // halfvec/bit prepare a custom one below.
+        // Trait-default connect uses query_column()/query_bind() to
+        // build the search statement for whichever column_type this
+        // backend was configured with (vector/halfvec/bit).
         backend.connect().await?;
-
-        if backend.params.column_type != ColumnType::Vector {
-            let stmt = prepare_quantized_query(
-                &backend.pg,
-                backend.params.column_type,
-                table,
-                dim,
-                metric,
-            )
-            .await?;
-            backend.custom_query = Some(stmt);
-        }
         Ok(backend)
     }
-}
-
-/// Prepare the search statement for non-Vector column types.
-async fn prepare_quantized_query(
-    pg: &PgConnection,
-    column_type: ColumnType,
-    table: &str,
-    dim: u32,
-    metric: Metric,
-) -> Result<Statement> {
-    let qcol = column_type
-        .quantized_column()
-        .expect("non-Vector column type");
-    let order_op = column_type.order_op(metric);
-    let bind = column_type.bind_expr(dim);
-
-    let sql = format!("SELECT id FROM {table} ORDER BY {qcol} {order_op} {bind} LIMIT $2");
-    pg.prepare_vector_search(&sql, &[]).await
 }
 
 #[async_trait]
@@ -247,8 +211,12 @@ impl IndexBackend for PgvectorHnswBackend {
             .quantize_expr_from_v(self.pg.dimension)
     }
 
-    fn custom_search_stmt(&self) -> Option<&Statement> {
-        self.custom_query.as_ref()
+    fn query_column(&self) -> &'static str {
+        self.params.column_type.quantized_column().unwrap_or("v")
+    }
+
+    fn query_bind(&self) -> String {
+        self.params.column_type.bind_expr(self.pg.dimension)
     }
 }
 
