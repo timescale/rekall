@@ -5,9 +5,11 @@ pub mod postgres;
 pub mod vchordrq;
 
 use std::collections::HashMap;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use tokio_postgres::Statement;
+use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
@@ -19,23 +21,23 @@ use postgres::PgConnection;
 
 /// Trait every PostgreSQL-backed vector index implements.
 ///
-/// Backends are minimal: they need only declare their identity
-/// (`type_name`, `index_name`, `pg`) and their build SQL (`build_index`).
-/// Everything else — DROP INDEX, size/exists probes, GUC set/validate,
-/// the `SELECT id FROM t ORDER BY v <op> $1 LIMIT $2` search statement,
-/// and EXPLAIN-based plan validation — is provided by default impls
-/// that route through `pg()`.
+/// Backends are minimal: they declare identity (`type_name`,
+/// `index_name`, `pg`), index shape (`index_method`, `opclass`,
+/// optional `index_options`), and — when applicable — derived-column
+/// info and a custom search statement. All boilerplate (CREATE INDEX
+/// assembly + DROP + size/exists probes + GUC set/validate +
+/// SELECT id FROM t ORDER BY v <op> $1 LIMIT $2 search statement +
+/// EXPLAIN-based plan validation) is provided by default impls.
 ///
-/// Two hooks let backends opt into derived-column workflows
-/// (halfvec, bit, rabitq{4,8}, ...) without re-implementing the
-/// boilerplate:
-///   - `derived_column()`: returns the name of a column added by
-///     `PgConnection::ensure_derived_column` so the default
-///     `drop_index` can clean it up.
-///   - `custom_search_stmt()`: returns a backend-prepared search
-///     statement that replaces the standard one for both `query`
-///     and `validate_query_plan` (the latter is then skipped because
-///     the custom shape doesn't match the default EXPLAIN check).
+/// Hooks for derived-column workflows (halfvec, bit, rabitq{4,8}, ...):
+///   - `derived_column()` + `derived_column_type()` +
+///     `derive_from_v_expr()`: drive the default build_index to call
+///     `PgConnection::ensure_derived_column` before CREATE INDEX, and
+///     the default drop_index to drop the column afterwards.
+///   - `custom_search_stmt()`: replaces the standard search statement
+///     for both `query` and `validate_query_plan` (the latter is
+///     skipped because the custom shape doesn't match the default
+///     EXPLAIN check).
 #[async_trait]
 pub trait IndexBackend: Send + Sync {
     fn type_name(&self) -> &str;
@@ -44,8 +46,42 @@ pub trait IndexBackend: Send + Sync {
 
     fn pg(&self) -> &PgConnection;
 
+    /// Access method name used in `CREATE INDEX ... USING <method>`.
+    /// e.g. "hnsw", "mktann", "vchordrq".
+    fn index_method(&self) -> &str;
+
+    /// Operator class for `CREATE INDEX (col <opclass>)`. Depends on
+    /// the column type and the dataset metric.
+    fn opclass(&self) -> &str;
+
+    /// Key-value pairs for the `CREATE INDEX ... WITH (...)` clause.
+    /// Values are pre-formatted SQL (so `("m", "16")` becomes
+    /// `m = 16`, and `("options", "$$<toml>$$")` becomes
+    /// `options = $$<toml>$$`). Default: empty (no WITH clause).
+    fn index_options(&self) -> Vec<(&'static str, String)> {
+        Vec::new()
+    }
+
+    /// Params summary embedded in the `IndexBuildResult`. Default: `{}`.
+    fn build_params_json(&self) -> serde_json::Value {
+        serde_json::json!({})
+    }
+
     /// Derived column to drop alongside the index, if any. Default: none.
     fn derived_column(&self) -> Option<&str> {
+        None
+    }
+
+    /// PG type declaration for the derived column, e.g. `"halfvec(768)"`.
+    /// Must be `Some` when `derived_column` is `Some`.
+    fn derived_column_type(&self) -> Option<String> {
+        None
+    }
+
+    /// SQL expression that populates the derived column from `v`,
+    /// e.g. `"v::halfvec(768)"` or `"quantize_to_rabitq8(v)"`. Must be
+    /// `Some` when `derived_column` is `Some`.
+    fn derive_from_v_expr(&self) -> Option<String> {
         None
     }
 
@@ -57,7 +93,55 @@ pub trait IndexBackend: Send + Sync {
         None
     }
 
-    async fn build_index(&self) -> Result<IndexBuildResult>;
+    /// Build the index. Default impl assembles
+    /// `CREATE INDEX ON t USING <method> (col <opclass>) WITH (...)`
+    /// from `index_method`/`opclass`/`index_options`, ensuring the
+    /// derived column exists first when applicable. Backends usually
+    /// don't override this; the rabitq4-rerank case in vchordrq is the
+    /// kind of exception where override is fine.
+    async fn build_index(&self) -> Result<IndexBuildResult> {
+        if let (Some(col), Some(ty), Some(expr)) = (
+            self.derived_column(),
+            self.derived_column_type(),
+            self.derive_from_v_expr(),
+        ) {
+            self.pg().ensure_derived_column(col, &ty, &expr).await?;
+        }
+
+        let idx_name = self.pg().index_sql_name(self.index_name());
+        let column = self.derived_column().unwrap_or("v");
+        let opts = self.index_options();
+        let with_clause = if opts.is_empty() {
+            String::new()
+        } else {
+            let body = opts
+                .iter()
+                .map(|(k, v)| format!("{k} = {v}"))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!(" WITH ({body})")
+        };
+        let sql = format!(
+            "CREATE INDEX {idx_name} ON {} USING {} ({column} {}){with_clause}",
+            self.pg().table_name,
+            self.index_method(),
+            self.opclass(),
+        );
+
+        info!("Building {} index: {sql}", self.type_name());
+        let start = Instant::now();
+        self.pg().client().execute(&sql, &[]).await?;
+        let build_time = start.elapsed();
+        let size = self.index_size().await?;
+
+        Ok(IndexBuildResult {
+            index_name: self.index_name().to_string(),
+            index_type: self.type_name().to_string(),
+            params: self.build_params_json(),
+            build_time,
+            index_size_bytes: size,
+        })
+    }
 
     async fn drop_index(&self) -> Result<()> {
         let idx_name = self.pg().index_sql_name(self.index_name());

@@ -14,16 +14,12 @@
 //! never modified, so other backends operating on the same table see
 //! the schema they expect.
 
-use std::time::Instant;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio_postgres::Statement;
-use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
-use crate::metrics::IndexBuildResult;
 
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
@@ -182,24 +178,6 @@ impl VchordrqBackend {
         })
     }
 
-    fn opclass(&self) -> &'static str {
-        let cosine = self.pg.metric == Metric::Angular;
-        match (self.variant, cosine) {
-            (Variant::Plain, true) => "vector_cosine_ops",
-            (Variant::Plain, false) => "vector_l2_ops",
-            (Variant::Rabitq8, true) => "rabitq8_cosine_ops",
-            (Variant::Rabitq8, false) => "rabitq8_l2_ops",
-            (Variant::Rabitq4Rerank, true) => "rabitq4_cosine_ops",
-            (Variant::Rabitq4Rerank, false) => "rabitq4_l2_ops",
-        }
-    }
-
-    /// Column the vchordrq index is built on — `v` for plain, the
-    /// quantized column otherwise.
-    fn indexed_column(&self) -> &'static str {
-        self.variant.quantized_column().unwrap_or("v")
-    }
-
     /// `WITH (options = $$ ... $$)` clause body in VectorChord's TOML
     /// format. residual_quantization is a top-level option;
     /// spherical_centroids/build_threads live under [build.internal].
@@ -232,25 +210,6 @@ impl VchordrqBackend {
             body.push_str(&internal);
         }
         body
-    }
-
-    /// Add the quantized column and populate it from `v` via the
-    /// shared `PgConnection::ensure_derived_column` helper.
-    async fn ensure_quantized_column(&self) -> Result<()> {
-        let (Some(col), Some(ty), Some(fnname)) = (
-            self.variant.quantized_column(),
-            self.variant.quantized_type(),
-            self.variant.quantize_fn(),
-        ) else {
-            return Ok(());
-        };
-        self.pg
-            .ensure_derived_column(
-                col,
-                &format!("{ty}({})", self.pg.dimension),
-                &format!("{fnname}(v)"),
-            )
-            .await
     }
 }
 
@@ -308,50 +267,51 @@ impl IndexBackend for VchordrqBackend {
         &self.name
     }
 
-    async fn build_index(&self) -> Result<IndexBuildResult> {
-        // Quantized variants need their column populated before CREATE INDEX.
-        self.ensure_quantized_column().await?;
-
-        let client = self.pg.client();
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let options_body = self.options_toml();
-
-        let with_clause = if options_body.is_empty() {
-            String::new()
-        } else {
-            format!(" WITH (options = $${}$$)", options_body)
-        };
-
-        let sql = format!(
-            "CREATE INDEX {idx_name} ON {} USING vchordrq ({} {}){}",
-            self.pg.table_name,
-            self.indexed_column(),
-            self.opclass(),
-            with_clause,
-        );
-
-        info!("Building {} index: {sql}", self.variant.type_name());
-        let start = Instant::now();
-        client.execute(&sql, &[]).await?;
-        let build_time = start.elapsed();
-
-        let size = self.index_size().await?;
-
-        Ok(IndexBuildResult {
-            index_name: self.name.clone(),
-            index_type: self.variant.type_name().to_string(),
-            params: serde_json::to_value(&self.params).unwrap_or_default(),
-            build_time,
-            index_size_bytes: size,
-        })
-    }
-
     fn pg(&self) -> &PgConnection {
         &self.pg
     }
 
+    fn index_method(&self) -> &str {
+        "vchordrq"
+    }
+
+    fn opclass(&self) -> &str {
+        let cosine = self.pg.metric == Metric::Angular;
+        match (self.variant, cosine) {
+            (Variant::Plain, true) => "vector_cosine_ops",
+            (Variant::Plain, false) => "vector_l2_ops",
+            (Variant::Rabitq8, true) => "rabitq8_cosine_ops",
+            (Variant::Rabitq8, false) => "rabitq8_l2_ops",
+            (Variant::Rabitq4Rerank, true) => "rabitq4_cosine_ops",
+            (Variant::Rabitq4Rerank, false) => "rabitq4_l2_ops",
+        }
+    }
+
+    fn index_options(&self) -> Vec<(&'static str, String)> {
+        let body = self.options_toml();
+        if body.is_empty() {
+            Vec::new()
+        } else {
+            vec![("options", format!("$${body}$$"))]
+        }
+    }
+
+    fn build_params_json(&self) -> serde_json::Value {
+        serde_json::to_value(&self.params).unwrap_or_default()
+    }
+
     fn derived_column(&self) -> Option<&str> {
         self.variant.quantized_column()
+    }
+
+    fn derived_column_type(&self) -> Option<String> {
+        self.variant
+            .quantized_type()
+            .map(|ty| format!("{ty}({})", self.pg.dimension))
+    }
+
+    fn derive_from_v_expr(&self) -> Option<String> {
+        self.variant.quantize_fn().map(|f| format!("{f}(v)"))
     }
 
     fn custom_search_stmt(&self) -> Option<&Statement> {

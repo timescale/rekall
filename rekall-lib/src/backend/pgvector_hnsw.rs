@@ -13,16 +13,12 @@
 //! schema they expect. The quantized column is dropped in `drop_index`
 //! to keep sweeps idempotent.
 
-use std::time::Instant;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tokio_postgres::Statement;
-use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
-use crate::metrics::IndexBuildResult;
 
 use super::postgres::PgConnection;
 use super::IndexBackend;
@@ -169,26 +165,6 @@ impl PgvectorHnswBackend {
         })
     }
 
-    /// Column the HNSW index is built on — `v` for vector, the
-    /// quantized column otherwise.
-    fn indexed_column(&self) -> &'static str {
-        self.params.column_type.quantized_column().unwrap_or("v")
-    }
-
-    /// Add the quantized column and populate it from `v` via the
-    /// shared `PgConnection::ensure_derived_column` helper.
-    async fn ensure_quantized_column(&self) -> Result<()> {
-        let (Some(col), Some(ty), Some(expr)) = (
-            self.params.column_type.quantized_column(),
-            self.params.column_type.quantized_type(),
-            self.params.column_type.quantize_expr_from_v(self.pg.dimension),
-        ) else {
-            return Ok(());
-        };
-        self.pg
-            .ensure_derived_column(col, &format!("{ty}({})", self.pg.dimension), &expr)
-            .await
-    }
 }
 
 /// Prepare the search statement for non-Vector column types.
@@ -219,44 +195,44 @@ impl IndexBackend for PgvectorHnswBackend {
         &self.name
     }
 
-    async fn build_index(&self) -> Result<IndexBuildResult> {
-        self.ensure_quantized_column().await?;
-
-        let client = self.pg.client();
-        let idx_name = self.pg.index_sql_name(&self.name);
-
-        let sql = format!(
-            "CREATE INDEX {idx_name} ON {} USING hnsw ({} {}) \
-             WITH (m = {}, ef_construction = {})",
-            self.pg.table_name,
-            self.indexed_column(),
-            self.params.column_type.opclass(self.pg.metric),
-            self.params.m,
-            self.params.ef_construction,
-        );
-
-        info!("Building pgvector HNSW index: {sql}");
-        let start = Instant::now();
-        client.execute(&sql, &[]).await?;
-        let build_time = start.elapsed();
-
-        let size = self.index_size().await?;
-
-        Ok(IndexBuildResult {
-            index_name: self.name.clone(),
-            index_type: "pgvector-hnsw".to_string(),
-            params: serde_json::to_value(&self.params).unwrap_or_default(),
-            build_time,
-            index_size_bytes: size,
-        })
-    }
-
     fn pg(&self) -> &PgConnection {
         &self.pg
     }
 
+    fn index_method(&self) -> &str {
+        "hnsw"
+    }
+
+    fn opclass(&self) -> &str {
+        self.params.column_type.opclass(self.pg.metric)
+    }
+
+    fn index_options(&self) -> Vec<(&'static str, String)> {
+        vec![
+            ("m", self.params.m.to_string()),
+            ("ef_construction", self.params.ef_construction.to_string()),
+        ]
+    }
+
+    fn build_params_json(&self) -> serde_json::Value {
+        serde_json::to_value(&self.params).unwrap_or_default()
+    }
+
     fn derived_column(&self) -> Option<&str> {
         self.params.column_type.quantized_column()
+    }
+
+    fn derived_column_type(&self) -> Option<String> {
+        self.params
+            .column_type
+            .quantized_type()
+            .map(|ty| format!("{ty}({})", self.pg.dimension))
+    }
+
+    fn derive_from_v_expr(&self) -> Option<String> {
+        self.params
+            .column_type
+            .quantize_expr_from_v(self.pg.dimension)
     }
 
     fn custom_search_stmt(&self) -> Option<&Statement> {

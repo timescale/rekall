@@ -1,12 +1,8 @@
-use std::time::Instant;
-
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use tracing::info;
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::Result;
-use crate::metrics::IndexBuildResult;
 
 use super::postgres::PgConnection;
 use super::IndexBackend;
@@ -72,49 +68,6 @@ impl MeerkatBackend {
             params,
         })
     }
-
-    fn opclass(&self) -> &str {
-        match self.pg.metric {
-            Metric::Angular => "mkt.vector_cosine_ops",
-            Metric::Euclidean => "mkt.vector_l2_ops",
-        }
-    }
-
-    fn with_clause(&self) -> String {
-        let mut opts = Vec::new();
-
-        if let Some(nlist) = self.params.nlist {
-            opts.push(format!("nlist = {nlist}"));
-        }
-        if let Some(fan_out) = self.params.fan_out {
-            opts.push(format!("fan_out = {fan_out}"));
-        }
-        if self.params.centroid_compression == Some(true) {
-            opts.push("centroid_compression = true".to_string());
-        }
-        if self.params.rerank_vectors == Some(true) {
-            opts.push("rerank_vectors = true".to_string());
-        }
-        if self.params.fastscan == Some(true) {
-            opts.push("fastscan = true".to_string());
-        }
-        if let Some(eps) = self.params.boundary_epsilon {
-            if eps > 0.0 {
-                opts.push(format!("boundary_epsilon = {eps}"));
-            }
-        }
-        if let Some(lambda) = self.params.soar_lambda {
-            if lambda > 0.0 {
-                opts.push(format!("soar_lambda = {lambda}"));
-            }
-        }
-
-        if opts.is_empty() {
-            String::new()
-        } else {
-            format!(" WITH ({})", opts.join(", "))
-        }
-    }
 }
 
 #[async_trait]
@@ -127,47 +80,52 @@ impl IndexBackend for MeerkatBackend {
         &self.name
     }
 
-    async fn build_index(&self) -> Result<IndexBuildResult> {
-        let client = self.pg.client();
-
-        client
-            .execute("CREATE EXTENSION IF NOT EXISTS meerkat", &[])
-            .await
-            .map_err(|e| {
-                if e.to_string().contains("could not open extension") {
-                    crate::error::Error::ExtensionMissing {
-                        extension: "meerkat".to_string(),
-                    }
-                } else {
-                    e.into()
-                }
-            })?;
-
-        let idx_name = self.pg.index_sql_name(&self.name);
-        let sql = format!(
-            "CREATE INDEX {idx_name} ON {} USING mktann (v {}){}",
-            self.pg.table_name,
-            self.opclass(),
-            self.with_clause(),
-        );
-
-        info!("Building meerkat index: {sql}");
-        let start = Instant::now();
-        client.execute(&sql, &[]).await?;
-        let build_time = start.elapsed();
-
-        let size = self.index_size().await?;
-
-        Ok(IndexBuildResult {
-            index_name: self.name.clone(),
-            index_type: "meerkat".to_string(),
-            params: serde_json::to_value(&self.params).unwrap_or_default(),
-            build_time,
-            index_size_bytes: size,
-        })
-    }
-
     fn pg(&self) -> &PgConnection {
         &self.pg
+    }
+
+    fn index_method(&self) -> &str {
+        "mktann"
+    }
+
+    fn opclass(&self) -> &str {
+        match self.pg.metric {
+            Metric::Angular => "mkt.vector_cosine_ops",
+            Metric::Euclidean => "mkt.vector_l2_ops",
+        }
+    }
+
+    fn index_options(&self) -> Vec<(&'static str, String)> {
+        let mut opts = Vec::new();
+        if let Some(nlist) = self.params.nlist {
+            opts.push(("nlist", nlist.to_string()));
+        }
+        if let Some(fan_out) = self.params.fan_out {
+            opts.push(("fan_out", fan_out.to_string()));
+        }
+        if self.params.centroid_compression == Some(true) {
+            opts.push(("centroid_compression", "true".to_string()));
+        }
+        if self.params.rerank_vectors == Some(true) {
+            opts.push(("rerank_vectors", "true".to_string()));
+        }
+        if self.params.fastscan == Some(true) {
+            opts.push(("fastscan", "true".to_string()));
+        }
+        if let Some(eps) = self.params.boundary_epsilon {
+            if eps > 0.0 {
+                opts.push(("boundary_epsilon", eps.to_string()));
+            }
+        }
+        if let Some(lambda) = self.params.soar_lambda {
+            if lambda > 0.0 {
+                opts.push(("soar_lambda", lambda.to_string()));
+            }
+        }
+        opts
+    }
+
+    fn build_params_json(&self) -> serde_json::Value {
+        serde_json::to_value(&self.params).unwrap_or_default()
     }
 }
