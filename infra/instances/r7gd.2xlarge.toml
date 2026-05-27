@@ -1,0 +1,72 @@
+# Rekall benchmark instance: r7gd.2xlarge (Graviton3, 8 vCPU, 64 GB RAM,
+# 1x 474 GB NVMe instance store).
+#
+# Same as r7g.2xlarge but with a local NVMe SSD. The ephemeral drive
+# is used for swap (via swap_gb) to support index builds that exceed
+# physical RAM without the latency penalty of EBS-backed swap.
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r7gd.2xlarge.toml
+#
+# Personal/machine-specific overrides go in `r7gd.2xlarge.local.toml`
+# (same directory, gitignored).
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r7gd.2xlarge"
+# disk_size_gb    = 1000       # gp3 root volume size in GB
+# disk_iops       = 3000       # gp3 IOPS (AWS default 3000)
+# disk_throughput = 125        # gp3 throughput MiB/s (AWS default 125)
+
+name_prefix = "rekall-r7gd"
+
+# ----- OS image ----------------------------------------------------------
+
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# [pg_config]
+# shared_buffers   = "32GB"
+# work_mem         = "512MB"
+# max_wal_size     = "32GB"
+
+# huge_pages = false
+
+# Swap on the local NVMe instance store. The 474 GB drive can easily
+# hold 32 GB of swap with room to spare. vm.swappiness = 1 ensures
+# swap is only used under actual memory pressure.
+swap_gb = 32
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# [meerkat]
+# git_url = "git@github.com:timescale/meerkat.git"
+# git_ref = "main"
+
+# [rekall]
+# git_url = "git@github.com:timescale/rekall.git"
+# git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template

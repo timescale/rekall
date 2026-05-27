@@ -110,6 +110,14 @@ pub struct InfraConfig {
     /// of PG usage — so leave off if you want a fair A/B comparison.
     #[serde(default)]
     pub huge_pages: bool,
+    /// Swap size in GB on NVMe instance store. Requires an instance
+    /// type with local NVMe (e.g. r7gd, m7gd, i4i). The provisioning
+    /// script auto-discovers the ephemeral device and creates a
+    /// swapfile on it. Ignored if no instance store is found.
+    /// vm.swappiness is set to 1 so swap only activates under memory
+    /// pressure. Set to 0 or omit to disable.
+    #[serde(default)]
+    pub swap_gb: u32,
     #[serde(default)]
     pub rekall: Option<GitSourceConfig>,
     #[serde(default)]
@@ -152,6 +160,7 @@ impl Default for InfraConfig {
             extensions: Vec::new(),
             pg_config: HashMap::new(),
             huge_pages: false,
+            swap_gb: 0,
             rekall: None,
             meerkat: None,
             pgvector: None,

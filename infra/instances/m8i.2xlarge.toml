@@ -55,6 +55,7 @@ extensions = ["pgvector", "meerkat", "vectorchord"]
 # A/B comparison runs. See docs/cloud-infrastructure.md.
 # huge_pages = false
 
+
 # ----- Extension version pins -------------------------------------------
 
 [pgvector]

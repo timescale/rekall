@@ -1,0 +1,42 @@
+# Rekall benchmark instance: m8a.2xlarge (AMD EPYC Turin / Zen 5,
+# 8 vCPU, 32 GB RAM).
+#
+# Zen 5 has 2x 512-bit FMA units per core (doubled from Zen 4),
+# matching Intel Xeon 6 AVX-512 throughput. Good for evaluating
+# AVX-512-heavy workloads (RaBitQ, HNSW distance).
+#
+# Installs AMD-optimized BLIS library instead of OpenBLAS.
+#
+# Launch with:
+#   rekall infra up -c infra/instances/m8a.2xlarge.toml
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "m8a.2xlarge"
+disk_size_gb  = 1000
+
+name_prefix = "rekall-m8a"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# [pg_config]
+# shared_buffers   = "16GB"
+
+# huge_pages = false
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"

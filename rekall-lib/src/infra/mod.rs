@@ -495,6 +495,19 @@ pub fn render_user_data(config: &InfraConfig, local_pub_key: Option<&str>) -> Re
 
     let authorized_keys = collect_authorized_keys(local_pub_key);
 
+    // AWS AMD instances have 'a' in the family suffix (m8a, r7ad, m8azn, ...).
+    // Split on '.' to get the prefix, then check for 'a' after the digit.
+    let is_amd = config
+        .instance_type
+        .split('.')
+        .next()
+        .map(|prefix| {
+            let after_digit = prefix.trim_start_matches(|c: char| c.is_ascii_alphabetic());
+            let after_digit = after_digit.trim_start_matches(|c: char| c.is_ascii_digit());
+            after_digit.starts_with('a')
+        })
+        .unwrap_or(false);
+
     let ctx = minijinja::context! {
         pg_version => config.pg_version,
         pg_port => config.pg_port,
@@ -503,6 +516,8 @@ pub fn render_user_data(config: &InfraConfig, local_pub_key: Option<&str>) -> Re
         pgvector_version => config.pgvector_version(),
         huge_pages => config.huge_pages,
         nr_hugepages => config.nr_huge_pages().unwrap_or(0),
+        swap_gb => config.swap_gb,
+        is_amd => is_amd,
         authorized_keys => authorized_keys,
     };
 

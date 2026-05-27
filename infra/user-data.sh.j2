@@ -50,13 +50,78 @@ systemctl daemon-reload
 systemctl enable disable-thp.service
 {%- endif %}
 
+{% if swap_gb > 0 -%}
+echo "=== Configuring {{ swap_gb }} GB swap on NVMe instance store ==="
+# Find the first NVMe instance store device (not the root EBS volume).
+# Instance store devices are ephemeral — they appear as /dev/nvmeXn1 but
+# are NOT listed in the block device mapping. We identify them via the
+# nvme id-ctrl model string which contains "Instance Storage".
+SWAP_DEV=""
+for dev in /dev/nvme*n1; do
+    [ -b "$dev" ] || continue
+    model=$(nvme id-ctrl -o json "$dev" 2>/dev/null | grep -o '"mn"[^,]*' | head -1 || true)
+    if echo "$model" | grep -qi "instance storage\|ephemeral"; then
+        SWAP_DEV="$dev"
+        break
+    fi
+done
+
+if [ -z "$SWAP_DEV" ]; then
+    echo "WARNING: swap_gb={{ swap_gb }} requested but no NVMe instance store found. Skipping swap."
+else
+    echo "Found NVMe instance store: $SWAP_DEV"
+    # Partition: swap_gb for swap, rest for data if needed later.
+    # For simplicity, use the whole device as swap if it fits.
+    SWAPFILE="/mnt/nvme-swap/swapfile"
+    mkdir -p /mnt/nvme-swap
+
+    # Format and mount a small ext4 partition for the swapfile.
+    # (fallocate on XFS works; on ext4 works; raw device swap is
+    # simpler but harder to share the disk for other uses later.)
+    if ! mountpoint -q /mnt/nvme-swap; then
+        mkfs.ext4 -F -L nvme-swap "$SWAP_DEV"
+        mount "$SWAP_DEV" /mnt/nvme-swap
+    fi
+
+    if [ ! -f "$SWAPFILE" ]; then
+        fallocate -l {{ swap_gb }}G "$SWAPFILE"
+        chmod 600 "$SWAPFILE"
+        mkswap "$SWAPFILE"
+    fi
+    swapon "$SWAPFILE" 2>/dev/null || true
+    echo "vm.swappiness = 1" > /etc/sysctl.d/30-swap.conf
+    sysctl --system
+    echo "Swap active: {{ swap_gb }} GB on $SWAP_DEV"
+fi
+{%- endif %}
+
 apt-get update
 apt-get install -y build-essential git curl wget pkg-config \
   postgresql-common apt-transport-https ca-certificates gnupg lsb-release \
   tmux htop libhdf5-dev \
   cmake meson ninja-build clang clang-tools gdb valgrind \
   autoconf automake libtool \
-  unzip libopenblas-dev gcc-14
+  unzip gcc-14
+
+{% if is_amd -%}
+# Build AMD-optimized BLIS from source with Zen-specific microkernels.
+# The Ubuntu package (libblis-dev) ships a generic build without AMD
+# optimizations. AMD's fork auto-detects the Zen generation at configure
+# time and selects the matching GEMM/BLAS kernels.
+if [ ! -f /usr/local/lib/libblis.so ]; then
+    echo "=== Building AMD BLIS from source ==="
+    cd /tmp
+    git clone --depth 1 https://github.com/amd/blis.git amd-blis
+    cd amd-blis
+    ./configure --enable-threading=openmp --prefix=/usr/local auto
+    make -j"$(nproc)"
+    make install
+    ldconfig
+    cd /tmp && rm -rf amd-blis
+fi
+{% else -%}
+apt-get install -y libopenblas-dev
+{% endif %}
 
 # Set gcc-14 as default
 update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100

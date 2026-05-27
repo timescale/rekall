@@ -1,0 +1,39 @@
+# Rekall benchmark instance: r8gd.2xlarge (Graviton4, 8 vCPU, 64 GB RAM,
+# 1x 474 GB NVMe instance store).
+#
+# Same as r8g.2xlarge but with a local NVMe SSD for swap.
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r8gd.2xlarge.toml
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r8gd.2xlarge"
+
+name_prefix = "rekall-r8gd"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# [pg_config]
+# shared_buffers   = "32GB"
+
+# huge_pages = false
+
+swap_gb = 32
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"

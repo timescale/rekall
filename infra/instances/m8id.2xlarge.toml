@@ -1,0 +1,42 @@
+# Rekall benchmark instance: m8id.2xlarge (Intel Xeon 6 / Granite Rapids,
+# 8 vCPU, 32 GB RAM, 1x 474 GB NVMe instance store).
+#
+# Intel counterpart to r8gd for x86-specific benchmarking (AVX-512, etc).
+# Note: 32 GB RAM (m-series) vs 64 GB (r-series) — swap is more likely
+# to activate on larger datasets.
+#
+# Launch with:
+#   rekall infra up -c infra/instances/m8id.2xlarge.toml
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "m8id.2xlarge"
+disk_size_gb  = 1000
+
+name_prefix = "rekall-m8id"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# [pg_config]
+# shared_buffers   = "16GB"
+
+# huge_pages = false
+
+swap_gb = 32
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+[vectorchord]
+version = "1.1.1"
