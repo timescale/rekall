@@ -20,7 +20,7 @@ use crate::config::{ConnectionConfig, IndexConfig, Metric};
 use crate::error::{Error, Result};
 
 use super::postgres::PgConnection;
-use super::IndexBackend;
+use super::{pg_backend_field_accessors, IndexBackend};
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -151,20 +151,10 @@ impl PgvectorHnswBackend {
 
 #[async_trait]
 impl IndexBackend for PgvectorHnswBackend {
+    pg_backend_field_accessors!();
+
     fn type_name(&self) -> &str {
         "pgvector-hnsw"
-    }
-
-    fn index_name(&self) -> &str {
-        &self.name
-    }
-
-    fn pg(&self) -> &PgConnection {
-        &self.pg
-    }
-
-    fn pg_mut(&mut self) -> &mut PgConnection {
-        &mut self.pg
     }
 
     fn extensions(&self) -> &'static [&'static str] {

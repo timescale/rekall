@@ -23,7 +23,7 @@ use crate::error::{Error, Result};
 
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
-use super::IndexBackend;
+use super::{pg_backend_field_accessors, IndexBackend};
 
 /// Build-time parameters shared across all vchordrq variants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -191,20 +191,10 @@ impl VchordrqBackend {
 
 #[async_trait]
 impl IndexBackend for VchordrqBackend {
+    pg_backend_field_accessors!();
+
     fn type_name(&self) -> &str {
         self.variant.type_name()
-    }
-
-    fn index_name(&self) -> &str {
-        &self.name
-    }
-
-    fn pg(&self) -> &PgConnection {
-        &self.pg
-    }
-
-    fn pg_mut(&mut self) -> &mut PgConnection {
-        &mut self.pg
     }
 
     fn extensions(&self) -> &'static [&'static str] {

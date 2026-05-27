@@ -19,6 +19,27 @@ use crate::progress::ProgressTx;
 use pg_vector_type::PgVector;
 use postgres::PgConnection;
 
+/// Generates the three identical field-getter impls (`pg`, `pg_mut`,
+/// `index_name`) for any backend struct that has `pg: PgConnection`
+/// and `name: String` fields. Invoke inside the `impl IndexBackend
+/// for ...` block.
+macro_rules! pg_backend_field_accessors {
+    () => {
+        fn pg(&self) -> &$crate::backend::postgres::PgConnection {
+            &self.pg
+        }
+
+        fn pg_mut(&mut self) -> &mut $crate::backend::postgres::PgConnection {
+            &mut self.pg
+        }
+
+        fn index_name(&self) -> &str {
+            &self.name
+        }
+    };
+}
+pub(crate) use pg_backend_field_accessors;
+
 /// Trait every PostgreSQL-backed vector index implements.
 ///
 /// Backends are minimal: they declare identity (`type_name`,
