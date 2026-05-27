@@ -247,24 +247,13 @@ pub trait IndexBackend: Send + Sync {
             self.pg().ensure_derived_column(col, &ty, &expr).await?;
         }
 
-        let idx_name = self.pg().index_sql_name(self.index_name());
-        let column = self.derived_column().unwrap_or("v");
-        let opts = self.index_options();
-        let with_clause = if opts.is_empty() {
-            String::new()
-        } else {
-            let body = opts
-                .iter()
-                .map(|(k, v)| format!("{k} = {v}"))
-                .collect::<Vec<_>>()
-                .join(", ");
-            format!(" WITH ({body})")
-        };
-        let sql = format!(
-            "CREATE INDEX {idx_name} ON {} USING {} ({column} {}){with_clause}",
-            self.pg().table_name,
+        let sql = build_create_index_sql(
+            &self.pg().index_sql_name(self.index_name()),
+            &self.pg().table_name,
             self.index_method(),
+            self.derived_column().unwrap_or("v"),
             self.opclass(),
+            &self.index_options(),
         );
 
         info!("Building {} index: {sql}", self.type_name());
@@ -427,6 +416,32 @@ impl BackendRegistry {
     }
 }
 
+/// Assemble a `CREATE INDEX` SQL statement. Pure function used by the
+/// trait-default `build_index`; factored out so the formatting logic
+/// is testable without a live PG connection.
+fn build_create_index_sql(
+    idx_name: &str,
+    table: &str,
+    method: &str,
+    column: &str,
+    opclass: &str,
+    options: &[(&'static str, String)],
+) -> String {
+    let with_clause = if options.is_empty() {
+        String::new()
+    } else {
+        let body = options
+            .iter()
+            .map(|(k, v)| format!("{k} = {v}"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(" WITH ({body})")
+    };
+    format!(
+        "CREATE INDEX {idx_name} ON {table} USING {method} ({column} {opclass}){with_clause}"
+    )
+}
+
 /// Shared interface for data loading (PG backends share this via PgConnection).
 #[async_trait]
 pub trait DataLoader: Send + Sync {
@@ -444,4 +459,75 @@ pub trait DataLoader: Send + Sync {
         chunk_rx: &mut tokio::sync::mpsc::Receiver<Result<crate::dataset::VectorChunk>>,
         progress: &ProgressTx,
     ) -> Result<u64>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_index_sql_no_options_omits_with_clause() {
+        let sql = build_create_index_sql(
+            "idx_rekall_t_hnsw",
+            "t",
+            "hnsw",
+            "v",
+            "vector_cosine_ops",
+            &[],
+        );
+        assert_eq!(
+            sql,
+            "CREATE INDEX idx_rekall_t_hnsw ON t USING hnsw (v vector_cosine_ops)"
+        );
+    }
+
+    #[test]
+    fn create_index_sql_emits_with_clause_for_options() {
+        let sql = build_create_index_sql(
+            "idx_rekall_t_hnsw",
+            "t",
+            "hnsw",
+            "v",
+            "vector_cosine_ops",
+            &[
+                ("m", "16".to_string()),
+                ("ef_construction", "200".to_string()),
+            ],
+        );
+        assert_eq!(
+            sql,
+            "CREATE INDEX idx_rekall_t_hnsw ON t USING hnsw (v vector_cosine_ops) \
+             WITH (m = 16, ef_construction = 200)"
+        );
+    }
+
+    #[test]
+    fn create_index_sql_uses_derived_column() {
+        let sql = build_create_index_sql(
+            "idx_rekall_t_halfvec",
+            "t",
+            "hnsw",
+            "v_half",
+            "halfvec_cosine_ops",
+            &[("m", "16".to_string())],
+        );
+        assert!(sql.contains("(v_half halfvec_cosine_ops)"));
+        assert!(!sql.contains(" v "));
+    }
+
+    #[test]
+    fn create_index_sql_preserves_dollar_quoted_options_value() {
+        // vchordrq packs its TOML config inside a single $$...$$ option.
+        let toml_body = "residual_quantization = true\n[build.internal]\nlists = [1000]\n";
+        let sql = build_create_index_sql(
+            "idx_rekall_t_vchord",
+            "t",
+            "vchordrq",
+            "v",
+            "vector_cosine_ops",
+            &[("options", format!("$${toml_body}$$"))],
+        );
+        assert!(sql.contains("WITH (options = $$residual_quantization"));
+        assert!(sql.contains("lists = [1000]\n$$)"));
+    }
 }

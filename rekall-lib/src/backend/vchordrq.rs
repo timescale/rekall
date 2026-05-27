@@ -397,4 +397,38 @@ mod tests {
         let sec_pos = body.find("[build.internal]").unwrap();
         assert!(rq_pos < sec_pos);
     }
+
+    #[test]
+    fn variant_type_names() {
+        assert_eq!(Variant::Plain.type_name(), "vchordrq");
+        assert_eq!(Variant::Rabitq8.type_name(), "vchordrq-rabitq8");
+        assert_eq!(Variant::Rabitq4Rerank.type_name(), "vchordrq-rabitq4");
+    }
+
+    #[test]
+    fn variant_quantized_column_plain_is_none() {
+        assert!(Variant::Plain.quantized_column().is_none());
+        assert!(Variant::Plain.quantized_type().is_none());
+        assert!(Variant::Plain.quantize_fn().is_none());
+    }
+
+    #[test]
+    fn variant_quantized_accessors_for_rabitq8() {
+        assert_eq!(Variant::Rabitq8.quantized_column(), Some("v_rabitq8"));
+        assert_eq!(Variant::Rabitq8.quantized_type(), Some("rabitq8"));
+        assert_eq!(Variant::Rabitq8.quantize_fn(), Some("quantize_to_rabitq8"));
+    }
+
+    #[test]
+    fn variant_quantized_accessors_for_rabitq4_rerank() {
+        assert_eq!(
+            Variant::Rabitq4Rerank.quantized_column(),
+            Some("v_rabitq4")
+        );
+        assert_eq!(Variant::Rabitq4Rerank.quantized_type(), Some("rabitq4"));
+        assert_eq!(
+            Variant::Rabitq4Rerank.quantize_fn(),
+            Some("quantize_to_rabitq4")
+        );
+    }
 }

@@ -277,4 +277,30 @@ mod tests {
             "binary_quantize($1::vector(768))::bit(768)"
         );
     }
+
+    #[test]
+    fn bind_expr_for_halfvec_casts_through_vector() {
+        // The bound parameter is sent as `vector`; cast it to halfvec
+        // on the right of the operator so the index expression matches.
+        assert_eq!(
+            ColumnType::Halfvec.bind_expr(768),
+            "($1::vector(768))::halfvec(768)"
+        );
+    }
+
+    #[test]
+    fn bind_expr_for_vector_is_plain_placeholder() {
+        assert_eq!(ColumnType::Vector.bind_expr(768), "$1");
+    }
+
+    #[test]
+    fn quantized_column_for_vector_is_none() {
+        assert!(ColumnType::Vector.quantized_column().is_none());
+    }
+
+    #[test]
+    fn quantized_column_for_halfvec_and_bit() {
+        assert_eq!(ColumnType::Halfvec.quantized_column(), Some("v_half"));
+        assert_eq!(ColumnType::Bit.quantized_column(), Some("v_bit"));
+    }
 }
