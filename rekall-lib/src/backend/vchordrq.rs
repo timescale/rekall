@@ -140,36 +140,28 @@ impl VchordrqBackend {
             ))
         })?;
 
-        let order_op = match metric {
-            Metric::Angular => "<=>",
-            Metric::Euclidean => "<->",
-        };
-
         let mut pg = PgConnection::new(conn, table, dim, metric);
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        // vchord depends on pgvector for the `vector` type — list in
-        // dependency order so `vector` is created first.
-        pg.connect_with_setup(order_op, &["vector", "vchord"])
-            .await?;
-
-        // Plain variant uses the default `SELECT id FROM t ORDER BY v <=> $1
-        // LIMIT $2` statement that PgConnection already prepared. Rabitq
-        // variants need a different SQL referencing the quantized column.
-        let custom_query = if variant == Variant::Plain {
-            None
-        } else {
-            Some(prepare_quantized_query(&pg, variant, table, order_op).await?)
-        };
-
-        Ok(Self {
+        let mut backend = Self {
             pg,
             name: idx.name.clone(),
             variant,
             params,
-            custom_query,
-        })
+            custom_query: None,
+        };
+        // Default `connect` reads order_op() and extensions() off
+        // backend. Plain variant then reuses the standard search stmt;
+        // rabitq variants prepare a custom one below.
+        backend.connect().await?;
+
+        if variant != Variant::Plain {
+            let stmt =
+                prepare_quantized_query(&backend.pg, variant, table, backend.order_op()).await?;
+            backend.custom_query = Some(stmt);
+        }
+        Ok(backend)
     }
 
     /// `WITH (options = $$ ... $$)` clause body in VectorChord's TOML
@@ -263,6 +255,21 @@ impl IndexBackend for VchordrqBackend {
 
     fn pg(&self) -> &PgConnection {
         &self.pg
+    }
+
+    fn pg_mut(&mut self) -> &mut PgConnection {
+        &mut self.pg
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["vector", "vchord"]
+    }
+
+    fn order_op(&self) -> &'static str {
+        match self.pg.metric {
+            Metric::Angular => "<=>",
+            Metric::Euclidean => "<->",
+        }
     }
 
     fn index_method(&self) -> &str {

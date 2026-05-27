@@ -140,27 +140,31 @@ impl PgvectorHnswBackend {
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        // PgConnection prepares its standard `ORDER BY v <op> $1`
-        // statement against the existing `vector` column. Vector
-        // variants reuse it; halfvec/bit prepare a custom one below.
-        let order_op_for_setup = params.column_type.order_op(metric);
-        pg.connect_with_setup(order_op_for_setup, &["vector"])
-            .await?;
-
-        let custom_query = if params.column_type == ColumnType::Vector {
-            None
-        } else {
-            Some(prepare_quantized_query(&pg, params.column_type, table, dim, metric).await?)
-        };
-
-        Ok(Self {
+        let mut backend = Self {
             pg,
             name: idx.name.clone(),
             params,
-            custom_query,
-        })
-    }
+            custom_query: None,
+        };
+        // Default `connect` reads order_op() / extensions() off backend
+        // and prepares the standard `ORDER BY v <op> $1` statement
+        // against the `vector` column. Vector variants reuse it;
+        // halfvec/bit prepare a custom one below.
+        backend.connect().await?;
 
+        if backend.params.column_type != ColumnType::Vector {
+            let stmt = prepare_quantized_query(
+                &backend.pg,
+                backend.params.column_type,
+                table,
+                dim,
+                metric,
+            )
+            .await?;
+            backend.custom_query = Some(stmt);
+        }
+        Ok(backend)
+    }
 }
 
 /// Prepare the search statement for non-Vector column types.
@@ -193,6 +197,18 @@ impl IndexBackend for PgvectorHnswBackend {
 
     fn pg(&self) -> &PgConnection {
         &self.pg
+    }
+
+    fn pg_mut(&mut self) -> &mut PgConnection {
+        &mut self.pg
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["vector"]
+    }
+
+    fn order_op(&self) -> &'static str {
+        self.params.column_type.order_op(self.pg.metric)
     }
 
     fn index_method(&self) -> &str {

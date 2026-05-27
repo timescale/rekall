@@ -46,22 +46,17 @@ impl MeerkatBackend {
             crate::error::Error::Config(format!("Invalid meerkat params for '{}': {e}", idx.name))
         })?;
 
-        let order_op = match metric {
-            Metric::Angular => "OPERATOR(mkt.<=>)",
-            Metric::Euclidean => "OPERATOR(mkt.<->)",
-        };
-
         let mut pg = PgConnection::new(conn, table, dim, metric);
         if let Some(cr) = cancel_registry {
             pg.set_cancel_registry(cr.clone());
         }
-        pg.connect_with_setup(order_op, &["meerkat"]).await?;
-
-        Ok(Self {
+        let mut backend = Self {
             pg,
             name: idx.name.clone(),
             params,
-        })
+        };
+        backend.connect().await?;
+        Ok(backend)
     }
 }
 
@@ -77,6 +72,21 @@ impl IndexBackend for MeerkatBackend {
 
     fn pg(&self) -> &PgConnection {
         &self.pg
+    }
+
+    fn pg_mut(&mut self) -> &mut PgConnection {
+        &mut self.pg
+    }
+
+    fn extensions(&self) -> &'static [&'static str] {
+        &["meerkat"]
+    }
+
+    fn order_op(&self) -> &'static str {
+        match self.pg.metric {
+            Metric::Angular => "OPERATOR(mkt.<=>)",
+            Metric::Euclidean => "OPERATOR(mkt.<->)",
+        }
     }
 
     fn index_method(&self) -> &str {

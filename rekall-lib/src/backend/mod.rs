@@ -46,6 +46,20 @@ pub trait IndexBackend: Send + Sync {
 
     fn pg(&self) -> &PgConnection;
 
+    fn pg_mut(&mut self) -> &mut PgConnection;
+
+    /// PG extensions this backend depends on, in dependency order.
+    /// Used by `connect()` to issue `CREATE EXTENSION IF NOT EXISTS`
+    /// for each and `LOAD` the last (the primary extension whose
+    /// operators we need at query time). Returning `&'static [...]`
+    /// keeps the value detached from `&self` so the default `connect`
+    /// can hold it across a mutable re-borrow.
+    fn extensions(&self) -> &'static [&'static str];
+
+    /// Distance operator used in `ORDER BY v <op> $1`. Static so the
+    /// default `connect` doesn't tie the value to `&self`.
+    fn order_op(&self) -> &'static str;
+
     /// Access method name used in `CREATE INDEX ... USING <method>`.
     /// e.g. "hnsw", "mktann", "vchordrq".
     fn index_method(&self) -> &str;
@@ -91,6 +105,18 @@ pub trait IndexBackend: Send + Sync {
     /// EXPLAINs the standard shape.
     fn custom_search_stmt(&self) -> Option<&Statement> {
         None
+    }
+
+    /// Wire up the PG connection: CREATE EXTENSION for each entry in
+    /// `extensions()`, LOAD the last, prepare the standard search
+    /// statement using `order_op()`. Backends call this from their
+    /// `create()` after building `Self` with all fields populated —
+    /// the trait reads `order_op` and `extensions` off `self` rather
+    /// than receiving them as arguments.
+    async fn connect(&mut self) -> Result<()> {
+        let order_op = self.order_op();
+        let extensions = self.extensions();
+        self.pg_mut().connect_with_setup(order_op, extensions).await
     }
 
     /// Build the index. Default impl assembles
