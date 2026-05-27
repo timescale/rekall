@@ -17,7 +17,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
@@ -125,27 +125,17 @@ impl PgvectorHnswBackend {
         idx: &IndexConfig,
         cancel_registry: Option<&crate::CancelRegistry>,
     ) -> Result<Self> {
-        let params: HnswParams = idx.params.clone().try_into().map_err(|e| {
-            Error::Config(format!(
-                "Invalid pgvector-hnsw params for '{}': {e}",
-                idx.name
-            ))
-        })?;
-
-        let mut pg = PgConnection::new(conn, table, dim, metric);
-        if let Some(cr) = cancel_registry {
-            pg.set_cancel_registry(cr.clone());
-        }
-        let mut backend = Self {
-            pg,
-            name: idx.name.clone(),
-            params,
-        };
-        // Trait-default connect uses query_column()/query_bind() to
-        // build the search statement for whichever column_type this
-        // backend was configured with (vector/halfvec/bit).
-        backend.connect().await?;
-        Ok(backend)
+        super::create_pg_backend(
+            conn,
+            table,
+            dim,
+            metric,
+            idx,
+            cancel_registry,
+            "pgvector-hnsw",
+            |pg, name, params| Self { pg, name, params },
+        )
+        .await
     }
 }
 

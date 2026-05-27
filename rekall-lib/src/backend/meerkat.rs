@@ -42,21 +42,17 @@ impl MeerkatBackend {
         idx: &IndexConfig,
         cancel_registry: Option<&crate::CancelRegistry>,
     ) -> Result<Self> {
-        let params: MeerkatParams = idx.params.clone().try_into().map_err(|e| {
-            crate::error::Error::Config(format!("Invalid meerkat params for '{}': {e}", idx.name))
-        })?;
-
-        let mut pg = PgConnection::new(conn, table, dim, metric);
-        if let Some(cr) = cancel_registry {
-            pg.set_cancel_registry(cr.clone());
-        }
-        let mut backend = Self {
-            pg,
-            name: idx.name.clone(),
-            params,
-        };
-        backend.connect().await?;
-        Ok(backend)
+        super::create_pg_backend(
+            conn,
+            table,
+            dim,
+            metric,
+            idx,
+            cancel_registry,
+            "meerkat",
+            |pg, name, params| Self { pg, name, params },
+        )
+        .await
     }
 }
 

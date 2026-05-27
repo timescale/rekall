@@ -19,7 +19,7 @@ use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{ConnectionConfig, IndexConfig, Metric};
-use crate::error::{Error, Result};
+use crate::error::Result;
 
 use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
@@ -129,29 +129,22 @@ impl VchordrqBackend {
         cancel_registry: Option<&crate::CancelRegistry>,
         variant: Variant,
     ) -> Result<Self> {
-        let params: VchordrqParams = idx.params.clone().try_into().map_err(|e| {
-            Error::Config(format!(
-                "Invalid {} params for '{}': {e}",
-                variant.type_name(),
-                idx.name
-            ))
-        })?;
-
-        let mut pg = PgConnection::new(conn, table, dim, metric);
-        if let Some(cr) = cancel_registry {
-            pg.set_cancel_registry(cr.clone());
-        }
-        let mut backend = Self {
-            pg,
-            name: idx.name.clone(),
-            variant,
-            params,
-        };
-        // Trait-default connect builds the right search statement for
-        // this variant from query_column()/query_bind() (plain, rabitq8)
-        // or custom_search_sql() (rabitq4-rerank's subquery shape).
-        backend.connect().await?;
-        Ok(backend)
+        super::create_pg_backend(
+            conn,
+            table,
+            dim,
+            metric,
+            idx,
+            cancel_registry,
+            variant.type_name(),
+            |pg, name, params| Self {
+                pg,
+                name,
+                variant,
+                params,
+            },
+        )
+        .await
     }
 
     /// `WITH (options = $$ ... $$)` clause body in VectorChord's TOML

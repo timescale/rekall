@@ -19,6 +19,46 @@ use crate::progress::ProgressTx;
 use pg_vector_type::PgVector;
 use postgres::PgConnection;
 
+/// Standard constructor flow for every PG-backed index: parse params
+/// out of `idx.params`, build a `PgConnection` with the cancel
+/// registry attached, hand both off to `build` to assemble `Self`,
+/// then call the trait-default `connect()` to wire up the connection
+/// and prepare the search statement.
+///
+/// Each backend's `create()` typically reduces to a single call to
+/// this helper plus a closure that places `pg` / `name` / `params`
+/// (and any extra fields like vchordrq's `variant`) into its struct.
+#[allow(clippy::too_many_arguments)]
+pub async fn create_pg_backend<P, B, F>(
+    conn: &ConnectionConfig,
+    table: &str,
+    dim: u32,
+    metric: Metric,
+    idx: &IndexConfig,
+    cancel_registry: Option<&crate::CancelRegistry>,
+    type_name: &str,
+    build: F,
+) -> Result<B>
+where
+    P: serde::de::DeserializeOwned,
+    B: IndexBackend,
+    F: FnOnce(PgConnection, String, P) -> B,
+{
+    let params: P = idx.params.clone().try_into().map_err(|e| {
+        Error::Config(format!(
+            "Invalid {type_name} params for '{}': {e}",
+            idx.name
+        ))
+    })?;
+    let mut pg = PgConnection::new(conn, table, dim, metric);
+    if let Some(cr) = cancel_registry {
+        pg.set_cancel_registry(cr.clone());
+    }
+    let mut backend = build(pg, idx.name.clone(), params);
+    backend.connect().await?;
+    Ok(backend)
+}
+
 /// Generates the three identical field-getter impls (`pg`, `pg_mut`,
 /// `index_name`) for any backend struct that has `pg: PgConnection`
 /// and `name: String` fields. Invoke inside the `impl IndexBackend
@@ -164,8 +204,22 @@ pub trait IndexBackend: Send + Sync {
         let bind = self.query_bind();
         let custom = self.custom_search_sql();
         let table = self.pg().table_name.clone();
+        let derived = (
+            self.derived_column().map(str::to_string),
+            self.derived_column_type(),
+            self.derive_from_v_expr(),
+        );
 
         self.pg_mut().connect_with_setup(extensions).await?;
+
+        // Ensure the derived column exists before preparing a search
+        // statement that references it. PG resolves identifiers at
+        // PREPARE time, so the column has to be there even if no
+        // query has run yet. `ensure_derived_column` is idempotent
+        // — re-running it from build_index is a no-op.
+        if let (Some(col), Some(ty), Some(expr)) = derived {
+            self.pg().ensure_derived_column(&col, &ty, &expr).await?;
+        }
 
         let (sql, extra) = custom.unwrap_or_else(|| {
             (
