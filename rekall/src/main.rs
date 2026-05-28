@@ -138,6 +138,10 @@ enum Command {
         /// Output directory for plots (default: same as results dir)
         #[arg(short, long)]
         output: Option<PathBuf>,
+
+        /// Generate interactive HTML plots instead of SVG
+        #[arg(long)]
+        html: bool,
     },
 
     /// Dataset utilities
@@ -543,11 +547,13 @@ fn cmd_report(
     dir: &std::path::Path,
     dataset: Option<&std::path::Path>,
     output_dir: Option<&std::path::Path>,
+    html: bool,
 ) -> anyhow::Result<()> {
     use rekall_lib::metrics::{RunSummary, SearchResult};
     use rekall_lib::output::plot;
 
     let out = output_dir.unwrap_or(dir);
+    let ext = if html { "html" } else { "svg" };
 
     // Scan for result files
     let mut result_files: Vec<PathBuf> = Vec::new();
@@ -624,7 +630,7 @@ fn cmd_report(
             pareto: Vec::new(),
         };
         let opts = plot::PlotOptions::default();
-        let path = out.join("report-pareto.svg");
+        let path = out.join(format!("report-pareto.{ext}"));
         if let Err(e) =
             plot::generate_plot(&[summary], &path, Some("Recall vs QPS (Pareto)"), &opts)
         {
@@ -649,7 +655,7 @@ fn cmd_report(
             per_config: true,
             ..Default::default()
         };
-        let path = out.join("report-per-config.svg");
+        let path = out.join(format!("report-per-config.{ext}"));
         if let Err(e) =
             plot::generate_plot(&[summary], &path, Some("Recall vs QPS (per config)"), &opts)
         {
@@ -735,7 +741,7 @@ fn cmd_report(
             per_config: true,
             ..Default::default()
         };
-        let path = out.join("report-distance-recall.svg");
+        let path = out.join(format!("report-distance-recall.{ext}"));
         if let Err(e) = plot::generate_plot(
             &[summary],
             &path,
@@ -1104,8 +1110,9 @@ async fn main() -> anyhow::Result<()> {
             dir,
             dataset,
             output,
+            html,
         } => {
-            cmd_report(&dir, dataset.as_deref(), output.as_deref())?;
+            cmd_report(&dir, dataset.as_deref(), output.as_deref(), html)?;
         }
 
         Command::Recall {
