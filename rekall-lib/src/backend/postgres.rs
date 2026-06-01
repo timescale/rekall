@@ -27,6 +27,9 @@ pub struct PgConnection {
     order_operator: Option<String>,
     cancel_registry: Option<crate::CancelRegistry>,
     pub(crate) progress: Option<ProgressTx>,
+    /// GUCs applied on the build session before CREATE INDEX (e.g.
+    /// `max_parallel_maintenance_workers`). Distinct from search GUCs.
+    pub(crate) build_gucs: HashMap<String, toml::Value>,
 }
 
 impl PgConnection {
@@ -41,12 +44,27 @@ impl PgConnection {
             order_operator: None,
             cancel_registry: None,
             progress: None,
+            build_gucs: HashMap::new(),
         }
     }
 
     /// Set the cancel registry so connections register their tokens.
     pub fn set_cancel_registry(&mut self, registry: crate::CancelRegistry) {
         self.cancel_registry = Some(registry);
+    }
+
+    /// Set GUCs to apply on the build session before CREATE INDEX.
+    pub fn set_build_gucs(&mut self, gucs: HashMap<String, toml::Value>) {
+        self.build_gucs = gucs;
+    }
+
+    /// Apply the configured build GUCs to the current session. No-op
+    /// when none are set.
+    pub async fn apply_build_gucs(&self) -> Result<()> {
+        if self.build_gucs.is_empty() {
+            return Ok(());
+        }
+        self.set_gucs(&self.build_gucs).await
     }
 
     /// Set the progress channel for build monitoring.

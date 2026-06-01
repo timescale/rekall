@@ -55,6 +55,7 @@ where
     if let Some(cr) = cancel_registry {
         pg.set_cancel_registry(cr.clone());
     }
+    pg.set_build_gucs(idx.gucs.clone());
     let mut backend = build(pg, idx.name.clone(), params);
     backend.connect().await?;
     Ok(backend)
@@ -256,6 +257,11 @@ pub trait IndexBackend: Send + Sync {
             self.opclass(),
             &self.index_options(),
         );
+
+        // Apply build-session GUCs (e.g. max_parallel_maintenance_workers)
+        // on the same connection that runs CREATE INDEX, so they take
+        // effect for this build.
+        self.pg().apply_build_gucs().await?;
 
         info!("Building {} index: {sql}", self.type_name());
 
