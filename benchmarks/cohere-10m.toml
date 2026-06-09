@@ -1,14 +1,15 @@
-# Suite: cohere-10m × hnsw + meerkat (nlist sweep).
+# Suite: cohere-10m × hnsw + meerkat.
+# Meerkat uses the best-performing recipe so far (centroid_compression +
+# fastscan-16 + SOAR), swept over nlist values appropriate for 10M
+# (~4·√N ≈ 12,600).
 # Usage: rekall run benchmarks/cohere-10m.toml [--dry-run]
 
 indexes = [
     "indexes/hnsw-m16.toml",
     "indexes/hnsw-m24.toml",
-    "indexes/mkt-n3000-ccfalse-fs16-soar.toml",
-    "indexes/mkt-n5000-ccfalse-fs16-soar.toml",
-    "indexes/mkt-n8000-ccfalse-fs16-soar.toml",
-    "indexes/mkt-n12000-ccfalse-fs16-soar.toml",
-    "indexes/mkt-n16000-ccfalse-fs16-soar.toml",
+    "indexes/mkt-n8000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n12000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n16000-cctrue-fs16-soar.toml",
 ]
 
 [[suite]]
