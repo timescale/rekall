@@ -73,10 +73,10 @@ maintenance_work_mem = "256GB"
 # so going much higher buys little and risks contention; sweep {16,32,48}
 # on the box for the empirical knee. max_parallel_workers and
 # max_worker_processes must exceed this or fewer workers actually launch.
-max_parallel_maintenance_workers = 32
-max_parallel_workers = 64
-max_worker_processes = 96
-max_parallel_workers_per_gather = 16
+max_parallel_maintenance_workers = "32"
+max_parallel_workers = "64"
+max_worker_processes = "96"
+max_parallel_workers_per_gather = "16"
 
 # Per-query working memory for the search phase.
 work_mem = "1GB"
@@ -84,11 +84,11 @@ work_mem = "1GB"
 # Fewer checkpoints during bulk load + build.
 max_wal_size = "64GB"
 min_wal_size = "2GB"
-checkpoint_completion_target = 0.9
+checkpoint_completion_target = "0.9"
 
 # gp3-class SSD concurrency.
-effective_io_concurrency = 256
-maintenance_io_concurrency = 256
+effective_io_concurrency = "256"
+maintenance_io_concurrency = "256"
 
 # ----- Extension version pins -------------------------------------------
 
