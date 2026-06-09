@@ -45,10 +45,44 @@ pub async fn run(
 
     let mut results = Vec::new();
 
+    // Admin connection used to normalize the table's parallel_workers
+    // reloption before each build (see IndexConfig::table_parallel_workers).
+    let admin = pg.open_connection().await?;
+
     for idx_config in &config.index {
         if let Some(name) = filter_name {
             if idx_config.name != name {
                 continue;
+            }
+        }
+
+        // Meerkat's standard-AM build is derated by the planner's heap-size
+        // heuristic, so set an explicit reloption to let it use the full
+        // max_parallel_maintenance_workers. pgvector HNSW reads that GUC
+        // directly and a reloption would only cap it, so reset it for any
+        // index that doesn't request one — no leakage between builds.
+        match idx_config.table_parallel_workers {
+            Some(n) => {
+                admin
+                    .execute(
+                        &format!(
+                            "ALTER TABLE {} SET (parallel_workers = {n})",
+                            config.table_name()
+                        ),
+                        &[],
+                    )
+                    .await?;
+            }
+            None => {
+                admin
+                    .execute(
+                        &format!(
+                            "ALTER TABLE {} RESET (parallel_workers)",
+                            config.table_name()
+                        ),
+                        &[],
+                    )
+                    .await?;
             }
         }
 

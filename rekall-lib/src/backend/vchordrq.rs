@@ -312,6 +312,7 @@ mod tests {
             index_type: "vchordrq".to_string(),
             params,
             gucs: Default::default(),
+            table_parallel_workers: None,
         }
     }
 

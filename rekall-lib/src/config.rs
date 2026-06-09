@@ -122,6 +122,14 @@ pub struct IndexConfig {
     pub params: toml::Value,
     #[serde(default)]
     pub gucs: HashMap<String, toml::Value>,
+    /// Table `parallel_workers` reloption to set for this index's build
+    /// (reset afterwards). Meerkat's standard-AM build is derated by the
+    /// planner's heap-size heuristic, so an explicit reloption lets it use
+    /// the full `max_parallel_maintenance_workers`. Leave unset for pgvector
+    /// HNSW, which reads `max_parallel_maintenance_workers` directly and
+    /// would only be capped by a reloption.
+    #[serde(default)]
+    pub table_parallel_workers: Option<i32>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

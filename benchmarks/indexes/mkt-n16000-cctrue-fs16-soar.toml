@@ -2,6 +2,10 @@
 [[index]]
 type = "meerkat"
 name = "mkt-n16000-cctrue-fs16-soar"
+# Let Meerkat's build use the full max_parallel_maintenance_workers; its
+# standard-AM path is otherwise derated by the planner's heap-size heuristic.
+# Reset automatically before non-requesting builds, so pgvector is unaffected.
+table_parallel_workers = 32
 [index.params]
 nlist = 16000
 centroid_compression = true
