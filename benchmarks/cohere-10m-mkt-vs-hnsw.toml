@@ -1,0 +1,26 @@
+# Suite: cohere-10m — top-2 Meerkat configs vs pgvector HNSW M=24.
+#
+# Meerkat: the two best recall/QPS performers from the earlier cohere-10m
+# runs (results/cohere-10m-comparison), both centroid_compression=true +
+# fastscan-16 + SOAR:
+#   - mkt-n8000-cctrue-fs16-soar   best in the mid-recall band (~0.94)
+#   - mkt-n16000-cctrue-fs16-soar  best in the high-recall band (>=0.96)
+#
+# HNSW: M=24 at full precision vs binary quantization, same graph degree
+# and ef_construction so the comparison isolates the quantization effect.
+#
+# Build it on a big box (see infra/instances/r8i.24xlarge.toml): the large
+# maintenance_work_mem keeps the HNSW graph in RAM and the parallel
+# maintenance workers speed both build paths.
+#
+# Usage: rekall run benchmarks/cohere-10m-mkt-vs-hnsw.toml [--dry-run]
+
+indexes = [
+    "indexes/mkt-n8000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n16000-cctrue-fs16-soar.toml",
+    "indexes/hnsw-m24.toml",
+    "indexes/hnsw-m24-bq.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-10m.toml"

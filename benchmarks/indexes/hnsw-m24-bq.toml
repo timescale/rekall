@@ -1,0 +1,18 @@
+# pgvector HNSW M=24 on a binary-quantized bit column (`binary_quantize(v)`),
+# indexed with `bit_hamming_ops`. Same graph degree (m=24) and build effort
+# (ef_construction=200) as hnsw-m24.toml, so a comparison against it isolates
+# the effect of binary quantization (~32x smaller index, lower recall) from
+# the graph structure. Use a higher ef_search to claw back recall lost to
+# the bit distance.
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-m24-bq"
+[index.params]
+m = 24
+ef_construction = 200
+column_type = "bit"
+
+[[search.sweep]]
+index = "hnsw-m24-bq"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
