@@ -1,0 +1,100 @@
+# Rekall benchmark instance: r8i.2xlarge (Intel, 8 vCPU, 64 GiB RAM).
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r8i.2xlarge.toml
+#
+# Sized for cohere-5M: a full-precision HNSW graph for 5M × 768d is ~18-20
+# GiB, which won't fit in maintenance_work_mem on a 32 GiB m8i.2xlarge
+# (it would spill to pgvector's slow on-disk pass). The r8i's 64 GiB lets
+# maintenance_work_mem hold the whole graph in RAM for a fast build.
+#
+# This file is the canonical, committed config for this instance type.
+# Personal/machine-specific overrides go in `r8i.2xlarge.local.toml`
+# (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
+# and the meerkat git_url/git_ref. See `local.toml.example`.
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r8i.2xlarge"
+
+# r8i is EBS-only. cohere-5M peaks around ~110 GiB (dataset file + heap +
+# all indexes + WAL); 250 GiB leaves comfortable headroom. Max out gp3
+# IOPS/throughput so load and build aren't I/O bound.
+disk_size_gb    = 250
+disk_iops       = 16000
+disk_throughput = 1000
+
+name_prefix = "rekall-r8i2x"
+
+# ----- OS image ----------------------------------------------------------
+
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+# pg_port  = 5432
+
+# Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
+extensions = ["pgvector", "meerkat"]
+
+# PG GUC overrides — merged over the auto-computed defaults. Tuned for
+# 64 GiB and parallel index builds. All values must be strings.
+[pg_config]
+# 25% of RAM for the buffer cache; the rest stays free for the OS page
+# cache and the transient maintenance_work_mem below.
+shared_buffers = "16GB"
+effective_cache_size = "48GB"
+
+# The key knob for HNSW build speed: keep the entire ~18-20 GiB cohere-5M
+# graph in RAM so pgvector never falls back to its slower on-disk pass.
+# 24 GiB covers it with margin and sits safely below 64 GiB even alongside
+# shared_buffers (the build is one operation at a time, allocated on demand,
+# and not multiplied across parallel workers).
+maintenance_work_mem = "24GB"
+
+# Index-build parallelism. pgvector HNSW uses this value directly as its
+# worker count; Meerkat (heap-derated standard AM) is unblocked by the
+# table parallel_workers reloption in the suite's index configs, capped by
+# this value. 4 ≈ the physical core count of an 8-vCPU (4-core, HT) box, so
+# builds don't oversubscribe cores. max_parallel_workers /
+# max_worker_processes must leave room for the maintenance workers.
+max_parallel_maintenance_workers = "4"
+max_parallel_workers = "8"
+max_worker_processes = "8"
+max_parallel_workers_per_gather = "4"
+
+# Per-query working memory for the search phase.
+work_mem = "512MB"
+
+# Fewer checkpoints during bulk load + build.
+max_wal_size = "32GB"
+min_wal_size = "2GB"
+checkpoint_completion_target = "0.9"
+
+# gp3-class SSD concurrency.
+effective_io_concurrency = "256"
+maintenance_io_concurrency = "256"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "feat/parallel-build-pg-on-foundation"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template
