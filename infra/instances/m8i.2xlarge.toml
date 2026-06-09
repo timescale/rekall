@@ -40,8 +40,9 @@ pg_version = 18
 
 # Extensions to install. pgvector ships via PGDG apt; meerkat and
 # vectorchord are built from source by provision.sh (requires git_url
-# in .local.toml for meerkat).
-extensions = ["pgvector", "meerkat", "vectorchord"]
+# in .local.toml for meerkat). VectorChord's pgrx/cargo build is slow and
+# unused by the current suites — add "vectorchord" back here to re-enable.
+extensions = ["pgvector", "meerkat"]
 
 # Override PG GUC settings. Anything set here merges over the auto-
 # computed defaults (shared_buffers = 40% RAM, etc — see docs).
