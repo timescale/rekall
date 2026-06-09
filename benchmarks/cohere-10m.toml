@@ -5,8 +5,8 @@
 # Usage: rekall run benchmarks/cohere-10m.toml [--dry-run]
 
 indexes = [
-    "indexes/hnsw-m16.toml",
     "indexes/hnsw-m24.toml",
+    "indexes/hnsw-m24-bq.toml",
     "indexes/mkt-n8000-cctrue-fs16-soar.toml",
     "indexes/mkt-n12000-cctrue-fs16-soar.toml",
     "indexes/mkt-n16000-cctrue-fs16-soar.toml",
