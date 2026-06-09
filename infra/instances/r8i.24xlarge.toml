@@ -60,10 +60,19 @@ effective_cache_size = "576GB"
 # time, so it does not multiply across parallel workers.
 maintenance_work_mem = "256GB"
 
-# Let index builds fan out. The planner still derives the actual count
-# from heap size (and the per-table parallel_workers reloption, if set),
-# capped by this value; max_parallel_workers / max_worker_processes must
-# leave room for the maintenance workers plus any parallel query workers.
+# Index-build parallelism. pgvector's HNSW build uses this value DIRECTLY
+# as its worker count (it calls plan_create_index_workers only as a
+# yes/no gate, then returns max_parallel_maintenance_workers) — so 32
+# here launches 32 workers. Meerkat uses the standard AM path and is
+# heap-size-derated, so on big tables raise the table's parallel_workers
+# reloption to push it past the planner's estimate.
+#
+# 32 is ~1/3 of the 96 vCPUs and stays under the 48 physical cores, so
+# builds don't oversubscribe cores or thrash memory bandwidth. HNSW build
+# scaling is sublinear — workers share one in-memory graph with locking,
+# so going much higher buys little and risks contention; sweep {16,32,48}
+# on the box for the empirical knee. max_parallel_workers and
+# max_worker_processes must exceed this or fewer workers actually launch.
 max_parallel_maintenance_workers = 32
 max_parallel_workers = 64
 max_worker_processes = 96
