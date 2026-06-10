@@ -19,13 +19,15 @@ mode = "raw"
 [query.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
 
-# Two-stage rerank: over-fetch `rerank_pool` candidates by Hamming, then
-# re-rank by full-precision cosine on `v`. The pool is the recall knob;
-# ef_search is pinned high enough to feed the largest pool.
+# Two-stage rerank: re-rank the HNSW Hamming candidates by full-precision
+# cosine on `v`. `hnsw.ef_search` is the recall/speed knob — the scan returns
+# at most ef_search candidates regardless of the inner LIMIT — so sweep it
+# like the raw query and pin `rerank_pool` ≥ max(ef_search) so every candidate
+# is re-ranked (none discarded). Fair frontier: raw's scan cost + the rerank.
 [[query]]
 name = "hnsw-bq-rerank"
 index = "hnsw-bq"
 mode = "rerank"
 [query.params]
-"hnsw.ef_search" = [1000]
-rerank_pool = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
+rerank_pool = [1000]
