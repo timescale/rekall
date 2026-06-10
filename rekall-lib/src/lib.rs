@@ -3,6 +3,7 @@
 pub mod backend;
 pub mod config;
 pub mod dataset;
+pub mod diagnostics;
 pub mod environment;
 pub mod error;
 pub mod infra;
@@ -478,7 +479,28 @@ impl Agent {
                         output.on_progress(&event);
                     }
                 }
-                let build_result = build_handle.await.unwrap()?;
+                let build_result = match build_handle.await.unwrap() {
+                    Ok(r) => r,
+                    Err(e) => {
+                        if let Some(path) = diagnostics::report_if_crash(
+                            &self.config.output.results_dir,
+                            &self.config.connection.dsn,
+                            &format!("build index '{}'", idx_config.name),
+                            &e,
+                        ) {
+                            for output in self.outputs.iter_mut() {
+                                output.on_progress(&ProgressEvent::Message {
+                                    text: format!(
+                                        "crash/disconnect building '{}' — diagnostics written to {}",
+                                        idx_config.name,
+                                        path.display()
+                                    ),
+                                });
+                            }
+                        }
+                        return Err(e);
+                    }
+                };
 
                 for output in self.outputs.iter_mut() {
                     output.on_index_built(&build_result);

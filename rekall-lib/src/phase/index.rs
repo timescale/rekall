@@ -100,7 +100,33 @@ pub async fn run(
             .await?;
 
         backend.drop_index().await?;
-        let result = backend.build_index().await?;
+        let result = match backend.build_index().await {
+            Ok(r) => r,
+            Err(e) => {
+                if let Some(path) = crate::diagnostics::report_if_crash(
+                    &config.output.results_dir,
+                    &config.connection.dsn,
+                    &format!("build index '{}'", idx_config.name),
+                    &e,
+                ) {
+                    tracing::error!(
+                        "crash/disconnect building '{}'; diagnostics: {}",
+                        idx_config.name,
+                        path.display()
+                    );
+                    if let Some(tx) = progress {
+                        let _ = tx.send(crate::progress::ProgressEvent::Message {
+                            text: format!(
+                                "crash/disconnect building '{}' — diagnostics written to {}",
+                                idx_config.name,
+                                path.display()
+                            ),
+                        });
+                    }
+                }
+                return Err(e);
+            }
+        };
 
         save_build_result(config, &result);
         results.push(result);

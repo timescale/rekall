@@ -15,6 +15,28 @@ use crate::metrics::{
 };
 use crate::progress::{ProgressEvent, ProgressTx};
 
+/// On a crash/disconnect error, write a diagnostics report and surface its
+/// path. No-op for ordinary query errors (see [`crate::diagnostics`]).
+fn report_crash(config: &BenchmarkConfig, progress: &ProgressTx, context: &str, err: &Error) {
+    if let Some(path) = crate::diagnostics::report_if_crash(
+        &config.output.results_dir,
+        &config.connection.dsn,
+        context,
+        err,
+    ) {
+        tracing::error!(
+            "crash/disconnect during {context}; diagnostics: {}",
+            path.display()
+        );
+        let _ = progress.send(ProgressEvent::Message {
+            text: format!(
+                "crash/disconnect during {context} — diagnostics written to {}",
+                path.display()
+            ),
+        });
+    }
+}
+
 fn write_json_gz(path: &str, value: &impl serde::Serialize) -> std::io::Result<()> {
     let json = serde_json::to_vec(value).map_err(|e| std::io::Error::other(e.to_string()))?;
     let file = std::fs::File::create(path)?;
@@ -339,7 +361,15 @@ pub async fn run(
                     // Warmup queries to fill shared buffers
                     for qi in 0..config.search.warmup.min(num_queries) {
                         let q = queries.row(qi).to_vec();
-                        let _ = backend.query(&q, k).await?;
+                        if let Err(e) = backend.query(&q, k).await {
+                            report_crash(
+                                config,
+                                progress,
+                                &format!("search '{}' warmup query #{qi}", query.name),
+                                &e,
+                            );
+                            return Err(e);
+                        }
                     }
                 }
                 CacheMode::Cold => {
@@ -380,7 +410,18 @@ pub async fn run(
                     let gt = ground_truth.row(qi).to_vec();
 
                     let start = Instant::now();
-                    let result_ids = backend.query(&q, k).await?;
+                    let result_ids = match backend.query(&q, k).await {
+                        Ok(ids) => ids,
+                        Err(e) => {
+                            report_crash(
+                                config,
+                                progress,
+                                &format!("search '{}' query #{qi}", query.name),
+                                &e,
+                            );
+                            return Err(e);
+                        }
+                    };
                     let latency = start.elapsed();
 
                     collector.record(latency.as_micros() as u64);
