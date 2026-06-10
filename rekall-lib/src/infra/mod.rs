@@ -960,6 +960,10 @@ mod tests {
         assert!(out.contains("Installing pgvector v0.8.2"));
         assert!(out.contains("shared_buffers = '16GB'"));
         assert!(out.contains("port = 5432"));
+        // Core dumps enabled for crash debugging.
+        assert!(out.contains("apt-get install -y systemd-coredump"));
+        assert!(out.contains("LimitCORE=infinity"));
+        assert!(out.contains("postgresql@18-main.service.d/coredump.conf"));
         // Huge pages off by default — block should be omitted entirely.
         assert!(!out.contains("vm.nr_hugepages"));
         assert!(!out.contains("disable-thp.service"));

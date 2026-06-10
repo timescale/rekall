@@ -159,6 +159,33 @@ echo "{{ key }} = '{{ value }}'" >> "$PG_CONF"
 {% endfor %}
 echo "host all rekall 0.0.0.0/0 scram-sha-256" >> "$PG_HBA"
 
+echo "=== Enabling core dumps (systemd-coredump) ==="
+# Ubuntu defaults to apport and discards PG backend cores. Install
+# systemd-coredump (sets kernel.core_pattern → systemd-coredump, cores land
+# in /var/lib/systemd/coredump, inspect with `coredumpctl`) so a meerkat /
+# pgvector build crash leaves a debuggable core.
+apt-get install -y systemd-coredump
+
+# No size cap: a build backend can hold many GB of maintenance_work_mem and a
+# truncated core loses the heap. Compressed on disk, on the root volume.
+mkdir -p /etc/systemd/coredump.conf.d
+cat > /etc/systemd/coredump.conf.d/rekall.conf <<'CDEOF'
+[Coredump]
+Storage=external
+Compress=yes
+ProcessSizeMax=0
+ExternalSizeMax=0
+CDEOF
+
+# The postgresql unit needs an unlimited core ulimit or backends can't dump.
+mkdir -p /etc/systemd/system/postgresql@{{ pg_version }}-main.service.d
+cat > /etc/systemd/system/postgresql@{{ pg_version }}-main.service.d/coredump.conf <<'CDEOF'
+[Service]
+LimitCORE=infinity
+CDEOF
+
+systemctl daemon-reload
+
 systemctl restart postgresql@{{ pg_version }}-main
 
 sudo -u postgres psql -p {{ pg_port }} -c "CREATE USER rekall WITH PASSWORD 'rekall' SUPERUSER"
