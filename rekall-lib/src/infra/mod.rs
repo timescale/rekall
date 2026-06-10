@@ -958,7 +958,7 @@ mod tests {
         assert!(out.starts_with("#!/bin/bash"));
         assert!(out.contains("apt-get install -y postgresql-18 postgresql-server-dev-18"));
         assert!(out.contains("Installing pgvector v0.8.2"));
-        assert!(out.contains("shared_buffers = '25GB'"));
+        assert!(out.contains("shared_buffers = '16GB'"));
         assert!(out.contains("port = 5432"));
         // Huge pages off by default — block should be omitted entirely.
         assert!(!out.contains("vm.nr_hugepages"));
@@ -974,7 +974,7 @@ mod tests {
         };
         let out = render_user_data(&cfg, None).expect("template renders");
 
-        assert!(out.contains("vm.nr_hugepages = 14080"));
+        assert!(out.contains("vm.nr_hugepages = 9011"));
         assert!(out.contains("disable-thp.service"));
         assert!(out.contains("huge_pages = 'on'"));
     }

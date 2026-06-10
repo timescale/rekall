@@ -309,29 +309,10 @@ impl InfraConfig {
         Ok((self.ssh_public_key_path(), self.ssh_private_key_path()))
     }
 
-    /// Estimate instance RAM in GB from instance type name.
-    /// R-series: 8 GB/vCPU, M-series: 4 GB/vCPU, C-series: 2 GB/vCPU.
-    fn instance_ram_gb(&self) -> Option<u32> {
-        let ty = &self.instance_type;
-        let parts: Vec<&str> = ty.split('.').collect();
-        if parts.len() != 2 {
-            return None;
-        }
-
-        let family = parts[0];
-        let size = parts[1];
-
-        let gb_per_vcpu: u32 = if family.starts_with('r') || family.starts_with('x') {
-            8
-        } else if family.starts_with('m') {
-            4
-        } else if family.starts_with('c') {
-            2
-        } else {
-            return None;
-        };
-
-        let vcpus: u32 = match size {
+    /// vCPU count parsed from the instance size suffix (e.g. `2xlarge` → 8).
+    fn instance_vcpus(&self) -> Option<u32> {
+        let size = self.instance_type.split('.').nth(1)?;
+        Some(match size {
             "medium" => 1,
             "large" => 2,
             "xlarge" => 4,
@@ -343,9 +324,23 @@ impl InfraConfig {
             "24xlarge" => 96,
             "metal" => 64,
             _ => return None,
-        };
+        })
+    }
 
-        Some(gb_per_vcpu * vcpus)
+    /// Estimate instance RAM in GB from instance type name.
+    /// R-series: 8 GB/vCPU, M-series: 4 GB/vCPU, C-series: 2 GB/vCPU.
+    fn instance_ram_gb(&self) -> Option<u32> {
+        let family = self.instance_type.split('.').next()?;
+        let gb_per_vcpu: u32 = if family.starts_with('r') || family.starts_with('x') {
+            8
+        } else if family.starts_with('m') {
+            4
+        } else if family.starts_with('c') {
+            2
+        } else {
+            return None;
+        };
+        Some(gb_per_vcpu * self.instance_vcpus()?)
     }
 
     /// Build the effective pg_config by merging auto-computed defaults
@@ -353,27 +348,51 @@ impl InfraConfig {
     pub fn effective_pg_config(&self) -> HashMap<String, String> {
         let mut config = HashMap::new();
 
-        if let Some(ram_gb) = self.instance_ram_gb() {
-            let shared_buffers = ram_gb * 2 / 5;
-            let maintenance_work_mem = ram_gb / 10;
-            let effective_cache_size = ram_gb * 3 / 4;
+        if let (Some(ram_gb), Some(vcpus)) = (self.instance_ram_gb(), self.instance_vcpus()) {
+            let mut set = |k: &str, v: String| config.insert(k.to_string(), v);
 
-            config.insert("shared_buffers".to_string(), format!("{shared_buffers}GB"));
-            config.insert(
-                "maintenance_work_mem".to_string(),
-                format!("{maintenance_work_mem}GB"),
+            // Memory. shared_buffers = RAM/4 and effective_cache_size = 3·RAM/4
+            // follow pgtune. maintenance_work_mem = RAM/8 deliberately exceeds
+            // pgtune's 8 GB cap: pgtune isn't tuned for vector search, and
+            // pgvector's HNSW build wants the whole graph resident in RAM to
+            // avoid its slow on-disk pass. RAM/4 + RAM/8 = 37.5% committed,
+            // matching the balance in jkatz's pgvector benchmark
+            // (128 GB shared_buffers + 64 GB maintenance_work_mem on 512 GB).
+            // Per-instance overrides push maintenance_work_mem higher still
+            // when sized for a specific dataset.
+            set("shared_buffers", format!("{}GB", ram_gb / 4));
+            set("effective_cache_size", format!("{}GB", ram_gb * 3 / 4));
+            set("maintenance_work_mem", format!("{}GB", (ram_gb / 8).max(1)));
+            set("work_mem", "256MB".to_string());
+
+            // WAL: fewer, larger checkpoints during bulk load + build.
+            set("max_wal_size", "16GB".to_string());
+            set("min_wal_size", "2GB".to_string());
+            set("checkpoint_completion_target", "0.9".to_string());
+
+            // Parallelism. pgvector's HNSW build uses
+            // max_parallel_maintenance_workers DIRECTLY as its worker count, so
+            // — like jkatz's pgvector benchmark (63 on a 64-vCPU box) — give it
+            // nearly all the cores rather than pgtune's cap of 4. The build is
+            // sublinear and memory/lock-bound, so a per-instance override may
+            // dial this down (e.g. to physical-core count on SMT hardware).
+            // max_parallel_workers / max_worker_processes must exceed it.
+            set(
+                "max_parallel_maintenance_workers",
+                vcpus.saturating_sub(1).max(1).to_string(),
             );
-            config.insert(
-                "effective_cache_size".to_string(),
-                format!("{effective_cache_size}GB"),
+            set("max_parallel_workers", vcpus.to_string());
+            set("max_worker_processes", (vcpus * 2).to_string());
+            set(
+                "max_parallel_workers_per_gather",
+                vcpus.div_ceil(2).to_string(),
             );
-            config.insert("work_mem".to_string(), "256MB".to_string());
-            config.insert("max_wal_size".to_string(), "16GB".to_string());
-            config.insert("min_wal_size".to_string(), "2GB".to_string());
-            config.insert(
-                "max_parallel_maintenance_workers".to_string(),
-                "8".to_string(),
-            );
+
+            // EBS gp3 / NVMe-class storage; JIT off for vector workloads (its
+            // compile cost rarely pays off for ANN queries) — both per jkatz.
+            set("effective_io_concurrency", "200".to_string());
+            set("random_page_cost", "1.1".to_string());
+            set("jit", "off".to_string());
         }
 
         if self.huge_pages {
@@ -543,9 +562,14 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(64));
         let pg = cfg.effective_pg_config();
-        assert_eq!(pg["shared_buffers"], "25GB");
-        assert_eq!(pg["maintenance_work_mem"], "6GB");
-        assert_eq!(pg["effective_cache_size"], "48GB");
+        // 64 GB / 8 vCPU.
+        assert_eq!(pg["shared_buffers"], "16GB"); // RAM/4
+        assert_eq!(pg["maintenance_work_mem"], "8GB"); // RAM/8 (> pgtune cap)
+        assert_eq!(pg["effective_cache_size"], "48GB"); // 3·RAM/4
+        assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1
+        assert_eq!(pg["max_parallel_workers"], "8");
+        assert_eq!(pg["max_worker_processes"], "16");
+        assert_eq!(pg["jit"], "off");
     }
 
     #[test]
@@ -590,9 +614,12 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(128));
         let pg = cfg.effective_pg_config();
-        assert_eq!(pg["shared_buffers"], "51GB");
-        assert_eq!(pg["maintenance_work_mem"], "12GB");
-        assert_eq!(pg["effective_cache_size"], "96GB");
+        // 128 GB / 16 vCPU.
+        assert_eq!(pg["shared_buffers"], "32GB"); // RAM/4
+        assert_eq!(pg["maintenance_work_mem"], "16GB"); // RAM/8
+        assert_eq!(pg["effective_cache_size"], "96GB"); // 3·RAM/4
+        assert_eq!(pg["max_parallel_maintenance_workers"], "15"); // vCPU-1
+        assert_eq!(pg["max_parallel_workers_per_gather"], "8"); // ceil(vCPU/2)
     }
 
     #[test]
@@ -607,8 +634,8 @@ git_ref = "feat/parallel-build"
             ..Default::default()
         };
         let pg = cfg.effective_pg_config();
-        assert_eq!(pg["shared_buffers"], "8GB");
-        assert_eq!(pg["maintenance_work_mem"], "6GB");
+        assert_eq!(pg["shared_buffers"], "8GB"); // explicit override wins
+        assert_eq!(pg["maintenance_work_mem"], "8GB"); // auto RAM/8
         assert_eq!(pg["huge_pages"], "try");
     }
 
@@ -621,8 +648,8 @@ git_ref = "feat/parallel-build"
         };
         let pg = cfg.effective_pg_config();
         assert_eq!(pg["huge_pages"], "on");
-        // 25GB shared_buffers / 2MB = 12800 pages, +10% overhead = 14080
-        assert_eq!(cfg.nr_huge_pages(), Some(14080));
+        // 16GB shared_buffers / 2MB = 8192 pages, +10% overhead = 9011
+        assert_eq!(cfg.nr_huge_pages(), Some(9011));
     }
 
     #[test]
@@ -649,7 +676,8 @@ git_ref = "feat/parallel-build"
         let pg = cfg.effective_pg_config();
         assert_eq!(pg["huge_pages"], "try");
         // Kernel pool still reserved — the flag drives the OS side regardless.
-        assert_eq!(cfg.nr_huge_pages(), Some(14080));
+        // 16GB shared_buffers / 2MB = 8192 pages, +10% = 9011.
+        assert_eq!(cfg.nr_huge_pages(), Some(9011));
     }
 
     #[test]
