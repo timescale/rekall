@@ -10,6 +10,27 @@ date
 
 export DEBIAN_FRONTEND=noninteractive
 
+echo "=== Disabling background apt upgrades ==="
+# A scheduled apt-daily-upgrade.service running unattended-upgrades restarts
+# postgresql (directly, or via needrestart after a library upgrade) in the
+# middle of a long index build — observed killing builds at ~06:44 UTC across
+# instances. Stop the timers/service and turn the periodic upgrade off so a
+# benchmark is never interrupted by a background upgrade.
+systemctl disable --now \
+  apt-daily.timer apt-daily-upgrade.timer unattended-upgrades.service 2>/dev/null || true
+cat > /etc/apt/apt.conf.d/99rekall-no-auto-upgrade <<'AUTOUPEOF'
+APT::Periodic::Update-Package-Lists "0";
+APT::Periodic::Unattended-Upgrade "0";
+APT::Periodic::Download-Upgradeable-Packages "0";
+APT::Periodic::AutocleanInterval "0";
+AUTOUPEOF
+# needrestart (present on 24.04+) otherwise auto-restarts services after a
+# library upgrade — make it only list them.
+mkdir -p /etc/needrestart/conf.d
+cat > /etc/needrestart/conf.d/99-rekall.conf <<'NREOF'
+$nrconf{restart} = 'l';
+NREOF
+
 {% if authorized_keys -%}
 echo "=== Installing team SSH keys ==="
 install -d -o ubuntu -g ubuntu -m 700 /home/ubuntu/.ssh

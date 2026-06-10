@@ -964,6 +964,9 @@ mod tests {
         assert!(out.contains("apt-get install -y systemd-coredump"));
         assert!(out.contains("LimitCORE=infinity"));
         assert!(out.contains("postgresql@18-main.service.d/coredump.conf"));
+        // Background apt upgrades disabled so they can't restart PG mid-run.
+        assert!(out.contains("apt-daily-upgrade.timer"));
+        assert!(out.contains("99rekall-no-auto-upgrade"));
         // Huge pages off by default — block should be omitted entirely.
         assert!(!out.contains("vm.nr_hugepages"));
         assert!(!out.contains("disable-thp.service"));
