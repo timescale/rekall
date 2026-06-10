@@ -352,17 +352,20 @@ impl InfraConfig {
             let mut set = |k: &str, v: String| config.insert(k.to_string(), v);
 
             // Memory. shared_buffers = RAM/4 and effective_cache_size = 3·RAM/4
-            // follow pgtune. maintenance_work_mem = RAM/8 deliberately exceeds
-            // pgtune's 8 GB cap: pgtune isn't tuned for vector search, and
-            // pgvector's HNSW build wants the whole graph resident in RAM to
-            // avoid its slow on-disk pass. RAM/4 + RAM/8 = 37.5% committed,
-            // matching the balance in jkatz's pgvector benchmark
-            // (128 GB shared_buffers + 64 GB maintenance_work_mem on 512 GB).
-            // Per-instance overrides push maintenance_work_mem higher still
-            // when sized for a specific dataset.
+            // follow pgtune. maintenance_work_mem = RAM/2 is far above pgtune's
+            // 8 GB cap, deliberately: it is a per-operation CEILING allocated
+            // on demand (not reserved at startup, and never touched by
+            // queries), so sizing it large simply lets a pgvector HNSW build
+            // keep its whole graph resident in RAM instead of spilling to the
+            // slow on-disk pass. Since we can't know the dataset in advance, we
+            // err big — running out mid-build is far costlier than an unused
+            // ceiling. RAM/4 (shared_buffers) + RAM/2 (a build that fills the
+            // ceiling) = 3·RAM/4, leaving a RAM/4 cushion for the OS, (mostly
+            // reclaimable) page cache, and workers; builds run one at a time
+            // and pgvector shares the graph across parallel workers, not ×N.
             set("shared_buffers", format!("{}GB", ram_gb / 4));
             set("effective_cache_size", format!("{}GB", ram_gb * 3 / 4));
-            set("maintenance_work_mem", format!("{}GB", (ram_gb / 8).max(1)));
+            set("maintenance_work_mem", format!("{}GB", (ram_gb / 2).max(1)));
             set("work_mem", "256MB".to_string());
 
             // WAL: fewer, larger checkpoints during bulk load + build.
@@ -371,15 +374,23 @@ impl InfraConfig {
             set("checkpoint_completion_target", "0.9".to_string());
 
             // Parallelism. pgvector's HNSW build uses
-            // max_parallel_maintenance_workers DIRECTLY as its worker count, so
-            // — like jkatz's pgvector benchmark (63 on a 64-vCPU box) — give it
-            // nearly all the cores rather than pgtune's cap of 4. The build is
-            // sublinear and memory/lock-bound, so a per-instance override may
-            // dial this down (e.g. to physical-core count on SMT hardware).
-            // max_parallel_workers / max_worker_processes must exceed it.
+            // max_parallel_maintenance_workers DIRECTLY as its worker count.
+            // Pin it to PHYSICAL cores — Graviton has no SMT (vCPU = cores),
+            // Intel/AMD run 2 threads/core — because the build is CPU- and
+            // lock-bound and SMT siblings mostly contend. Cap at 32: HNSW build
+            // scaling is sublinear (workers share one graph under locking), so
+            // returns flatten beyond that and extra workers just burn cores.
+            // (This reproduces the hand-tuned r8i values — 4 on the 8-vCPU box,
+            // 32 on the 96-vCPU box.) max_parallel_workers / max_worker_processes
+            // must exceed it for the workers to actually launch.
+            let physical_cores = if self.is_graviton() {
+                vcpus.saturating_sub(1)
+            } else {
+                vcpus / 2
+            };
             set(
                 "max_parallel_maintenance_workers",
-                vcpus.saturating_sub(1).max(1).to_string(),
+                physical_cores.clamp(1, 32).to_string(),
             );
             set("max_parallel_workers", vcpus.to_string());
             set("max_worker_processes", (vcpus * 2).to_string());
@@ -391,6 +402,7 @@ impl InfraConfig {
             // EBS gp3 / NVMe-class storage; JIT off for vector workloads (its
             // compile cost rarely pays off for ANN queries) — both per jkatz.
             set("effective_io_concurrency", "200".to_string());
+            set("maintenance_io_concurrency", "200".to_string());
             set("random_page_cost", "1.1".to_string());
             set("jit", "off".to_string());
         }
@@ -562,14 +574,36 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(64));
         let pg = cfg.effective_pg_config();
-        // 64 GB / 8 vCPU.
+        // 64 GB / 8 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "16GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "8GB"); // RAM/8 (> pgtune cap)
+        assert_eq!(pg["maintenance_work_mem"], "32GB"); // RAM/2 (≫ pgtune cap)
         assert_eq!(pg["effective_cache_size"], "48GB"); // 3·RAM/4
-        assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1
+        assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers"], "8");
         assert_eq!(pg["max_worker_processes"], "16");
+        assert_eq!(pg["maintenance_io_concurrency"], "200");
         assert_eq!(pg["jit"], "off");
+    }
+
+    #[test]
+    fn auto_pg_config_intel_uses_physical_cores_and_caps() {
+        // Intel/AMD run 2 threads/core, so maintenance workers = vCPU/2,
+        // capped at 32. These reproduce the hand-tuned r8i overrides.
+        let small = InfraConfig {
+            instance_type: "r8i.2xlarge".to_string(), // 8 vCPU / 64 GB
+            ..Default::default()
+        };
+        let pg = small.effective_pg_config();
+        assert_eq!(pg["max_parallel_maintenance_workers"], "4"); // 8/2
+        assert_eq!(pg["maintenance_work_mem"], "32GB"); // RAM/2
+
+        let big = InfraConfig {
+            instance_type: "r8i.24xlarge".to_string(), // 96 vCPU / 768 GB
+            ..Default::default()
+        };
+        let pg = big.effective_pg_config();
+        assert_eq!(pg["max_parallel_maintenance_workers"], "32"); // 96/2 → cap 32
+        assert_eq!(pg["maintenance_work_mem"], "384GB"); // RAM/2
     }
 
     #[test]
@@ -614,11 +648,11 @@ git_ref = "feat/parallel-build"
         };
         assert_eq!(cfg.instance_ram_gb(), Some(128));
         let pg = cfg.effective_pg_config();
-        // 128 GB / 16 vCPU.
+        // 128 GB / 16 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "32GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "16GB"); // RAM/8
+        assert_eq!(pg["maintenance_work_mem"], "64GB"); // RAM/2
         assert_eq!(pg["effective_cache_size"], "96GB"); // 3·RAM/4
-        assert_eq!(pg["max_parallel_maintenance_workers"], "15"); // vCPU-1
+        assert_eq!(pg["max_parallel_maintenance_workers"], "15"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers_per_gather"], "8"); // ceil(vCPU/2)
     }
 
@@ -635,7 +669,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = cfg.effective_pg_config();
         assert_eq!(pg["shared_buffers"], "8GB"); // explicit override wins
-        assert_eq!(pg["maintenance_work_mem"], "8GB"); // auto RAM/8
+        assert_eq!(pg["maintenance_work_mem"], "32GB"); // auto RAM/2
         assert_eq!(pg["huge_pages"], "try");
     }
 
