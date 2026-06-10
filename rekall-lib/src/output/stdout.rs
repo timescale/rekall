@@ -18,6 +18,9 @@ pub struct StdoutSink {
     // progress lines instead.
     interactive: bool,
     last_progress_log: Option<Instant>,
+    /// Progress fraction (0–1) at the last non-interactive log line, so we
+    /// can print on a meaningful jump rather than every poll.
+    last_logged_frac: f64,
 }
 
 impl Default for StdoutSink {
@@ -34,24 +37,30 @@ impl StdoutSink {
             has_bar: false,
             interactive: std::io::stderr().is_terminal(),
             last_progress_log: None,
+            last_logged_frac: 0.0,
         }
     }
 
-    /// Non-interactive progress throttle: print at most every 5s, plus
-    /// immediately on a phase change. Returns false when interactive (the
-    /// indicatif bar handles it).
-    fn should_log_progress(&mut self, phase_changed: bool) -> bool {
+    /// Non-interactive progress throttle. Logs a line only on a *meaningful*
+    /// change so captured logs stay compact over long builds: on a phase
+    /// change, when progress advanced ≥5% since the last line, or as a ≥30s
+    /// heartbeat (covers slow/stalled or total-less phases). `frac` is the
+    /// 0–1 completion of the current phase (0 when unknown). Always false
+    /// when interactive — the indicatif bar handles live updates there.
+    fn should_log_progress(&mut self, phase_changed: bool, frac: f64) -> bool {
         if self.interactive {
             return false;
         }
         let now = Instant::now();
-        let due = phase_changed
-            || self
-                .last_progress_log
-                .map(|t| now.duration_since(t).as_secs() >= 5)
-                .unwrap_or(true);
+        let heartbeat = self
+            .last_progress_log
+            .map(|t| now.duration_since(t).as_secs() >= 30)
+            .unwrap_or(true);
+        let advanced = frac - self.last_logged_frac >= 0.05;
+        let due = phase_changed || heartbeat || advanced;
         if due {
             self.last_progress_log = Some(now);
+            self.last_logged_frac = frac;
         }
         due
     }
@@ -111,7 +120,12 @@ impl OutputSink for StdoutSink {
                 rows_per_sec,
             } => {
                 if !self.interactive {
-                    if self.should_log_progress(false) {
+                    let frac = if *total > 0 {
+                        *loaded as f64 / *total as f64
+                    } else {
+                        0.0
+                    };
+                    if self.should_log_progress(false, frac) {
                         let pct = if *total > 0 { loaded * 100 / total } else { 0 };
                         println!("  Loading {loaded}/{total} ({pct}%, {rows_per_sec:.0} rows/s)");
                     }
@@ -152,7 +166,12 @@ impl OutputSink for StdoutSink {
                     if phase_changed {
                         self.current_phase = phase.to_string();
                     }
-                    if self.should_log_progress(phase_changed) {
+                    let frac = if *tuples_total > 0 {
+                        *tuples_done as f64 / *tuples_total as f64
+                    } else {
+                        0.0
+                    };
+                    if self.should_log_progress(phase_changed, frac) {
                         let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
                         if *tuples_total > 0 {
                             let pct = *tuples_done * 100 / (*tuples_total).max(1);
@@ -312,5 +331,47 @@ impl OutputSink for StdoutSink {
         let mut table = Table::new(&rows);
         table.with(Style::rounded());
         println!("{table}");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    fn noninteractive() -> StdoutSink {
+        let mut s = StdoutSink::new();
+        s.interactive = false;
+        s.last_progress_log = Some(Instant::now());
+        s.last_logged_frac = 0.0;
+        s
+    }
+
+    #[test]
+    fn logs_on_phase_change() {
+        let mut s = noninteractive();
+        assert!(s.should_log_progress(true, 0.0));
+    }
+
+    #[test]
+    fn logs_on_5pct_advance_but_not_smaller() {
+        let mut s = noninteractive();
+        assert!(s.should_log_progress(false, 0.05)); // +5% → log
+        assert!(!s.should_log_progress(false, 0.08)); // +3% → skip
+        assert!(s.should_log_progress(false, 0.13)); // +5% from 0.08 → log
+    }
+
+    #[test]
+    fn heartbeat_after_30s_even_without_progress() {
+        let mut s = noninteractive();
+        s.last_progress_log = Instant::now().checked_sub(Duration::from_secs(31));
+        assert!(s.should_log_progress(false, 0.0));
+    }
+
+    #[test]
+    fn interactive_never_emits_text() {
+        let mut s = noninteractive();
+        s.interactive = true;
+        assert!(!s.should_log_progress(true, 1.0));
     }
 }
