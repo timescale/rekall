@@ -274,6 +274,16 @@ enum InfraCommand {
         terraform: bool,
     },
 
+    /// Show the effective PostgreSQL settings for an instance config:
+    /// the auto-computed defaults (from instance type) merged with any
+    /// explicit [pg_config] overrides. Touches no cloud resources.
+    Show {
+        /// Config file with [infra] section. Omit to show defaults for
+        /// the built-in default instance type.
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+    },
+
     /// Provision an AWS EC2 instance with PostgreSQL
     Up {
         /// Config file with [infra] section
@@ -1597,6 +1607,39 @@ fn detect_ssh_key() -> Option<String> {
 
 fn handle_infra(command: InfraCommand) -> anyhow::Result<()> {
     match command {
+        InfraCommand::Show { config } => {
+            let cfg = load_infra_config(config.as_ref()).unwrap_or_default();
+
+            println!("Instance: {}", cfg.instance_type);
+            match (cfg.instance_vcpus(), cfg.instance_ram_gb()) {
+                (Some(vcpus), Some(ram)) => {
+                    let arch = if cfg.is_graviton() {
+                        "Graviton/arm64, no SMT"
+                    } else {
+                        "x86_64, 2 threads/core"
+                    };
+                    println!("  {vcpus} vCPU / {ram} GiB  ({arch})");
+                }
+                _ => println!("  (unrecognized instance type — no auto-defaults)"),
+            }
+
+            let eff = cfg.effective_pg_config();
+            let mut keys: Vec<&String> = eff.keys().collect();
+            keys.sort();
+            println!("\nPostgreSQL settings ([override] = from [pg_config], else auto):");
+            for k in keys {
+                let src = if cfg.pg_config.contains_key(k) {
+                    "override"
+                } else {
+                    "auto"
+                };
+                println!("  {k:<36} {:<10} [{src}]", eff[k]);
+            }
+
+            if let Some(pages) = cfg.nr_huge_pages() {
+                println!("\nHuge pages: reserve {pages} × 2 MB (huge_pages = on)");
+            }
+        }
         InfraCommand::Init { config, terraform } => {
             let infra_cfg = load_infra_config(config.as_ref()).unwrap_or_default();
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;

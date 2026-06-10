@@ -310,7 +310,7 @@ impl InfraConfig {
     }
 
     /// vCPU count parsed from the instance size suffix (e.g. `2xlarge` → 8).
-    fn instance_vcpus(&self) -> Option<u32> {
+    pub fn instance_vcpus(&self) -> Option<u32> {
         let size = self.instance_type.split('.').nth(1)?;
         Some(match size {
             "medium" => 1,
@@ -329,7 +329,7 @@ impl InfraConfig {
 
     /// Estimate instance RAM in GB from instance type name.
     /// R-series: 8 GB/vCPU, M-series: 4 GB/vCPU, C-series: 2 GB/vCPU.
-    fn instance_ram_gb(&self) -> Option<u32> {
+    pub fn instance_ram_gb(&self) -> Option<u32> {
         let family = self.instance_type.split('.').next()?;
         let gb_per_vcpu: u32 = if family.starts_with('r') || family.starts_with('x') {
             8
