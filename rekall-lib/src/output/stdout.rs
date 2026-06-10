@@ -1,3 +1,6 @@
+use std::io::IsTerminal;
+use std::time::Instant;
+
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
@@ -10,6 +13,11 @@ pub struct StdoutSink {
     progress_bar: Option<indicatif::ProgressBar>,
     current_phase: String,
     has_bar: bool,
+    // indicatif hides bars/spinners when stderr isn't a TTY (e.g. a captured
+    // `infra run` / tmux log), so in that case we emit throttled plain-text
+    // progress lines instead.
+    interactive: bool,
+    last_progress_log: Option<Instant>,
 }
 
 impl Default for StdoutSink {
@@ -24,7 +32,28 @@ impl StdoutSink {
             progress_bar: None,
             current_phase: String::new(),
             has_bar: false,
+            interactive: std::io::stderr().is_terminal(),
+            last_progress_log: None,
         }
+    }
+
+    /// Non-interactive progress throttle: print at most every 5s, plus
+    /// immediately on a phase change. Returns false when interactive (the
+    /// indicatif bar handles it).
+    fn should_log_progress(&mut self, phase_changed: bool) -> bool {
+        if self.interactive {
+            return false;
+        }
+        let now = Instant::now();
+        let due = phase_changed
+            || self
+                .last_progress_log
+                .map(|t| now.duration_since(t).as_secs() >= 5)
+                .unwrap_or(true);
+        if due {
+            self.last_progress_log = Some(now);
+        }
+        due
     }
 
     fn finish_progress(&mut self) {
@@ -79,8 +108,15 @@ impl OutputSink for StdoutSink {
             ProgressEvent::LoadProgress {
                 loaded,
                 total,
-                rows_per_sec: _,
+                rows_per_sec,
             } => {
+                if !self.interactive {
+                    if self.should_log_progress(false) {
+                        let pct = if *total > 0 { loaded * 100 / total } else { 0 };
+                        println!("  Loading {loaded}/{total} ({pct}%, {rows_per_sec:.0} rows/s)");
+                    }
+                    return;
+                }
                 let pb = self.progress_bar.get_or_insert_with(|| {
                     let pb = indicatif::ProgressBar::new(*total);
                     pb.set_style(
@@ -110,6 +146,27 @@ impl OutputSink for StdoutSink {
                 rss_bytes,
             } => {
                 let phase = Self::strip_phase_prefix(phase);
+
+                if !self.interactive {
+                    let phase_changed = phase != self.current_phase;
+                    if phase_changed {
+                        self.current_phase = phase.to_string();
+                    }
+                    if self.should_log_progress(phase_changed) {
+                        let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
+                        if *tuples_total > 0 {
+                            let pct = *tuples_done * 100 / (*tuples_total).max(1);
+                            println!(
+                                "    {phase} {tuples_done}/{tuples_total} ({pct}%) \
+                                 [1+{workers}w, {rss_mb:.0}MB]"
+                            );
+                        } else {
+                            println!("    {phase} [1+{workers}w, {rss_mb:.0}MB]");
+                        }
+                    }
+                    return;
+                }
+
                 let rss_mb = *rss_bytes as f64 / (1024.0 * 1024.0);
                 let want_bar = *tuples_total > 0;
 
