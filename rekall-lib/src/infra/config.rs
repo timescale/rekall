@@ -31,7 +31,7 @@ fn default_pg_port() -> u16 {
 }
 
 fn default_ubuntu_version() -> String {
-    "24.04".to_string()
+    "26.04".to_string()
 }
 
 fn default_git_ref() -> String {
@@ -95,8 +95,9 @@ pub struct InfraConfig {
     #[serde(default = "default_pg_port")]
     pub pg_port: u16,
     /// Ubuntu LTS version for the AMI (e.g., "24.04", "26.04").
-    /// Default is the most-tested version — switching changes the
-    /// kernel/glibc/compiler baseline and can shift benchmark numbers.
+    /// Defaults to the latest LTS (26.04 "resolute"). Pinning an older
+    /// version changes the kernel/glibc/compiler baseline and can shift
+    /// benchmark numbers, so hold it fixed across a comparison.
     #[serde(default = "default_ubuntu_version")]
     pub ubuntu_version: String,
     #[serde(default)]
@@ -607,10 +608,10 @@ git_ref = "feat/parallel-build"
     }
 
     #[test]
-    fn ubuntu_version_default_is_24_04() {
+    fn ubuntu_version_default_is_latest_lts() {
         let cfg = InfraConfig::default();
-        assert_eq!(cfg.ubuntu_version, "24.04");
-        assert_eq!(cfg.ubuntu_codename(), "noble");
+        assert_eq!(cfg.ubuntu_version, "26.04");
+        assert_eq!(cfg.ubuntu_codename(), "resolute");
         assert!(cfg.validate_ubuntu_version().is_ok());
     }
 
