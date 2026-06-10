@@ -44,49 +44,24 @@ pg_version = 18
 # Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
 extensions = ["pgvector", "meerkat"]
 
-# PG GUC overrides — merged over the auto-computed defaults. Tuned for
-# 768 GiB and parallel index builds.
+# PG GUC overrides — merged over the auto-computed defaults. Only the
+# values that deliberately differ from the defaults are listed here;
+# everything else is derived from the instance type (96 vCPU / 768 GiB):
+# shared_buffers = 192GB, effective_cache_size = 576GB,
+# maintenance_work_mem = RAM/2 = 384GB (plenty for a cohere-10M graph
+# ~35GB), and max_parallel_maintenance_workers = 32 (vCPU/2 capped at 32 —
+# the sublinear-scaling knee for SMT hardware). Run
+# `rekall infra show -c infra/instances/r8i.24xlarge.toml` for the full
+# effective config. All values must be strings.
 [pg_config]
-# 25% of RAM for the buffer cache; the rest of RAM stays free for the
-# OS page cache and the transient maintenance_work_mem below.
-shared_buffers = "192GB"
-effective_cache_size = "576GB"
-
-# Crucial for HNSW build speed: keep the entire graph in memory so
-# pgvector never falls back to its slower on-disk second pass. 256 GiB
-# is far above a cohere-10M graph (~35 GiB) yet safely below RAM even
-# alongside shared_buffers, leaving headroom for larger datasets. It is
-# a ceiling (allocated on demand), and the build is one operation at a
-# time, so it does not multiply across parallel workers.
-maintenance_work_mem = "256GB"
-
-# Index-build parallelism. pgvector's HNSW build uses this value DIRECTLY
-# as its worker count (it calls plan_create_index_workers only as a
-# yes/no gate, then returns max_parallel_maintenance_workers) — so 32
-# here launches 32 workers. Meerkat uses the standard AM path and is
-# heap-size-derated, so on big tables raise the table's parallel_workers
-# reloption to push it past the planner's estimate.
-#
-# 32 is ~1/3 of the 96 vCPUs and stays under the 48 physical cores, so
-# builds don't oversubscribe cores or thrash memory bandwidth. HNSW build
-# scaling is sublinear — workers share one in-memory graph with locking,
-# so going much higher buys little and risks contention; sweep {16,32,48}
-# on the box for the empirical knee. max_parallel_workers and
-# max_worker_processes must exceed this or fewer workers actually launch.
-max_parallel_maintenance_workers = "32"
-max_parallel_workers = "64"
-max_worker_processes = "96"
-max_parallel_workers_per_gather = "16"
-
-# Per-query working memory for the search phase.
+# Larger search-phase working memory than the 256MB default.
 work_mem = "1GB"
 
-# Fewer checkpoints during bulk load + build.
+# Bigger WAL ceiling → far fewer checkpoints during a big bulk load.
 max_wal_size = "64GB"
-min_wal_size = "2GB"
-checkpoint_completion_target = "0.9"
 
-# gp3-class SSD concurrency.
+# This box's gp3 volume is provisioned for high IOPS; raise the prefetch
+# depth above the default 200.
 effective_io_concurrency = "256"
 maintenance_io_concurrency = "256"
 

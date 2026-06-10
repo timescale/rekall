@@ -43,41 +43,21 @@ pg_version = 18
 # Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
 extensions = ["pgvector", "meerkat"]
 
-# PG GUC overrides — merged over the auto-computed defaults. Tuned for
-# 64 GiB and parallel index builds. All values must be strings.
+# PG GUC overrides — merged over the auto-computed defaults. Only the
+# values that deliberately differ from the defaults are listed here;
+# everything else (shared_buffers = RAM/4, maintenance_work_mem = RAM/2,
+# the SMT-aware parallel-worker counts, etc.) is derived from the instance
+# type. Run `rekall infra show -c infra/instances/r8i.2xlarge.toml` to see
+# the full effective config. All values must be strings.
 [pg_config]
-# 25% of RAM for the buffer cache; the rest stays free for the OS page
-# cache and the transient maintenance_work_mem below.
-shared_buffers = "16GB"
-effective_cache_size = "48GB"
-
-# The key knob for HNSW build speed: keep the entire ~18-20 GiB cohere-5M
-# graph in RAM so pgvector never falls back to its slower on-disk pass.
-# 24 GiB covers it with margin and sits safely below 64 GiB even alongside
-# shared_buffers (the build is one operation at a time, allocated on demand,
-# and not multiplied across parallel workers).
-maintenance_work_mem = "24GB"
-
-# Index-build parallelism. pgvector HNSW uses this value directly as its
-# worker count; Meerkat (heap-derated standard AM) is unblocked by the
-# table parallel_workers reloption in the suite's index configs, capped by
-# this value. 4 ≈ the physical core count of an 8-vCPU (4-core, HT) box, so
-# builds don't oversubscribe cores. max_parallel_workers /
-# max_worker_processes must leave room for the maintenance workers.
-max_parallel_maintenance_workers = "4"
-max_parallel_workers = "8"
-max_worker_processes = "8"
-max_parallel_workers_per_gather = "4"
-
-# Per-query working memory for the search phase.
+# Larger search-phase working memory than the 256MB default.
 work_mem = "512MB"
 
-# Fewer checkpoints during bulk load + build.
+# Bigger WAL ceiling → fewer checkpoints during the bulk load.
 max_wal_size = "32GB"
-min_wal_size = "2GB"
-checkpoint_completion_target = "0.9"
 
-# gp3-class SSD concurrency.
+# This box's gp3 volume is provisioned for high IOPS; raise the prefetch
+# depth above the default 200.
 effective_io_concurrency = "256"
 maintenance_io_concurrency = "256"
 
