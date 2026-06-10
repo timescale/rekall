@@ -549,10 +549,13 @@ fn cmd_report(
     output_dir: Option<&std::path::Path>,
     html: bool,
 ) -> anyhow::Result<()> {
+    use anyhow::Context as _;
     use rekall_lib::metrics::{RunSummary, SearchResult};
     use rekall_lib::output::plot;
 
     let out = output_dir.unwrap_or(dir);
+    std::fs::create_dir_all(out)
+        .with_context(|| format!("Cannot create output directory '{}'", out.display()))?;
     let ext = if html { "html" } else { "svg" };
 
     // Scan for result files
@@ -955,7 +958,14 @@ fn cmd_recall(
     }
 
     if let Some(out_path) = plot_output {
+        use anyhow::Context as _;
         use rekall_lib::output::plot;
+
+        if let Some(parent) = out_path.parent().filter(|p| !p.as_os_str().is_empty()) {
+            std::fs::create_dir_all(parent).with_context(|| {
+                format!("Cannot create plot output directory '{}'", parent.display())
+            })?;
+        }
 
         let summary = rekall_lib::metrics::RunSummary {
             dataset: String::new(),
