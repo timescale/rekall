@@ -144,10 +144,15 @@ fn save_ground_truth(
     }
 }
 
-/// Save results for a specific index to its own timestamped file.
+/// Save one result series to its own timestamped file. `series_name` labels
+/// the search results (a query name); `build_index_name` is the physical
+/// index the series searched, used to attach its build stats (the two differ
+/// when several named queries target one index).
+#[allow(clippy::too_many_arguments)]
 fn save_index_results(
     config: &BenchmarkConfig,
-    index_name: &str,
+    series_name: &str,
+    build_index_name: &str,
     timestamp: &str,
     all_results: &[SearchResult],
     all_builds: &[IndexBuildResult],
@@ -156,7 +161,7 @@ fn save_index_results(
 ) {
     let index_results: Vec<_> = all_results
         .iter()
-        .filter(|r| r.index_name == index_name)
+        .filter(|r| r.index_name == series_name)
         .cloned()
         .collect();
 
@@ -166,11 +171,11 @@ fn save_index_results(
 
     let index_builds: Vec<_> = all_builds
         .iter()
-        .filter(|b| b.index_name == index_name)
+        .filter(|b| b.index_name == build_index_name)
         .cloned()
         .collect();
 
-    let path = config.output.index_results_path(index_name, timestamp);
+    let path = config.output.index_results_path(series_name, timestamp);
     if let Some(parent) = std::path::Path::new(&path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -225,9 +230,11 @@ pub async fn run(
     let mut all_results = existing.clone();
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
 
-    for sweep in &config.search.sweep {
+    for query in &config.effective_queries() {
+        // `filter_index` is a physical-index filter (used by the interleaved
+        // build+search path); match it against the index this query targets.
         if let Some(name) = filter_index {
-            if sweep.index != name {
+            if query.index != name {
                 continue;
             }
         }
@@ -235,9 +242,9 @@ pub async fn run(
         let idx_config = config
             .index
             .iter()
-            .find(|i| i.name == sweep.index)
+            .find(|i| i.name == query.index)
             .ok_or_else(|| Error::SweepIndexNotFound {
-                name: sweep.index.clone(),
+                name: query.index.clone(),
             })?;
 
         // Disable all other rekall indexes, enable only the active one
@@ -248,7 +255,7 @@ pub async fn run(
             config.dataset.metric,
         );
         pg_mgmt.connect().await?;
-        let active_idx = pg_mgmt.index_sql_name(&sweep.index);
+        let active_idx = pg_mgmt.index_sql_name(&query.index);
         let all_indexes = pg_mgmt.list_rekall_indexes().await?;
         for idx_sql in &all_indexes {
             if *idx_sql == active_idx {
@@ -266,13 +273,14 @@ pub async fn run(
                 config.dataset.metric,
                 idx_config,
                 None,
+                query.mode,
                 None,
             )
             .await?;
 
         if !backend.index_exists().await? {
             return Err(Error::IndexNotFound {
-                name: sweep.index.clone(),
+                name: query.index.clone(),
             });
         }
 
@@ -287,34 +295,38 @@ pub async fn run(
                 .validate_search_params(&default_gucs_for_validation)
                 .await?;
         }
-        backend.validate_search_params(&sweep.params).await?;
+        backend.validate_search_params(&query.params).await?;
 
         // Validate query plan uses the expected index
         backend
             .validate_query_plan(&queries.row(0).to_vec(), k)
             .await?;
         let _ = progress.send(ProgressEvent::Message {
-            text: format!("Query plan validated for '{}'", sweep.index),
+            text: format!("Query plan validated for '{}'", query.name),
         });
 
-        let param_combos = expand_sweep_params(&sweep.params);
+        // Data-type label (e.g. pgvector `bit`/`halfvec`) — constant per
+        // backend; recorded on each result to separate Pareto series.
+        let data_type = backend.data_type_label();
+
+        let param_combos = expand_sweep_params(&query.params);
 
         for params in &param_combos {
             let params_json = serde_json::to_value(params).unwrap_or_default();
 
             // Skip if already completed in a previous run
-            if is_completed(&all_results, &sweep.index, params) {
+            if is_completed(&all_results, &query.name, params) {
                 let _ = progress.send(ProgressEvent::Message {
                     text: format!(
                         "Skipping '{}' {} (already completed)",
-                        sweep.index, params_json
+                        query.name, params_json
                     ),
                 });
                 continue;
             }
 
             let _ = progress.send(ProgressEvent::SearchStart {
-                index_name: sweep.index.clone(),
+                index_name: query.name.clone(),
                 params: params_json.clone(),
             });
 
@@ -340,7 +352,7 @@ pub async fn run(
                         config.dataset.metric,
                     );
                     pg_evict.connect().await?;
-                    let idx_sql = pg_evict.index_sql_name(&sweep.index);
+                    let idx_sql = pg_evict.index_sql_name(&query.index);
                     pg_evict
                         .evict_relation_buffers(&config.table_name())
                         .await?;
@@ -408,8 +420,9 @@ pub async fn run(
             };
 
             let result = SearchResult {
-                index_name: sweep.index.clone(),
+                index_name: query.name.clone(),
                 index_type: idx_config.index_type.clone(),
+                data_type: data_type.clone(),
                 search_params: params_json.clone(),
                 k,
                 num_queries,
@@ -427,22 +440,23 @@ pub async fn run(
             };
 
             let _ = progress.send(ProgressEvent::SearchEnd {
-                index_name: sweep.index.clone(),
+                index_name: query.name.clone(),
                 recall: result.avg_recall,
                 qps: result.qps,
             });
 
             info!(
                 "  {} [{}]: recall={:.4} QPS={:.0}",
-                sweep.index, params_json, result.avg_recall, result.qps
+                query.name, params_json, result.avg_recall, result.qps
             );
 
             all_results.push(result);
 
-            // Save incrementally per-index so progress survives crashes
+            // Save incrementally per result-series so progress survives crashes
             save_index_results(
                 config,
-                &sweep.index,
+                &query.name,
+                &query.index,
                 &timestamp,
                 &all_results,
                 index_builds,

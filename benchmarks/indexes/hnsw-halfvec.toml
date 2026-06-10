@@ -1,12 +1,13 @@
-# pgvector HNSW on a halfvec (f16) column. ~2x smaller index than the
-# full-precision `vector` build; small recall loss in exchange.
+# pgvector HNSW over a halfvec (f16) expression index (`v::halfvec(N)`).
+# ~2x smaller index than the full-precision `vector` build; small recall
+# loss in exchange. No materialized column — indexed directly on `v`.
 [[index]]
 type = "pgvector-hnsw"
 name = "hnsw-halfvec"
 [index.params]
 m = 16
 ef_construction = 200
-column_type = "halfvec"
+encoding = "halfvec"
 
 [[search.sweep]]
 index = "hnsw-halfvec"

@@ -1,9 +1,18 @@
-# pgvector HNSW M=24 on a binary-quantized bit column (`binary_quantize(v)`),
-# indexed with `bit_hamming_ops`. Same graph degree (m=24) and build effort
-# (ef_construction=200) as hnsw-m24.toml, so a comparison against it isolates
-# the effect of binary quantization (~32x smaller index, lower recall) from
-# the graph structure. Use a higher ef_search to claw back recall lost to
-# the bit distance.
+# pgvector HNSW M=24 over a binary-quantized expression index
+# (`binary_quantize(v)::bit(768)` with `bit_hamming_ops`) — pgvector's
+# documented recommended setup for binary quantization. No materialized
+# column: the index is built directly on the expression, ~32x smaller than
+# the full-precision graph. Same graph degree (m=24) and build effort
+# (ef_construction=200) as hnsw-m24.toml, so comparing against it isolates
+# the effect of binary quantization from the graph structure.
+#
+# The one index is searched two ways (many [[query]] → one index), each
+# reported as its own series:
+#   - bq-raw    : single-stage Hamming ranking. Fast but low recall —
+#                 Hamming over sign bits is only a coarse angular proxy.
+#   - bq-rerank : two-stage. Over-fetch `rerank_pool` candidates by Hamming
+#                 from the same index, then re-rank them by full-precision
+#                 cosine on `v`. The pool is the recall knob.
 [[index]]
 type = "pgvector-hnsw"
 name = "hnsw-m24-bq"
@@ -12,7 +21,22 @@ m = 24
 ef_construction = 200
 column_type = "bit"
 
-[[search.sweep]]
+# Single-stage Hamming query — the raw recall/QPS curve over ef_search.
+[[query]]
+name = "hnsw-m24-bq-raw"
 index = "hnsw-m24-bq"
-[search.sweep.params]
+mode = "raw"
+[query.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
+
+# Two-stage rerank query. `rerank_pool` (the inner Hamming LIMIT) is the
+# recall knob. The HNSW scan only yields up to ~ef_search candidates, so
+# ef_search is pinned at/above the largest pool to let the pool drive recall;
+# pin a lower ef_search to trade recall for a faster scan.
+[[query]]
+name = "hnsw-m24-bq-rerank"
+index = "hnsw-m24-bq"
+mode = "rerank"
+[query.params]
+"hnsw.ef_search" = [1000]
+rerank_pool = [10, 20, 40, 80, 120, 200, 400, 800, 1000]

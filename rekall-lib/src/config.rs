@@ -188,6 +188,42 @@ pub struct SweepConfig {
     pub params: HashMap<String, Vec<toml::Value>>,
 }
 
+/// How a `[[query]]` searches its target index.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum QueryMode {
+    /// Single-stage search against the index in its native distance — the
+    /// ordinary `ORDER BY <col> <op> $1 LIMIT k`. For a binary-quantized
+    /// (`bit`) index this is the "raw" Hamming query. Aliased as `raw`.
+    #[default]
+    #[serde(alias = "raw")]
+    Default,
+    /// Two-stage search: over-fetch a candidate pool from the index, then
+    /// re-rank that pool by full-precision distance on the original `v`.
+    /// The pool size is the swept `rerank_pool` param (the recall knob).
+    Rerank,
+}
+
+/// Reserved sweep-param key carrying the rerank candidate-pool size.
+/// Consumed by the backend (bound as a query `LIMIT`), not set as a GUC.
+pub const RERANK_POOL_KEY: &str = "rerank_pool";
+
+/// A named search to run against a built index. Many queries can target one
+/// index (e.g. a raw and a rerank series over the same binary index), each
+/// reported as its own result series under `name`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QueryConfig {
+    /// Result-series label (the `index_name` in reports/plots).
+    pub name: String,
+    /// Name of the `[[index]]` this query searches.
+    pub index: String,
+    #[serde(default)]
+    pub mode: QueryMode,
+    /// Swept search params (GUCs, plus the reserved `rerank_pool`).
+    #[serde(default)]
+    pub params: HashMap<String, Vec<toml::Value>>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OutputConfig {
     #[serde(default = "default_formats")]
@@ -232,6 +268,10 @@ pub struct BenchmarkConfig {
     pub load: LoadConfig,
     #[serde(default)]
     pub index: Vec<IndexConfig>,
+    /// First-class named searches (many queries → one index). When empty,
+    /// queries are synthesized from `[[search.sweep]]` for back-compat.
+    #[serde(default)]
+    pub query: Vec<QueryConfig>,
     #[serde(default)]
     pub search: SearchConfig,
     #[serde(default)]
@@ -369,11 +409,35 @@ impl BenchmarkConfig {
         Ok(config)
     }
 
+    /// The searches to run: explicit `[[query]]` entries, plus a default
+    /// (single-stage) query synthesized from each `[[search.sweep]]`. This
+    /// keeps sweep-only configs working while letting new configs map many
+    /// named queries onto one index.
+    pub fn effective_queries(&self) -> Vec<QueryConfig> {
+        let mut queries = self.query.clone();
+        for sweep in &self.search.sweep {
+            queries.push(QueryConfig {
+                name: sweep.index.clone(),
+                index: sweep.index.clone(),
+                mode: QueryMode::Default,
+                params: sweep.params.clone(),
+            });
+        }
+        queries
+    }
+
     fn validate(&self) -> Result<()> {
         for sweep in &self.search.sweep {
             if !self.index.iter().any(|idx| idx.name == sweep.index) {
                 return Err(Error::SweepIndexNotFound {
                     name: sweep.index.clone(),
+                });
+            }
+        }
+        for query in &self.query {
+            if !self.index.iter().any(|idx| idx.name == query.index) {
+                return Err(Error::SweepIndexNotFound {
+                    name: query.index.clone(),
                 });
             }
         }
@@ -656,6 +720,8 @@ fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Resu
         #[serde(default)]
         index: Vec<IndexConfig>,
         #[serde(default)]
+        query: Vec<QueryConfig>,
+        #[serde(default)]
         search: Option<SearchFragment>,
     }
 
@@ -681,6 +747,7 @@ fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Resu
         })?;
 
         config.index.extend(fragment.index);
+        config.query.extend(fragment.query);
         if let Some(search) = fragment.search {
             config.search.sweep.extend(search.sweep);
         }
@@ -850,6 +917,93 @@ json_path = "out.json"
     fn table_name_explicit() {
         let cfg = parse_config(FULL_CONFIG);
         assert_eq!(cfg.table_name(), "my_table");
+    }
+
+    const QUERY_CONFIG: &str = r#"
+[dataset]
+name = "test-ds"
+path = "data/test.hdf5"
+dimension = 768
+metric = "angular"
+
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-bq"
+[index.params]
+column_type = "bit"
+
+[[query]]
+name = "bq-raw"
+index = "hnsw-bq"
+mode = "raw"
+[query.params]
+"hnsw.ef_search" = [40, 80]
+
+[[query]]
+name = "bq-rerank"
+index = "hnsw-bq"
+mode = "rerank"
+[query.params]
+"hnsw.ef_search" = [40, 80]
+rerank_pool = [100, 200]
+"#;
+
+    #[test]
+    fn parse_first_class_queries() {
+        let cfg = parse_config(QUERY_CONFIG);
+        assert_eq!(cfg.query.len(), 2);
+        assert_eq!(cfg.query[0].name, "bq-raw");
+        assert_eq!(cfg.query[0].index, "hnsw-bq");
+        // `raw` is an accepted alias for the default single-stage mode.
+        assert_eq!(cfg.query[0].mode, QueryMode::Default);
+        assert_eq!(cfg.query[1].mode, QueryMode::Rerank);
+        assert_eq!(cfg.query[1].params[RERANK_POOL_KEY].len(), 2);
+    }
+
+    #[test]
+    fn query_mode_defaults_to_default() {
+        let q: QueryConfig = toml::from_str("name = \"q\"\nindex = \"i\"").unwrap();
+        assert_eq!(q.mode, QueryMode::Default);
+    }
+
+    #[test]
+    fn effective_queries_uses_explicit_queries() {
+        let cfg = parse_config(QUERY_CONFIG);
+        let queries = cfg.effective_queries();
+        // No sweeps → exactly the two explicit queries.
+        assert_eq!(queries.len(), 2);
+        assert_eq!(queries[0].name, "bq-raw");
+    }
+
+    #[test]
+    fn effective_queries_synthesizes_from_sweeps() {
+        let cfg = parse_config(FULL_CONFIG);
+        // FULL_CONFIG has 2 sweeps and no [[query]] entries.
+        assert!(cfg.query.is_empty());
+        let queries = cfg.effective_queries();
+        assert_eq!(queries.len(), 2);
+        // Synthesized queries are named after the index, single-stage.
+        assert_eq!(queries[0].name, queries[0].index);
+        assert_eq!(queries[0].mode, QueryMode::Default);
+    }
+
+    #[test]
+    fn validate_rejects_query_with_unknown_index() {
+        let bad = r#"
+[dataset]
+name = "test-ds"
+path = "data/test.hdf5"
+dimension = 768
+metric = "angular"
+
+[[query]]
+name = "q"
+index = "does-not-exist"
+"#;
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), bad).unwrap();
+        let err = BenchmarkConfig::from_file(tmp.path());
+        assert!(matches!(err, Err(Error::SweepIndexNotFound { .. })));
     }
 
     #[test]

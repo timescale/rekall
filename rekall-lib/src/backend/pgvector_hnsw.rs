@@ -1,58 +1,68 @@
 //! pgvector HNSW backend.
 //!
-//! Supports three column types via the `column_type` param:
+//! Supports three operand encodings via the `encoding` param (legacy alias
+//! `column_type`):
 //!   - `vector`  (default) — full f32 vectors, indexed with `vector_*_ops`.
-//!   - `halfvec`           — f16 half-precision, ~2x smaller index.
-//!   - `bit`               — binary-quantized via `binary_quantize(v)`,
-//!     ~32x smaller index, indexed with `bit_hamming_ops`.
+//!   - `halfvec`           — f16 half-precision via `v::halfvec(N)`,
+//!     ~2x smaller index.
+//!   - `bit`               — binary-quantized via `binary_quantize(v)::bit(N)`,
+//!     ~32x smaller index, ranked by Hamming (`bit_hamming_ops`).
 //!
-//! For non-vector variants the backend `ALTER TABLE`s a quantized column
-//! into the shared rekall table, populates it from `v`, then builds the
-//! HNSW index on the quantized column. The plain `v` column is never
-//! modified, so other backends operating on the same table see the
-//! schema they expect. The quantized column is dropped in `drop_index`
-//! to keep sweeps idempotent.
+//! All three follow pgvector's documented recommendation and build
+//! **expression indexes** directly over `v` (e.g.
+//! `((binary_quantize(v)::bit(N)) bit_hamming_ops)`) — no materialized
+//! column is ever added. `vector` indexes the bare `v` column. The shared
+//! rekall table's schema is never modified, so other backends on the same
+//! table see exactly what they expect.
+//!
+//! A quantized (`halfvec`/`bit`) index can be searched two ways (see
+//! [`QueryMode`]): the raw single-stage query in the index's own distance,
+//! or a two-stage `rerank` that over-fetches a candidate pool from the index
+//! then re-orders it by full-precision distance on `v`. The pool size is the
+//! swept `rerank_pool` param.
+
+use std::sync::atomic::{AtomicI64, Ordering};
 
 use async_trait::async_trait;
+use postgres_types::Type;
 use serde::{Deserialize, Serialize};
 
-use crate::config::{ConnectionConfig, IndexConfig, Metric};
-use crate::error::Result;
+use crate::config::{ConnectionConfig, IndexConfig, Metric, QueryMode, RERANK_POOL_KEY};
+use crate::error::{Error, Result};
 
+use super::pg_vector_type::PgVector;
 use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
 
+/// The operand encoding the HNSW index is built over. All three are
+/// expression indexes (or, for `Vector`, the bare `v` column) — none
+/// materializes a column on the shared rekall table.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum ColumnType {
+pub enum Encoding {
+    /// Full f32 vectors — index `v` directly with `vector_*_ops`.
     #[default]
     Vector,
+    /// f16 half-precision via `v::halfvec(N)` — ~2x smaller index.
     Halfvec,
+    /// 1-bit binary quantization via `binary_quantize(v)::bit(N)` — ~32x
+    /// smaller, ranked by Hamming distance (`bit_hamming_ops`).
     Bit,
 }
 
-impl ColumnType {
-    /// Column added to the rekall table for non-Vector variants.
-    /// Vector indexes the existing `v` column directly.
-    fn quantized_column(self) -> Option<&'static str> {
-        match self {
-            Self::Vector => None,
-            Self::Halfvec => Some("v_half"),
-            Self::Bit => Some("v_bit"),
-        }
+impl Encoding {
+    /// Parenthesized expression to index, or `None` for `Vector` (which
+    /// indexes the bare `v` column). `build_create_index_sql` emits
+    /// `(<this> <opclass>)`; the parens make pgvector treat it as an
+    /// expression index, e.g. `((v::halfvec(N)) halfvec_cosine_ops)`.
+    fn index_expr(self, dim: u32) -> Option<String> {
+        self.order_expr(dim).map(|e| format!("({e})"))
     }
 
-    /// PG type used in `ALTER TABLE ADD COLUMN ... TYPE(dim)`.
-    fn quantized_type(self) -> Option<&'static str> {
-        match self {
-            Self::Vector => None,
-            Self::Halfvec => Some("halfvec"),
-            Self::Bit => Some("bit"),
-        }
-    }
-
-    /// SQL expression that converts `v` to the quantized column value.
-    fn quantize_expr_from_v(self, dim: u32) -> Option<String> {
+    /// The encoded operand as it appears in a query `ORDER BY` (no outer
+    /// parens), e.g. `binary_quantize(v)::bit(N)`. `None` for `Vector`,
+    /// which is queried by column name.
+    fn order_expr(self, dim: u32) -> Option<String> {
         match self {
             Self::Vector => None,
             Self::Halfvec => Some(format!("v::halfvec({dim})")),
@@ -60,7 +70,22 @@ impl ColumnType {
         }
     }
 
-    /// Operator class for `CREATE INDEX ... USING hnsw (col opclass)`.
+    /// Whether the encoding is lossy — i.e. a `rerank` query can recover
+    /// recall by re-scoring the candidate pool on full-precision `v`.
+    fn is_quantized(self) -> bool {
+        self != Self::Vector
+    }
+
+    /// Full-precision distance operator on `v`, used by the rerank stage
+    /// (which re-orders the candidate pool by the true metric).
+    fn full_order_op(self, metric: Metric) -> &'static str {
+        match metric {
+            Metric::Angular => "<=>",
+            Metric::Euclidean => "<->",
+        }
+    }
+
+    /// Operator class for `CREATE INDEX ... USING hnsw (target opclass)`.
     /// Bit always uses hamming; the (rare) jaccard case isn't exposed.
     fn opclass(self, metric: Metric) -> &'static str {
         match (self, metric) {
@@ -72,7 +97,8 @@ impl ColumnType {
         }
     }
 
-    /// Distance operator used in `ORDER BY col <op> $1`.
+    /// The index's own ranking operator, used in
+    /// `ORDER BY <order_expr> <op> <bind>` (and `v <op> $1` for `Vector`).
     fn order_op(self, metric: Metric) -> &'static str {
         match (self, metric) {
             (Self::Vector | Self::Halfvec, Metric::Angular) => "<=>",
@@ -81,9 +107,9 @@ impl ColumnType {
         }
     }
 
-    /// SQL fragment that casts the bound `$1` (sent as a `vector`) to
-    /// the operand type the index expects. Used in the prepared search
-    /// statement for non-vector variants.
+    /// SQL fragment that casts the bound `$1` (sent as a `vector`) to the
+    /// operand type the index expects. Used in the prepared search
+    /// statement for the quantized encodings.
     fn bind_expr(self, dim: u32) -> String {
         match self {
             Self::Vector => "$1".to_string(),
@@ -99,8 +125,9 @@ struct HnswParams {
     m: u32,
     #[serde(default = "default_ef_construction")]
     ef_construction: u32,
-    #[serde(default)]
-    column_type: ColumnType,
+    /// Operand encoding. `column_type` is accepted as a legacy alias.
+    #[serde(default, alias = "column_type")]
+    encoding: Encoding,
 }
 
 fn default_m() -> u32 {
@@ -114,6 +141,12 @@ pub struct PgvectorHnswBackend {
     pg: PgConnection,
     name: String,
     params: HnswParams,
+    /// Search shape this backend instance is wired for. Determines the
+    /// prepared statement built in `connect()`.
+    query_mode: QueryMode,
+    /// Candidate-pool size for rerank queries (bound as `LIMIT $3`). Updated
+    /// per sweep point via `set_search_params`'s reserved `rerank_pool` key.
+    rerank_pool: AtomicI64,
 }
 
 impl PgvectorHnswBackend {
@@ -124,6 +157,7 @@ impl PgvectorHnswBackend {
         metric: Metric,
         idx: &IndexConfig,
         cancel_registry: Option<&crate::CancelRegistry>,
+        query_mode: QueryMode,
     ) -> Result<Self> {
         super::create_pg_backend(
             conn,
@@ -133,9 +167,21 @@ impl PgvectorHnswBackend {
             idx,
             cancel_registry,
             "pgvector-hnsw",
-            |pg, name, params| Self { pg, name, params },
+            move |pg, name, params| Self {
+                pg,
+                name,
+                params,
+                query_mode,
+                rerank_pool: AtomicI64::new(0),
+            },
         )
         .await
+    }
+
+    /// Whether this instance runs the two-stage rerank query (the quantized
+    /// `halfvec`/`bit` encodings support it; `vector` is already exact).
+    fn is_rerank(&self) -> bool {
+        self.query_mode == QueryMode::Rerank && self.params.encoding.is_quantized()
     }
 }
 
@@ -152,7 +198,7 @@ impl IndexBackend for PgvectorHnswBackend {
     }
 
     fn order_op(&self) -> &'static str {
-        self.params.column_type.order_op(self.pg.metric)
+        self.params.encoding.order_op(self.pg.metric)
     }
 
     fn index_method(&self) -> &str {
@@ -160,7 +206,7 @@ impl IndexBackend for PgvectorHnswBackend {
     }
 
     fn opclass(&self) -> &str {
-        self.params.column_type.opclass(self.pg.metric)
+        self.params.encoding.opclass(self.pg.metric)
     }
 
     fn index_options(&self) -> Vec<(&'static str, String)> {
@@ -174,29 +220,116 @@ impl IndexBackend for PgvectorHnswBackend {
         serde_json::to_value(&self.params).unwrap_or_default()
     }
 
-    fn derived_column(&self) -> Option<&str> {
-        self.params.column_type.quantized_column()
+    /// Separate Pareto series by operand encoding. Full `vector` keeps the
+    /// bare "pgvector HNSW" family label; the quantized encodings get their
+    /// own frontier (`halfvec` / `bit`).
+    fn data_type_label(&self) -> Option<String> {
+        match self.params.encoding {
+            Encoding::Vector => None,
+            Encoding::Halfvec => Some("halfvec".to_string()),
+            Encoding::Bit => Some("bit".to_string()),
+        }
     }
 
-    fn derived_column_type(&self) -> Option<String> {
+    /// `vector` indexes the bare `v` column; `halfvec`/`bit` index the
+    /// parenthesized cast/quantize expression (an expression index, no
+    /// materialized column). `derived_column` stays `None` for all three.
+    fn index_target(&self) -> String {
         self.params
-            .column_type
-            .quantized_type()
-            .map(|ty| format!("{ty}({})", self.pg.dimension))
+            .encoding
+            .index_expr(self.pg.dimension)
+            .unwrap_or_else(|| "v".to_string())
     }
 
-    fn derive_from_v_expr(&self) -> Option<String> {
-        self.params
-            .column_type
-            .quantize_expr_from_v(self.pg.dimension)
+    /// Quantized encodings (`halfvec`/`bit`) order by an expression — and
+    /// the `rerank` variant wraps a candidate-pool subquery — so build
+    /// their SQL explicitly. `vector` falls back to the default template.
+    fn custom_search_sql(&self) -> Option<(String, Vec<Type>)> {
+        let dim = self.pg.dimension;
+        let order_expr = self.params.encoding.order_expr(dim)?;
+        let bind = self.params.encoding.bind_expr(dim);
+        let op = self.params.encoding.order_op(self.pg.metric);
+        let table = &self.pg.table_name;
+
+        if self.is_rerank() {
+            // Over-fetch `$3` candidates in the index's own distance, then
+            // re-rank that pool by full-precision distance on `v` (pgvector's
+            // recommended two-stage quantized query).
+            let full = self.params.encoding.full_order_op(self.pg.metric);
+            let sql = format!(
+                "SELECT id FROM ( \
+                     SELECT id, v FROM {table} \
+                     ORDER BY {order_expr} {op} {bind} \
+                     LIMIT $3 \
+                 ) candidates \
+                 ORDER BY v {full} $1 \
+                 LIMIT $2"
+            );
+            Some((sql, vec![Type::INT8]))
+        } else {
+            let sql = format!(
+                "SELECT id FROM {table} \
+                 ORDER BY {order_expr} {op} {bind} \
+                 LIMIT $2"
+            );
+            Some((sql, Vec::new()))
+        }
     }
 
-    fn query_column(&self) -> &'static str {
-        self.params.column_type.quantized_column().unwrap_or("v")
+    async fn query(&self, vector: &[f32], k: usize) -> Result<Vec<i64>> {
+        let k_i64 = k as i64;
+        let rows = if self.is_rerank() {
+            let pool = self.rerank_pool.load(Ordering::Relaxed).max(k_i64);
+            self.pg
+                .client()
+                .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64, &pool])
+                .await?
+        } else {
+            self.pg
+                .client()
+                .query(self.pg.query_stmt(), &[&PgVector(vector), &k_i64])
+                .await?
+        };
+        Ok(rows.iter().map(|r| r.get::<_, i64>(0)).collect())
     }
 
-    fn query_bind(&self) -> String {
-        self.params.column_type.bind_expr(self.pg.dimension)
+    /// Intercept the reserved `rerank_pool` key (the rerank candidate-pool
+    /// `LIMIT`, bound at query time) so it isn't issued as a `SET`. All
+    /// other params are ordinary search GUCs.
+    async fn set_search_params(
+        &self,
+        params: &std::collections::HashMap<String, toml::Value>,
+    ) -> Result<()> {
+        let mut gucs = params.clone();
+        if let Some(value) = gucs.remove(RERANK_POOL_KEY) {
+            let pool = value.as_integer().ok_or_else(|| {
+                Error::Config(format!(
+                    "'{RERANK_POOL_KEY}' must be an integer, got {value}"
+                ))
+            })?;
+            self.rerank_pool.store(pool, Ordering::Relaxed);
+        }
+        self.pg.set_gucs(&gucs).await
+    }
+
+    async fn validate_search_params(
+        &self,
+        params: &std::collections::HashMap<String, Vec<toml::Value>>,
+    ) -> Result<()> {
+        let mut gucs = params.clone();
+        if let Some(values) = gucs.remove(RERANK_POOL_KEY) {
+            if values.is_empty() {
+                return Err(Error::Config(format!("'{RERANK_POOL_KEY}' has no values")));
+            }
+            for v in &values {
+                if v.as_integer().is_none() {
+                    return Err(Error::Config(format!(
+                        "'{RERANK_POOL_KEY}' values must be integers, got {v}"
+                    )));
+                }
+            }
+        }
+        self.pg.validate_gucs(&gucs).await
     }
 }
 
@@ -205,72 +338,100 @@ mod tests {
     use super::*;
 
     #[test]
-    fn params_default_column_type_is_vector() {
+    fn params_default_encoding_is_vector() {
         let v: HnswParams = toml::from_str("").unwrap();
         assert_eq!(v.m, 16);
         assert_eq!(v.ef_construction, 200);
-        assert_eq!(v.column_type, ColumnType::Vector);
+        assert_eq!(v.encoding, Encoding::Vector);
     }
 
     #[test]
     fn params_parse_halfvec() {
-        let v: HnswParams = toml::from_str("column_type = \"halfvec\"").unwrap();
-        assert_eq!(v.column_type, ColumnType::Halfvec);
+        let v: HnswParams = toml::from_str("encoding = \"halfvec\"").unwrap();
+        assert_eq!(v.encoding, Encoding::Halfvec);
     }
 
     #[test]
     fn params_parse_bit() {
-        let v: HnswParams = toml::from_str("column_type = \"bit\"").unwrap();
-        assert_eq!(v.column_type, ColumnType::Bit);
+        let v: HnswParams = toml::from_str("encoding = \"bit\"").unwrap();
+        assert_eq!(v.encoding, Encoding::Bit);
     }
 
     #[test]
-    fn opclass_matches_column_type() {
+    fn column_type_is_accepted_as_legacy_alias() {
+        let v: HnswParams = toml::from_str("column_type = \"bit\"").unwrap();
+        assert_eq!(v.encoding, Encoding::Bit);
+    }
+
+    #[test]
+    fn opclass_matches_encoding() {
         assert_eq!(
-            ColumnType::Vector.opclass(Metric::Angular),
+            Encoding::Vector.opclass(Metric::Angular),
             "vector_cosine_ops"
         );
         assert_eq!(
-            ColumnType::Halfvec.opclass(Metric::Angular),
+            Encoding::Halfvec.opclass(Metric::Angular),
             "halfvec_cosine_ops"
         );
         assert_eq!(
-            ColumnType::Halfvec.opclass(Metric::Euclidean),
+            Encoding::Halfvec.opclass(Metric::Euclidean),
             "halfvec_l2_ops"
         );
-        assert_eq!(ColumnType::Bit.opclass(Metric::Angular), "bit_hamming_ops");
-        assert_eq!(
-            ColumnType::Bit.opclass(Metric::Euclidean),
-            "bit_hamming_ops"
-        );
+        assert_eq!(Encoding::Bit.opclass(Metric::Angular), "bit_hamming_ops");
+        assert_eq!(Encoding::Bit.opclass(Metric::Euclidean), "bit_hamming_ops");
     }
 
     #[test]
     fn order_op_for_bit_is_hamming() {
-        assert_eq!(ColumnType::Bit.order_op(Metric::Angular), "<~>");
-        assert_eq!(ColumnType::Bit.order_op(Metric::Euclidean), "<~>");
+        assert_eq!(Encoding::Bit.order_op(Metric::Angular), "<~>");
+        assert_eq!(Encoding::Bit.order_op(Metric::Euclidean), "<~>");
     }
 
     #[test]
-    fn quantize_expr_for_halfvec_includes_dim() {
+    fn index_expr_parenthesizes_quantized_encodings() {
+        // Quantized encodings are expression indexes — the parens make
+        // pgvector treat them as such; `vector` indexes the bare column.
         assert_eq!(
-            ColumnType::Halfvec.quantize_expr_from_v(768).as_deref(),
-            Some("v::halfvec(768)")
+            Encoding::Bit.index_expr(768).as_deref(),
+            Some("(binary_quantize(v)::bit(768))")
         );
+        assert_eq!(
+            Encoding::Halfvec.index_expr(768).as_deref(),
+            Some("(v::halfvec(768))")
+        );
+        assert!(Encoding::Vector.index_expr(768).is_none());
     }
 
     #[test]
-    fn quantize_expr_for_bit_uses_binary_quantize() {
+    fn order_expr_has_no_outer_parens() {
         assert_eq!(
-            ColumnType::Bit.quantize_expr_from_v(768).as_deref(),
+            Encoding::Bit.order_expr(768).as_deref(),
             Some("binary_quantize(v)::bit(768)")
         );
+        assert_eq!(
+            Encoding::Halfvec.order_expr(768).as_deref(),
+            Some("v::halfvec(768)")
+        );
+        assert!(Encoding::Vector.order_expr(768).is_none());
+    }
+
+    #[test]
+    fn full_order_op_uses_true_metric() {
+        assert_eq!(Encoding::Bit.full_order_op(Metric::Angular), "<=>");
+        assert_eq!(Encoding::Bit.full_order_op(Metric::Euclidean), "<->");
+    }
+
+    #[test]
+    fn is_quantized_only_for_halfvec_and_bit() {
+        assert!(!Encoding::Vector.is_quantized());
+        assert!(Encoding::Halfvec.is_quantized());
+        assert!(Encoding::Bit.is_quantized());
     }
 
     #[test]
     fn bind_expr_for_bit_wraps_binary_quantize() {
         assert_eq!(
-            ColumnType::Bit.bind_expr(768),
+            Encoding::Bit.bind_expr(768),
             "binary_quantize($1::vector(768))::bit(768)"
         );
     }
@@ -280,24 +441,13 @@ mod tests {
         // The bound parameter is sent as `vector`; cast it to halfvec
         // on the right of the operator so the index expression matches.
         assert_eq!(
-            ColumnType::Halfvec.bind_expr(768),
+            Encoding::Halfvec.bind_expr(768),
             "($1::vector(768))::halfvec(768)"
         );
     }
 
     #[test]
     fn bind_expr_for_vector_is_plain_placeholder() {
-        assert_eq!(ColumnType::Vector.bind_expr(768), "$1");
-    }
-
-    #[test]
-    fn quantized_column_for_vector_is_none() {
-        assert!(ColumnType::Vector.quantized_column().is_none());
-    }
-
-    #[test]
-    fn quantized_column_for_halfvec_and_bit() {
-        assert_eq!(ColumnType::Halfvec.quantized_column(), Some("v_half"));
-        assert_eq!(ColumnType::Bit.quantized_column(), Some("v_bit"));
+        assert_eq!(Encoding::Vector.bind_expr(768), "$1");
     }
 }

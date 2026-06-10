@@ -1,16 +1,31 @@
-# pgvector HNSW on a binary-quantized bit column (`binary_quantize(v)`),
-# indexed with `bit_hamming_ops`. ~32x smaller index; significant recall
-# loss — most useful as a coarse candidate filter or for memory-bound
-# workloads where the recall floor is acceptable.
+# pgvector HNSW over a binary-quantized expression index
+# (`binary_quantize(v)::bit(N)` with `bit_hamming_ops`) — pgvector's
+# documented recommended setup. ~32x smaller index; raw Hamming recall is
+# low, so the two-stage rerank query is usually what you want. No
+# materialized column — indexed directly on `v`.
 [[index]]
 type = "pgvector-hnsw"
 name = "hnsw-bq"
 [index.params]
 m = 16
 ef_construction = 200
-column_type = "bit"
+encoding = "bit"
 
-[[search.sweep]]
+# Raw single-stage Hamming ranking (fast, low recall).
+[[query]]
+name = "hnsw-bq-raw"
 index = "hnsw-bq"
-[search.sweep.params]
+mode = "raw"
+[query.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
+
+# Two-stage rerank: over-fetch `rerank_pool` candidates by Hamming, then
+# re-rank by full-precision cosine on `v`. The pool is the recall knob;
+# ef_search is pinned high enough to feed the largest pool.
+[[query]]
+name = "hnsw-bq-rerank"
+index = "hnsw-bq"
+mode = "rerank"
+[query.params]
+"hnsw.ef_search" = [1000]
+rerank_pool = [10, 20, 40, 80, 120, 200, 400, 800, 1000]

@@ -12,7 +12,7 @@ use async_trait::async_trait;
 use postgres_types::Type;
 use tracing::info;
 
-use crate::config::{ConnectionConfig, IndexConfig, Metric};
+use crate::config::{ConnectionConfig, IndexConfig, Metric, QueryMode};
 use crate::error::{Error, Result};
 use crate::metrics::IndexBuildResult;
 use crate::progress::ProgressTx;
@@ -148,6 +148,14 @@ pub trait IndexBackend: Send + Sync {
         serde_json::json!({})
     }
 
+    /// A short data-type/variant descriptor recorded on each `SearchResult`
+    /// to separate Pareto series within one index family (e.g. pgvector's
+    /// `bit` vs `halfvec` vs full `vector`). `None` groups the backend under
+    /// its bare algorithm family. Default: `None`.
+    fn data_type_label(&self) -> Option<String> {
+        None
+    }
+
     /// Derived column to drop alongside the index, if any. Default: none.
     fn derived_column(&self) -> Option<&str> {
         None
@@ -164,6 +172,15 @@ pub trait IndexBackend: Send + Sync {
     /// `Some` when `derived_column` is `Some`.
     fn derive_from_v_expr(&self) -> Option<String> {
         None
+    }
+
+    /// The column or expression to index, placed in
+    /// `CREATE INDEX ... (<target> <opclass>)`. Default: the derived
+    /// column if any, else `v`. Expression indexes (e.g. pgvector's
+    /// `binary_quantize(v)::bit(N)`) return the parenthesized expression
+    /// `(...)` so the emitted DDL is `((<expr>) <opclass>)`.
+    fn index_target(&self) -> String {
+        self.derived_column().unwrap_or("v").to_string()
     }
 
     /// Column expression in the standard search query's
@@ -253,7 +270,7 @@ pub trait IndexBackend: Send + Sync {
             &self.pg().index_sql_name(self.index_name()),
             &self.pg().table_name,
             self.index_method(),
-            self.derived_column().unwrap_or("v"),
+            &self.index_target(),
             self.opclass(),
             &self.index_options(),
         );
@@ -400,6 +417,7 @@ impl BackendRegistry {
         metric: Metric,
         index_config: &IndexConfig,
         cancel_registry: Option<&crate::CancelRegistry>,
+        query_mode: QueryMode,
         progress: Option<ProgressTx>,
     ) -> Result<Box<dyn IndexBackend>> {
         let mut backend: Box<dyn IndexBackend> = match index_config.index_type.as_str() {
@@ -423,6 +441,7 @@ impl BackendRegistry {
                     metric,
                     index_config,
                     cancel_registry,
+                    query_mode,
                 )
                 .await?;
                 Box::new(b)

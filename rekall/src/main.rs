@@ -1458,10 +1458,9 @@ fn show_all_configs() {
                         .join(", ")
                 );
                 let sweep_points: usize = cfg
-                    .search
-                    .sweep
+                    .effective_queries()
                     .iter()
-                    .map(|s| s.params.values().map(|v| v.len()).product::<usize>().max(1))
+                    .map(|q| q.params.values().map(|v| v.len()).product::<usize>().max(1))
                     .sum();
                 println!(
                     "  search: k={}, {} sweep points",
@@ -2372,20 +2371,29 @@ fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>
         println!("    - {} (type: {})", idx.name, idx.index_type);
     }
 
-    println!("\n  Search sweeps:");
-    for sweep in &cfg.search.sweep {
-        if index.is_some_and(|n| n != sweep.index) {
+    println!("\n  Queries:");
+    for query in &cfg.effective_queries() {
+        if index.is_some_and(|n| n != query.index) {
             continue;
         }
-        let n_combos: usize = sweep
+        let n_combos: usize = query
             .params
             .values()
             .map(|v| v.len())
             .product::<usize>()
             .max(1);
+        let mode = match query.mode {
+            rekall_lib::config::QueryMode::Default => "raw",
+            rekall_lib::config::QueryMode::Rerank => "rerank",
+        };
+        let on = if query.name == query.index {
+            String::new()
+        } else {
+            format!(" on '{}'", query.index)
+        };
         println!(
-            "    - {} ({} parameter combinations)",
-            sweep.index, n_combos
+            "    - {} [{mode}]{on} ({n_combos} parameter combinations)",
+            query.name,
         );
     }
 }

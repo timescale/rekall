@@ -43,6 +43,11 @@ pub struct QueryResult {
 pub struct SearchResult {
     pub index_name: String,
     pub index_type: String,
+    /// Data-type/variant descriptor that distinguishes Pareto series within
+    /// one index family (e.g. pgvector's `bit` vs `halfvec` vs full
+    /// `vector`). `None` groups the result under its bare algorithm family.
+    #[serde(default)]
+    pub data_type: Option<String>,
     pub search_params: serde_json::Value,
     pub k: usize,
     pub num_queries: usize,
@@ -267,6 +272,7 @@ mod tests {
         SearchResult {
             index_name: name.to_string(),
             index_type: "test".to_string(),
+            data_type: None,
             search_params: serde_json::json!({}),
             k: 10,
             num_queries: 100,

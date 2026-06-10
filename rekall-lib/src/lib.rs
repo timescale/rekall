@@ -436,6 +436,7 @@ impl Agent {
                     self.config.dataset.metric,
                     idx_config,
                     Some(&self.cancel_registry),
+                    crate::config::QueryMode::Default,
                     Some(progress_tx),
                 )
                 .await?;
@@ -512,13 +513,14 @@ impl Agent {
         let all_index_names = pg_mgmt.list_rekall_indexes().await?;
 
         for idx_config in &index_configs {
-            let has_sweeps = self
+            let has_searches = self
                 .config
                 .search
                 .sweep
                 .iter()
-                .any(|s| s.index == idx_config.name);
-            if !has_sweeps {
+                .any(|s| s.index == idx_config.name)
+                || self.config.query.iter().any(|q| q.index == idx_config.name);
+            if !has_searches {
                 continue;
             }
 

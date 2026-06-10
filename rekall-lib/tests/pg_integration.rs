@@ -195,6 +195,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
             Metric::Euclidean,
             &idx_config,
             None,
+            rekall_lib::config::QueryMode::Default,
             None,
         )
         .await
@@ -274,6 +275,7 @@ async fn backend_meerkat_lifecycle() {
             Metric::Euclidean,
             &idx_config,
             None,
+            rekall_lib::config::QueryMode::Default,
             None,
         )
         .await

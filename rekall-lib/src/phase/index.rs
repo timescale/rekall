@@ -94,6 +94,7 @@ pub async fn run(
                 config.dataset.metric,
                 idx_config,
                 None,
+                crate::config::QueryMode::Default,
                 progress.cloned(),
             )
             .await?;

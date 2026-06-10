@@ -103,15 +103,16 @@ pub fn export_csv(
     let mut f = std::fs::File::create(output_path)?;
     writeln!(
         f,
-        "index_name,index_type,search_params,k,recall,qps,avg_latency_us,p50_us,p95_us,p99_us,p999_us"
+        "index_name,index_type,data_type,search_params,k,recall,qps,avg_latency_us,p50_us,p95_us,p99_us,p999_us"
     )?;
     for summary in summaries {
         for r in &summary.search_results {
             writeln!(
                 f,
-                "{},{},{},{},{:.6},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}",
+                "{},{},{},{},{},{:.6},{:.1},{:.1},{:.1},{:.1},{:.1},{:.1}",
                 r.index_name,
                 r.index_type,
+                r.data_type.as_deref().unwrap_or(""),
                 r.search_params,
                 r.k,
                 r.avg_recall,
@@ -129,14 +130,19 @@ pub fn export_csv(
 
 fn group_label(r: &SearchResult, per_config: bool) -> String {
     if per_config {
-        r.index_name.clone()
-    } else {
-        // Group by algo family — use index_type, with a readable name
-        match r.index_type.as_str() {
-            "meerkat" => "Meerkat".to_string(),
-            "pgvector-hnsw" => "pgvector HNSW".to_string(),
-            other => other.to_string(),
-        }
+        return r.index_name.clone();
+    }
+    // Group by algo family — use index_type, with a readable name —
+    // then split by data type so e.g. pgvector's bit/halfvec frontiers
+    // are separate from the full-precision vector one.
+    let family = match r.index_type.as_str() {
+        "meerkat" => "Meerkat",
+        "pgvector-hnsw" => "pgvector HNSW",
+        other => other,
+    };
+    match &r.data_type {
+        Some(dt) => format!("{family} ({dt})"),
+        None => family.to_string(),
     }
 }
 
@@ -235,4 +241,57 @@ fn fix_svg_text(path: &Path) {
 
 pub(crate) fn logit(p: f64) -> f64 {
     (p.clamp(0.001, 0.999) / (1.0 - p.clamp(0.001, 0.999))).ln()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn result(index_type: &str, data_type: Option<&str>, name: &str) -> SearchResult {
+        SearchResult {
+            index_name: name.to_string(),
+            index_type: index_type.to_string(),
+            data_type: data_type.map(str::to_string),
+            search_params: serde_json::json!({}),
+            k: 10,
+            num_queries: 1,
+            num_runs: 1,
+            avg_recall: 0.9,
+            qps: 100.0,
+            avg_latency_us: 0.0,
+            p50_latency_us: 0.0,
+            p95_latency_us: 0.0,
+            p99_latency_us: 0.0,
+            p999_latency_us: 0.0,
+            wall_time_secs: 0.0,
+            qps_wall: 0.0,
+            query_results: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn pareto_groups_pgvector_by_data_type() {
+        // Full-precision vector keeps the bare family label; the quantized
+        // encodings each get their own Pareto frontier.
+        let full = result("pgvector-hnsw", None, "hnsw-m24");
+        let bit_raw = result("pgvector-hnsw", Some("bit"), "hnsw-m24-bq-raw");
+        let bit_rr = result("pgvector-hnsw", Some("bit"), "hnsw-m24-bq-rerank");
+        let half = result("pgvector-hnsw", Some("halfvec"), "hnsw-halfvec");
+
+        assert_eq!(group_label(&full, false), "pgvector HNSW");
+        assert_eq!(group_label(&bit_raw, false), "pgvector HNSW (bit)");
+        // raw and rerank on the same encoding share one frontier.
+        assert_eq!(group_label(&bit_rr, false), "pgvector HNSW (bit)");
+        assert_eq!(group_label(&half, false), "pgvector HNSW (halfvec)");
+    }
+
+    #[test]
+    fn per_config_groups_by_series_name() {
+        let bit_raw = result("pgvector-hnsw", Some("bit"), "hnsw-m24-bq-raw");
+        let bit_rr = result("pgvector-hnsw", Some("bit"), "hnsw-m24-bq-rerank");
+        // In per-config mode each named query is its own series, so raw and
+        // rerank stay distinct even though they share a data type.
+        assert_eq!(group_label(&bit_raw, true), "hnsw-m24-bq-raw");
+        assert_eq!(group_label(&bit_rr, true), "hnsw-m24-bq-rerank");
+    }
 }
