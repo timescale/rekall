@@ -82,6 +82,9 @@ pub struct Agent {
     outputs: Vec<Box<dyn OutputSink>>,
     registry: backend::BackendRegistry,
     cancel_registry: CancelRegistry,
+    /// When true, the search phase re-measures every sweep point instead of
+    /// skipping ones already saved in the results dir (`search --rerun`).
+    rerun: bool,
 }
 
 impl Agent {
@@ -95,7 +98,14 @@ impl Agent {
             outputs,
             registry: backend::BackendRegistry::new(),
             cancel_registry,
+            rerun: false,
         }
+    }
+
+    /// Re-measure every search sweep point, ignoring saved results
+    /// (`search --rerun`). Default is to skip already-completed points.
+    pub fn set_rerun(&mut self, rerun: bool) {
+        self.rerun = rerun;
     }
 
     async fn capture_pg_runtime(&self) -> Option<PgRuntimeInfo> {
@@ -576,6 +586,7 @@ impl Agent {
             let env_clone = run_env.clone();
             let pg_clone = pg_runtime.clone();
             let builds_clone = index_builds.clone();
+            let rerun = self.rerun;
             let search_handle = tokio::spawn(async move {
                 phase::search::run(
                     &config,
@@ -585,6 +596,7 @@ impl Agent {
                     Some(&env_clone),
                     pg_clone.as_ref(),
                     &builds_clone,
+                    rerun,
                 )
                 .await
             });
@@ -629,6 +641,7 @@ impl Agent {
         let config = self.config.clone();
         let registry = backend::BackendRegistry::new();
         let filter = filter_index.map(|s| s.to_string());
+        let rerun = self.rerun;
 
         let search_handle = tokio::spawn(async move {
             phase::search::run(
@@ -639,6 +652,7 @@ impl Agent {
                 environment.as_ref(),
                 pg_runtime.as_ref(),
                 &index_builds,
+                rerun,
             )
             .await
         });

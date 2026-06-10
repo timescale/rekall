@@ -218,6 +218,7 @@ fn save_index_results(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
@@ -226,6 +227,7 @@ pub async fn run(
     environment: Option<&RunEnvironment>,
     pg_runtime: Option<&PgRuntimeInfo>,
     index_builds: &[IndexBuildResult],
+    rerun: bool,
 ) -> Result<Vec<SearchResult>> {
     let dataset_path = config.dataset.resolved_path();
     let reader = Hdf5Reader::open(
@@ -248,7 +250,14 @@ pub async fn run(
 
     save_ground_truth(config, &ground_truth, gt_distances.as_ref(), num_queries, k);
 
-    let existing = load_existing_results(config);
+    // With --rerun, ignore previously-saved results so every sweep point is
+    // re-measured. Otherwise the run is resumable: completed points are
+    // loaded and skipped (see `is_completed`).
+    let existing = if rerun {
+        Vec::new()
+    } else {
+        load_existing_results(config)
+    };
     let mut all_results = existing.clone();
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
 

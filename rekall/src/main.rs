@@ -119,6 +119,11 @@ enum Command {
         /// Benchmark only this index
         #[arg(long)]
         index: Option<String>,
+
+        /// Re-measure every sweep point, ignoring results already saved in
+        /// the results dir (default: skip completed points / resume)
+        #[arg(long)]
+        rerun: bool,
     },
 
     /// Generate report from a results directory
@@ -1112,10 +1117,15 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
         }
 
-        Command::Search { config, index } => {
+        Command::Search {
+            config,
+            index,
+            rerun,
+        } => {
             let cfg = BenchmarkConfig::from_path(&config)?;
             let outputs = build_outputs(&cfg);
             let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
+            agent.set_rerun(rerun);
             agent
                 .run(
                     &[Phase::Search, Phase::Report],
