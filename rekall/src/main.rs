@@ -2302,21 +2302,27 @@ done"#
             // Publish is on by default for remote runs; --no-publish disables.
             let publish_flag = if no_publish { "" } else { " --publish" };
 
-            // Pipe both stdout and stderr to a log file. If the tmux
-            // session dies (because rekall exited fast on an error),
-            // the log persists and the user can SSH in and read it
-            // instead of being stuck guessing what went wrong.
+            // Pipe both stdout and stderr to a log file so it persists even
+            // after the run ends.
             //
-            // `source ~/.cargo/env` ensures ~/.cargo/bin is on PATH —
-            // tmux inherits the non-interactive SSH shell's PATH, which
-            // doesn't include cargo bins by default. Without this, a
-            // user who runs `cargo install` to update their rekall
-            // would have their update silently ignored in favour of
-            // the older /usr/local/bin/rekall from provision.sh.
+            // `source ~/.cargo/env` ensures ~/.cargo/bin is on PATH — tmux
+            // inherits the non-interactive SSH shell's PATH, which doesn't
+            // include cargo bins by default. Without this, a user who runs
+            // `cargo install` to update their rekall would have their update
+            // silently ignored in favour of /usr/local/bin/rekall.
+            //
+            // `set -o pipefail` so the exit status reflects rekall (not tee),
+            // and `exec bash` after the run keeps the pane alive: otherwise the
+            // window's process exits when rekall finishes/errors and tmux tears
+            // the session down, losing the on-screen output. With the shell
+            // kept open you can `tmux attach` afterwards and scroll the output.
             let log_path = format!("{remote_dir}/last-run.log");
             let run_cmd = format!(
-                "cd ~ && source ~/.cargo/env 2>/dev/null; \
-                 rekall run {configs_str}{rebuild_flag}{publish_flag} 2>&1 | tee {log_path}"
+                "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
+                 rekall run {configs_str}{rebuild_flag}{publish_flag} 2>&1 | tee {log_path}; \
+                 code=$?; echo; \
+                 echo \"=== rekall run exited (status $code) — session kept open; full log: {log_path} ===\"; \
+                 exec bash"
             );
 
             // Launch in tmux
