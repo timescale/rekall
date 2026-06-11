@@ -321,6 +321,40 @@ impl PublishConfig {
     pub fn bucket(&self) -> &str {
         self.s3_bucket.as_deref().unwrap_or("rekall")
     }
+
+    /// Load just the `[publish]` section from a config file, applying the same
+    /// global → file → `.local.toml` merge chain as a full config. Unlike
+    /// [`BenchmarkConfig::from_file`], this tolerates configs without a
+    /// `[dataset]` (e.g. suite files): `rekall publish` only needs publish
+    /// settings — the run's dataset/metadata come from the results dir.
+    pub fn from_config_path(path: &Path) -> Result<Self> {
+        let content = std::fs::read_to_string(path).map_err(|e| {
+            Error::Config(format!("Cannot read config file '{}': {e}", path.display()))
+        })?;
+        let file_value: toml::Value = toml::from_str(&content)
+            .map_err(|e| Error::Config(format!("Invalid config file '{}': {e}", path.display())))?;
+
+        let mut merged = load_global_config();
+        deep_merge(&mut merged, file_value);
+        let local_path = local_config_path(path);
+        if local_path.exists() {
+            if let Ok(local_content) = std::fs::read_to_string(&local_path) {
+                if let Ok(local_value) = toml::from_str::<toml::Value>(&local_content) {
+                    deep_merge(&mut merged, local_value);
+                }
+            }
+        }
+
+        match merged.get("publish") {
+            Some(v) => v.clone().try_into().map_err(|e| {
+                Error::Config(format!(
+                    "Invalid [publish] section in '{}': {e}",
+                    path.display()
+                ))
+            }),
+            None => Ok(PublishConfig::default()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1563,5 +1597,31 @@ dataset = "datasets/ds-a.toml"
         assert!(!is_suite_file(&regular));
 
         assert!(!is_suite_file(dir.path()));
+    }
+
+    #[test]
+    fn publish_config_from_path_tolerates_missing_dataset() {
+        // A suite-style file with no [dataset] must not error — publish only
+        // needs [publish], which here is absent, so defaults apply.
+        let dir = tempfile::tempdir().unwrap();
+        let suite = dir.path().join("suite.toml");
+        std::fs::write(&suite, "[[suite]]\ndataset = \"foo.toml\"").unwrap();
+        let cfg = PublishConfig::from_config_path(&suite).unwrap();
+        assert_eq!(cfg.bucket(), "rekall");
+        assert!(cfg.pages);
+    }
+
+    #[test]
+    fn publish_config_from_path_reads_publish_section() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("c.toml");
+        std::fs::write(
+            &cfg_path,
+            "[publish]\ns3_bucket = \"my-bucket\"\npages = false\n",
+        )
+        .unwrap();
+        let cfg = PublishConfig::from_config_path(&cfg_path).unwrap();
+        assert_eq!(cfg.bucket(), "my-bucket");
+        assert!(!cfg.pages);
     }
 }

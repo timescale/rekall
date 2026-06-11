@@ -1170,7 +1170,7 @@ async fn main() -> anyhow::Result<()> {
             region,
         } => {
             let publish_cfg = match config {
-                Some(ref c) => BenchmarkConfig::from_path(c)?.publish,
+                Some(ref c) => rekall_lib::config::PublishConfig::from_config_path(c)?,
                 None => rekall_lib::config::PublishConfig::default(),
             };
             let opts = rekall_lib::publish::PublishOptions {
