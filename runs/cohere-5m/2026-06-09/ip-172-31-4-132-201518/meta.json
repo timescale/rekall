@@ -1,0 +1,19 @@
+{
+  "run_id": "cohere-5m/2026-06-09/ip-172-31-4-132-201518",
+  "dataset": "cohere-5m",
+  "date": "2026-06-09",
+  "time": "20:15:18",
+  "timestamp": "2026-06-09T20:15:18+0000",
+  "instance_type": null,
+  "hostname": "ip-172-31-4-132",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 8,
+  "memory_gb": 61.8,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg24.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit",
+  "rekall_commit": null,
+  "extensions": {},
+  "peak_recall": 0.9996499999999996,
+  "qps_at_peak": 13.644924015129572,
+  "num_indexes": 17,
+  "s3_url": "s3://rekall-bench/runs/cohere-5m/2026-06-09/ip-172-31-4-132-201518/"
+}
