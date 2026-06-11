@@ -318,6 +318,7 @@ table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}\
 th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #eee;vertical-align:top}\
 th{color:#555;font-weight:600}\
 a{color:#1f77b4;text-decoration:none}a:hover{text-decoration:underline}\
+a.svg{font-size:11px;color:#888;border:1px solid #ddd;border-radius:3px;padding:0 4px;margin-left:2px}\
 .kv td:first-child{color:#555;width:230px}\
 details{margin:8px 0}summary{cursor:pointer;color:#555;font-size:13px}\
 pre{background:#f6f8fa;padding:10px;border-radius:6px;overflow:auto;font-size:12px}\
@@ -355,6 +356,8 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
         .collect();
     let has = |kind: &str, ext: &str| present.contains(&format!("{prefix}-report-{kind}.{ext}"));
 
+    // The label links to the interactive HTML; a small "svg" link beside it
+    // offers the static SVG for download (when present).
     let links: Vec<String> = [
         ("pareto", "Pareto"),
         ("per-config", "Per-config"),
@@ -364,10 +367,13 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
     .iter()
     .filter(|(kind, _)| has(kind, "html"))
     .map(|(kind, label)| {
-        format!(
-            "<a href=\"{}\">{label}</a>",
-            esc(&format!("{prefix}-report-{kind}.html"))
-        )
+        let html = esc(&format!("{prefix}-report-{kind}.html"));
+        if has(kind, "svg") {
+            let svg = esc(&format!("{prefix}-report-{kind}.svg"));
+            format!("<a href=\"{html}\">{label}</a> <a href=\"{svg}\" class=\"svg\">svg</a>")
+        } else {
+            format!("<a href=\"{html}\">{label}</a>")
+        }
     })
     .collect();
 
@@ -376,11 +382,20 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
     } else {
         b.push_str(&links.join(" &nbsp;·&nbsp; "));
         b.push_str("<div class=\"thumbs\">");
-        for kind in ["pareto", "per-config", "build-times"] {
+        for kind in ["pareto", "per-config", "distance-recall", "build-times"] {
             if has(kind, "svg") {
                 let svg = format!("{prefix}-report-{kind}.svg");
+                // The SVG is just the preview image; clicking opens the
+                // interactive HTML plot (deselectable lines), falling back to
+                // the SVG only if the HTML wasn't generated.
+                let target = if has(kind, "html") {
+                    format!("{prefix}-report-{kind}.html")
+                } else {
+                    svg.clone()
+                };
                 b.push_str(&format!(
-                    "<a href=\"{svg}\"><img src=\"{svg}\" alt=\"{kind}\"></a>",
+                    "<a href=\"{target}\"><img src=\"{svg}\" alt=\"{kind}\"></a>",
+                    target = esc(&target),
                     svg = esc(&svg)
                 ));
             }
@@ -655,7 +670,9 @@ mod tests {
         assert!(html.contains("r8i.2xlarge")); // instance
         assert!(html.contains("Xeon")); // cpu
         assert!(html.contains("num_queries")); // search config
-        assert!(html.contains("cohere-5m-report-pareto.html")); // present plot link
+        assert!(html.contains("cohere-5m-report-pareto.html")); // interactive link
+        assert!(html.contains("cohere-5m-report-pareto.svg")); // svg download / thumb
+        assert!(html.contains("class=\"svg\"")); // svg download link present
         assert!(html.contains("s3://rekall/runs/x/")); // s3 link
                                                        // distance-recall wasn't generated → must NOT be linked (no 404s).
         assert!(!html.contains("distance-recall"));
