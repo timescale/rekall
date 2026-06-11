@@ -259,6 +259,70 @@ impl Default for OutputConfig {
     }
 }
 
+/// `[publish]` — archive results to S3 and publish reports to GitHub Pages.
+/// All fields are optional; `enabled` gates auto-publish at the end of a run
+/// (default OFF locally; `--publish` / `rekall infra run` turn it on).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublishConfig {
+    /// Auto-publish at the end of `rekall run` when true. Overridden by the
+    /// `--publish` CLI flag; `rekall infra run` defaults it on for the remote.
+    #[serde(default)]
+    pub enabled: bool,
+    /// S3 bucket for the raw-results archive. Defaults to `rekall` when unset.
+    pub s3_bucket: Option<String>,
+    /// AWS region for the bucket. Defaults to the credential chain's region,
+    /// falling back to us-east-1.
+    pub s3_region: Option<String>,
+    /// Key prefix under the bucket. Runs land at `<prefix>/<run-id>/`.
+    #[serde(default = "default_s3_prefix")]
+    pub s3_prefix: String,
+    /// Publish HTML reports + catalog to GitHub Pages (the `gh-pages` branch).
+    #[serde(default = "default_true")]
+    pub pages: bool,
+    /// Local checkout of the rekall repo used to push `gh-pages`. Defaults to
+    /// `~/repos/rekall` (the instance checkout from provisioning).
+    pub repo_path: Option<String>,
+    /// Branch that GitHub Pages serves from.
+    #[serde(default = "default_pages_branch")]
+    pub pages_branch: String,
+    /// Optional public base URL (e.g. the github.io site) for catalog links.
+    pub public_base_url: Option<String>,
+}
+
+fn default_s3_prefix() -> String {
+    "runs".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_pages_branch() -> String {
+    "gh-pages".to_string()
+}
+
+impl Default for PublishConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            s3_bucket: None,
+            s3_region: None,
+            s3_prefix: default_s3_prefix(),
+            pages: default_true(),
+            repo_path: None,
+            pages_branch: default_pages_branch(),
+            public_base_url: None,
+        }
+    }
+}
+
+impl PublishConfig {
+    /// Bucket name, defaulting to `rekall`.
+    pub fn bucket(&self) -> &str {
+        self.s3_bucket.as_deref().unwrap_or("rekall")
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BenchmarkConfig {
     pub dataset: DatasetConfig,
@@ -276,6 +340,8 @@ pub struct BenchmarkConfig {
     pub search: SearchConfig,
     #[serde(default)]
     pub output: OutputConfig,
+    #[serde(default)]
+    pub publish: PublishConfig,
 }
 
 impl BenchmarkConfig {

@@ -11,6 +11,7 @@ pub mod metrics;
 pub mod output;
 pub mod phase;
 pub mod progress;
+pub mod publish;
 
 use std::sync::Arc;
 use std::time::Instant;

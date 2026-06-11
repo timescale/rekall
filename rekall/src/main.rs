@@ -85,6 +85,51 @@ enum Command {
         /// Force reload dataset even if table already has data
         #[arg(long)]
         reload: bool,
+
+        /// Archive results to S3 and publish reports after the run (default
+        /// off locally; `rekall infra run` enables it on the instance).
+        #[arg(long)]
+        publish: bool,
+    },
+
+    /// Archive a results directory to S3 and publish its reports.
+    ///
+    /// The manual counterpart to `rekall run --publish`: re-publish a run when
+    /// auto-publish failed, or back-fill older/existing results directories.
+    /// The run-id is derived deterministically from the run metadata, so
+    /// re-publishing overwrites the same location rather than duplicating.
+    Publish {
+        /// Results directory (contains results.json / per-index *.json.gz).
+        dir: PathBuf,
+
+        /// Optional config providing the `[publish]` section (bucket, region,
+        /// pages settings). Without it, defaults are used (bucket "rekall").
+        #[arg(long)]
+        config: Option<PathBuf>,
+
+        /// Overwrite even if this run was already uploaded.
+        #[arg(long)]
+        force: bool,
+
+        /// Print what would be uploaded/pushed without writing anything.
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Archive to S3 only; skip GitHub Pages.
+        #[arg(long)]
+        s3_only: bool,
+
+        /// Skip GitHub Pages publishing.
+        #[arg(long)]
+        no_pages: bool,
+
+        /// Override the S3 bucket.
+        #[arg(long)]
+        s3_bucket: Option<String>,
+
+        /// Override the AWS region.
+        #[arg(long)]
+        region: Option<String>,
     },
 
     /// Initialize database and tables
@@ -425,6 +470,11 @@ enum InfraCommand {
         /// Additional flags to pass to rekall run (e.g., --rebuild)
         #[arg(long)]
         rebuild: bool,
+
+        /// Disable auto-publish on the instance (it is on by default for
+        /// remote runs, archiving results to S3 + GitHub Pages).
+        #[arg(long)]
+        no_publish: bool,
 
         /// S3 path for the dataset (downloaded on instance if not present)
         #[arg(long)]
@@ -1062,6 +1112,7 @@ async fn main() -> anyhow::Result<()> {
             dry_run,
             rebuild,
             reload,
+            publish,
             ..
         } => {
             let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
@@ -1090,7 +1141,47 @@ async fn main() -> anyhow::Result<()> {
                 agent
                     .run(&phases, index.as_deref(), rebuild, reload)
                     .await?;
+
+                // Auto-publish after a completed run when requested (CLI flag or
+                // [publish].enabled). Only meaningful when the search/report ran.
+                let want_publish = publish || group.config.publish.enabled;
+                let ran_report =
+                    phase.is_none() || matches!(phase.as_deref(), Some("report") | Some("search"));
+                if want_publish && ran_report {
+                    let dir = std::path::PathBuf::from(&group.config.output.results_dir);
+                    let opts = rekall_lib::publish::PublishOptions::default();
+                    if let Err(e) =
+                        rekall_lib::publish::publish(&dir, &group.config.publish, &opts).await
+                    {
+                        eprintln!("publish failed: {e}");
+                    }
+                }
             }
+        }
+
+        Command::Publish {
+            dir,
+            config,
+            force,
+            dry_run,
+            s3_only,
+            no_pages,
+            s3_bucket,
+            region,
+        } => {
+            let publish_cfg = match config {
+                Some(ref c) => BenchmarkConfig::from_path(c)?.publish,
+                None => rekall_lib::config::PublishConfig::default(),
+            };
+            let opts = rekall_lib::publish::PublishOptions {
+                force,
+                dry_run,
+                s3_only,
+                no_pages,
+                bucket: s3_bucket,
+                region,
+            };
+            rekall_lib::publish::publish(&dir, &publish_cfg, &opts).await?;
         }
 
         Command::Init { config } => {
@@ -1983,6 +2074,7 @@ iam_instance_profile = "rekall-profile"
             benchmarks,
             session,
             rebuild,
+            no_publish,
             s3_dataset,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
@@ -2218,6 +2310,8 @@ done"#
             }
             let configs_str = remote_configs.join(" ");
             let rebuild_flag = if rebuild { " --rebuild" } else { "" };
+            // Publish is on by default for remote runs; --no-publish disables.
+            let publish_flag = if no_publish { "" } else { " --publish" };
 
             // Pipe both stdout and stderr to a log file. If the tmux
             // session dies (because rekall exited fast on an error),
@@ -2233,7 +2327,7 @@ done"#
             let log_path = format!("{remote_dir}/last-run.log");
             let run_cmd = format!(
                 "cd ~ && source ~/.cargo/env 2>/dev/null; \
-                 rekall run {configs_str}{rebuild_flag} 2>&1 | tee {log_path}"
+                 rekall run {configs_str}{rebuild_flag}{publish_flag} 2>&1 | tee {log_path}"
             );
 
             // Launch in tmux
