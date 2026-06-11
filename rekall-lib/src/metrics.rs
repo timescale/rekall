@@ -136,6 +136,35 @@ pub fn compute_recall(result_ids: &[i64], ground_truth: &[i64], k: usize) -> f64
     hits as f64 / k as f64
 }
 
+/// ann-benchmarks-style recall@k that handles distance ties: any ground-truth
+/// neighbour within `gt_distances[k-1] + epsilon` counts as correct, so a
+/// returned point that ties the k-th true neighbour isn't penalized. Returns
+/// 0 if the ground truth has fewer than `k` entries.
+pub fn recall_distance_based(
+    result_ids: &[i64],
+    gt_neighbors: &[i64],
+    gt_distances: &[f32],
+    k: usize,
+    epsilon: f64,
+) -> f64 {
+    if gt_distances.len() < k || gt_neighbors.len() < k {
+        return 0.0;
+    }
+    let threshold = gt_distances[k - 1] as f64 + epsilon;
+    let correct_set: HashSet<i64> = gt_neighbors
+        .iter()
+        .zip(gt_distances.iter())
+        .filter(|(_, d)| (**d as f64) <= threshold)
+        .map(|(id, _)| *id)
+        .collect();
+    let hits = result_ids
+        .iter()
+        .take(k)
+        .filter(|id| correct_set.contains(id))
+        .count();
+    hits as f64 / k as f64
+}
+
 pub struct LatencyCollector {
     histogram: Histogram<u64>,
 }

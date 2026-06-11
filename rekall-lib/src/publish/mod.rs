@@ -5,6 +5,7 @@
 //! run-start date/time, instance), so re-publishing a run maps to the same
 //! S3 prefix / Pages entry rather than creating a duplicate.
 
+mod distance;
 mod pages;
 mod report;
 mod s3;
@@ -33,6 +34,9 @@ pub struct PublishOptions {
     pub bucket: Option<String>,
     /// Override the configured/region-chain region.
     pub region: Option<String>,
+    /// Dataset HDF5 for the distance-recall plot. When unset, the run's
+    /// `ground-truth.json.gz` (or its configured dataset) is used.
+    pub dataset: Option<std::path::PathBuf>,
 }
 
 /// Compact per-run metadata: the S3 completion marker and the source for the
@@ -253,7 +257,7 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
     // Step 1: generate the report HTML/SVG into the results dir so they are
     // archived to S3 *and* available for the Pages copy. (Skipped on dry-run.)
     if !opts.dry_run {
-        report::generate_into_dir(&summary, dir);
+        report::generate_into_dir(&summary, dir, opts.dataset.as_deref());
     }
 
     let mut files =

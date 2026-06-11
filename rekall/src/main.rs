@@ -130,6 +130,11 @@ enum Command {
         /// Override the AWS region.
         #[arg(long)]
         region: Option<String>,
+
+        /// Dataset HDF5 for the distance-recall plot. Falls back to the run's
+        /// ground-truth.json.gz, then the dataset named in its config.
+        #[arg(long)]
+        dataset: Option<PathBuf>,
     },
 
     /// Initialize database and tables
@@ -797,7 +802,7 @@ fn cmd_report(
                     let mut total = 0.0;
                     for qi in 0..nq {
                         let ids = &orig.query_results[qi].neighbors;
-                        total += recall_distance_based(
+                        total += rekall_lib::metrics::recall_distance_based(
                             ids,
                             &gt_ids.row(qi).to_vec(),
                             &gt_dists.row(qi).to_vec(),
@@ -882,37 +887,6 @@ fn cmd_report(
     }
 
     Ok(())
-}
-
-fn recall_distance_based(
-    result_ids: &[i64],
-    gt_neighbors: &[i64],
-    gt_distances: &[f32],
-    k: usize,
-    epsilon: f64,
-) -> f64 {
-    use std::collections::HashSet;
-
-    if gt_distances.len() < k || gt_neighbors.len() < k {
-        return 0.0;
-    }
-
-    let threshold = gt_distances[k - 1] as f64 + epsilon;
-
-    let correct_set: HashSet<i64> = gt_neighbors
-        .iter()
-        .zip(gt_distances.iter())
-        .filter(|(_, d)| (**d as f64) <= threshold)
-        .map(|(id, _)| *id)
-        .collect();
-
-    let hits = result_ids
-        .iter()
-        .take(k)
-        .filter(|id| correct_set.contains(id))
-        .count();
-
-    hits as f64 / k as f64
 }
 
 fn cmd_recall(
@@ -1017,7 +991,7 @@ fn cmd_recall(
                 total_recall += match (&gt_dists, method) {
                     (Some(dists), "distance") => {
                         let d_row: Vec<f32> = dists.row(qi).to_vec();
-                        recall_distance_based(ids, &gt_vec, &d_row, k, 1e-3)
+                        rekall_lib::metrics::recall_distance_based(ids, &gt_vec, &d_row, k, 1e-3)
                     }
                     _ => compute_recall(ids, &gt_vec, k),
                 };
@@ -1181,6 +1155,7 @@ async fn main() -> anyhow::Result<()> {
             no_pages,
             s3_bucket,
             region,
+            dataset,
         } => {
             let publish_cfg = match config {
                 Some(ref c) => rekall_lib::config::PublishConfig::from_config_path(c)?,
@@ -1193,6 +1168,7 @@ async fn main() -> anyhow::Result<()> {
                 no_pages,
                 bucket: s3_bucket,
                 region,
+                dataset,
             };
             rekall_lib::publish::publish(&dir, &publish_cfg, &opts).await?;
         }
