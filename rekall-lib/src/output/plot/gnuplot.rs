@@ -59,7 +59,18 @@ pub fn render(
     }
 
     writeln!(f)?;
-    writeln!(f, "set title '{}'", data.title)?;
+    // Title, with the metadata caption appended as smaller extra lines.
+    // A double-quoted gnuplot string lets embedded "\n" become real line
+    // breaks and enhanced "{/=N ...}" shrink the caption font.
+    let mut title = escape_gp(&data.title);
+    if let Some(caption) = &data.caption {
+        for line in caption.lines() {
+            title.push_str("\\n{/=9 ");
+            title.push_str(&escape_gp(line));
+            title.push('}');
+        }
+    }
+    writeln!(f, "set title \"{title}\"")?;
     writeln!(f, "set xlabel noenhanced 'Recall@10' offset 0,-1")?;
     writeln!(f, "set ylabel 'Queries per second'")?;
     writeln!(f, "set grid")?;
@@ -188,4 +199,31 @@ pub fn render(
     }
 
     Ok(())
+}
+
+/// Escape a string for embedding in a *double-quoted, enhanced-text*
+/// gnuplot string. Two layers process the text: the string parser (handles
+/// `\"`, `\\`, `\n`) and then enhanced text (treats `_ ^ { } & @ ~` as
+/// markup — e.g. `_` starts a subscript). To show those characters
+/// literally we must get a backslash past the string parser to enhanced,
+/// hence the doubled `\\` for metacharacters. The caller adds its own
+/// `\n` line breaks and `{/=N ...}` font markup outside this function.
+fn escape_gp(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            // literal backslash: \\\\ -> string parser -> \\ -> enhanced -> \
+            '\\' => out.push_str("\\\\\\\\"),
+            // string-literal quote escape
+            '"' => out.push_str("\\\""),
+            // enhanced-text metacharacters: \\X -> string parser -> \X ->
+            // enhanced renders X literally (no subscript/superscript/group)
+            '_' | '^' | '{' | '}' | '&' | '@' | '~' => {
+                out.push_str("\\\\");
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
 }

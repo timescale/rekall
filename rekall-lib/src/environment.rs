@@ -84,6 +84,55 @@ fn collect_ip_address() -> Option<String> {
     })
 }
 
+/// Best-effort cloud instance type. An explicit `REKALL_INSTANCE_TYPE`
+/// wins (works on any provider / bare metal); otherwise we query the AWS
+/// EC2 Instance Metadata Service (IMDSv2, falling back to v1) with short
+/// timeouts so a local run never stalls on the unroutable 169.254 address.
+/// Returns `None` when not on EC2 or `curl` is unavailable.
+fn collect_instance_type() -> Option<String> {
+    if let Ok(v) = std::env::var("REKALL_INSTANCE_TYPE") {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
+
+    const URL: &str = "http://169.254.169.254/latest/meta-data/instance-type";
+
+    // IMDSv2: fetch a short-lived token, then the metadata with it. If the
+    // token request fails (IMDSv1-only host), try the bare GET.
+    let token = command_output(
+        "curl",
+        &[
+            "-s",
+            "--max-time",
+            "1",
+            "-X",
+            "PUT",
+            "http://169.254.169.254/latest/api/token",
+            "-H",
+            "X-aws-ec2-metadata-token-ttl-seconds: 60",
+        ],
+    );
+
+    let raw = match token {
+        Some(t) => {
+            let header = format!("X-aws-ec2-metadata-token: {t}");
+            command_output("curl", &["-s", "--max-time", "1", URL, "-H", &header])
+        }
+        None => command_output("curl", &["-s", "--max-time", "1", URL]),
+    }?;
+
+    // Guard against an error page / redirect body sneaking through: a real
+    // instance type is a single token like "r8i.2xlarge".
+    let t = raw.trim();
+    if t.is_empty() || t.contains(char::is_whitespace) || t.contains('<') {
+        None
+    } else {
+        Some(t.to_string())
+    }
+}
+
 pub fn collect_host_info() -> HostInfo {
     HostInfo {
         hostname: collect_hostname(),
@@ -93,6 +142,7 @@ pub fn collect_host_info() -> HostInfo {
         cpu_count: collect_cpu_count(),
         memory_gb: collect_memory_gb(),
         ip_address: collect_ip_address(),
+        instance_type: collect_instance_type(),
     }
 }
 

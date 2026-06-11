@@ -14,6 +14,13 @@ pub struct HostInfo {
     pub memory_gb: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip_address: Option<String>,
+    /// Cloud instance type (e.g. "r8i.2xlarge"), when detectable from the
+    /// AWS EC2 metadata service or set via `REKALL_INSTANCE_TYPE`. Absent
+    /// for most local/bare-metal runs, and missing from older result files
+    /// (hence `default` on read) — the hardware fields above are always
+    /// present, so plots show them alongside the instance type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

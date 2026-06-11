@@ -30,6 +30,10 @@ impl Default for PlotOptions {
 
 pub struct PlotData {
     pub title: String,
+    /// Optional metadata sub-title (dataset, run date, machine, PG settings,
+    /// extension versions) rendered under the main title. One logical line
+    /// per `\n`. `None` when the source results carry no run metadata.
+    pub caption: Option<String>,
     pub series: Vec<PlotSeries>,
 }
 
@@ -60,10 +64,11 @@ pub fn generate_plot(
     title: Option<&str>,
     opts: &PlotOptions,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let data = prepare_plot_data(summaries, title.unwrap_or("Recall vs QPS"), opts);
+    let mut data = prepare_plot_data(summaries, title.unwrap_or("Recall vs QPS"), opts);
     if data.series.is_empty() {
         return Err("No search results to plot".into());
     }
+    data.caption = build_caption(summaries);
 
     let ext = output_path
         .extension()
@@ -200,7 +205,101 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
 
     PlotData {
         title: title.to_string(),
+        caption: None,
         series,
+    }
+}
+
+/// Build a one/two-line metadata caption for plots from the run's recorded
+/// environment. The first summary carrying any metadata is treated as
+/// representative (a report combines result files from a single run).
+///
+/// Line 1: dataset · run date · machine. The machine is the hardware
+/// descriptor (CPU model, vCPU count, RAM) — always shown — prefixed with
+/// the cloud instance type when one was captured.
+/// Line 2: PG version · a few key settings · the extension versions tested.
+///
+/// Returns `None` when no summary has metadata (e.g. plotting bare result
+/// files), so callers can render a title with no sub-line.
+fn build_caption(summaries: &[RunSummary]) -> Option<String> {
+    let meta = summaries
+        .iter()
+        .find(|s| s.environment.is_some() || s.pg_runtime.is_some() || !s.dataset.is_empty())?;
+
+    let mut line1: Vec<String> = Vec::new();
+    if !meta.dataset.is_empty() {
+        line1.push(meta.dataset.clone());
+    }
+    if let Some(env) = &meta.environment {
+        // Date only (drop the time/zone) keeps the caption compact.
+        let date = env.timestamp.split('T').next().unwrap_or(&env.timestamp);
+        line1.push(date.to_string());
+
+        let h = &env.host;
+        let hw = format!(
+            "{}, {} vCPU, {:.0} GB",
+            h.cpu_model.trim(),
+            h.cpu_count,
+            h.memory_gb
+        );
+        // Hardware is always shown; the instance type, when known, leads.
+        let machine = match &h.instance_type {
+            Some(it) => format!("{it}, {hw}"),
+            None => hw,
+        };
+        line1.push(machine);
+    }
+
+    let mut line2: Vec<String> = Vec::new();
+    if let Some(pg) = &meta.pg_runtime {
+        // "PostgreSQL 18.4 (Ubuntu ...)" -> "PG 18.4"
+        let ver = pg.version.split_whitespace().nth(1).unwrap_or(&pg.version);
+        line2.push(format!("PG {ver}"));
+        for key in [
+            "shared_buffers",
+            "work_mem",
+            "max_parallel_maintenance_workers",
+        ] {
+            if let Some(v) = pg.settings.get(key) {
+                line2.push(format!("{key}={v}"));
+            }
+        }
+        // Extensions under test, compact: SQL version, plus a shortened git
+        // commit when the extension reports one (Meerkat does). "vector" is
+        // pgvector's extension name, so label it as such.
+        let mut exts: Vec<String> = Vec::new();
+        for (key, display) in [
+            ("meerkat", "meerkat"),
+            ("vchord", "vchord"),
+            ("vector", "pgvector"),
+        ] {
+            if let Some(e) = pg.extensions.get(key) {
+                let tag = match &e.git_commit {
+                    Some(c) => {
+                        let short: String = c.chars().take(7).collect();
+                        format!("{display} {} ({short})", e.version)
+                    }
+                    None => format!("{display} {}", e.version),
+                };
+                exts.push(tag);
+            }
+        }
+        if !exts.is_empty() {
+            line2.push(exts.join(", "));
+        }
+    }
+
+    let mut lines = Vec::new();
+    if !line1.is_empty() {
+        lines.push(line1.join("  |  "));
+    }
+    if !line2.is_empty() {
+        lines.push(line2.join("  |  "));
+    }
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join("\n"))
     }
 }
 
@@ -293,5 +392,99 @@ mod tests {
         // rerank stay distinct even though they share a data type.
         assert_eq!(group_label(&bit_raw, true), "hnsw-m24-bq-raw");
         assert_eq!(group_label(&bit_rr, true), "hnsw-m24-bq-rerank");
+    }
+
+    fn summary_with_meta(instance_type: Option<&str>) -> RunSummary {
+        use crate::metrics::{ExtensionInfo, HostInfo, PgRuntimeInfo, RekallInfo, RunEnvironment};
+        use std::collections::BTreeMap;
+
+        let mut settings = BTreeMap::new();
+        settings.insert("shared_buffers".into(), "16 GB".into());
+        settings.insert("work_mem".into(), "512 MB".into());
+        let mut extensions = BTreeMap::new();
+        extensions.insert(
+            "meerkat".into(),
+            ExtensionInfo {
+                version: "0.1.0".into(),
+                git_commit: Some("65df24d3ad9f".into()),
+                library_version: None,
+            },
+        );
+        extensions.insert(
+            "vector".into(),
+            ExtensionInfo {
+                version: "0.8.2".into(),
+                git_commit: None,
+                library_version: None,
+            },
+        );
+
+        RunSummary {
+            dataset: "cohere-5m".into(),
+            environment: Some(RunEnvironment {
+                host: HostInfo {
+                    hostname: "ip-10-0-0-1".into(),
+                    os: "Ubuntu 24.04".into(),
+                    kernel: "6.17".into(),
+                    cpu_model: "Intel Xeon 6975P-C".into(),
+                    cpu_count: 8,
+                    memory_gb: 61.8,
+                    ip_address: None,
+                    instance_type: instance_type.map(str::to_string),
+                },
+                rekall: RekallInfo {
+                    version: "0.1.0".into(),
+                    git_commit: None,
+                    git_branch: None,
+                    note: String::new(),
+                },
+                timestamp: "2026-06-10T09:56:42+0000".into(),
+            }),
+            config: serde_json::Value::Null,
+            pg_runtime: Some(PgRuntimeInfo {
+                version: "PostgreSQL 18.4 (Ubuntu 18.4-1) on x86_64".into(),
+                settings,
+                extensions,
+            }),
+            index_builds: Vec::new(),
+            search_results: Vec::new(),
+            pareto: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn caption_includes_hardware_and_instance_type() {
+        let cap = build_caption(&[summary_with_meta(Some("r8i.2xlarge"))]).unwrap();
+        // Instance type leads, hardware always follows it.
+        assert!(cap.contains("r8i.2xlarge, Intel Xeon 6975P-C, 8 vCPU, 62 GB"));
+        // Dataset, date, PG version, settings, extension versions present.
+        assert!(cap.contains("cohere-5m"));
+        assert!(cap.contains("2026-06-10"));
+        assert!(cap.contains("PG 18.4"));
+        assert!(cap.contains("shared_buffers=16 GB"));
+        assert!(cap.contains("meerkat 0.1.0 (65df24d)"));
+        assert!(cap.contains("pgvector 0.8.2"));
+    }
+
+    #[test]
+    fn caption_falls_back_to_hardware_without_instance_type() {
+        let cap = build_caption(&[summary_with_meta(None)]).unwrap();
+        // Hardware descriptor still shown; no stray instance-type prefix.
+        assert!(cap.contains("Intel Xeon 6975P-C, 8 vCPU, 62 GB"));
+        assert!(!cap.contains("r8i"));
+    }
+
+    #[test]
+    fn caption_is_none_without_metadata() {
+        let bare = RunSummary {
+            dataset: String::new(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: Vec::new(),
+            pareto: Vec::new(),
+        };
+        assert!(build_caption(&[bare]).is_none());
     }
 }

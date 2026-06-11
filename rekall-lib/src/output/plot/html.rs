@@ -98,6 +98,28 @@ pub fn render(
         format!("range: [{min_r}, 1.0], tickformat: \".2f\", gridcolor: \"#eeeeee\"")
     };
 
+    // The title + metadata caption live in a plain HTML header above the
+    // chart rather than in Plotly's in-chart title (which gets clipped when
+    // the plot div fills the viewport). The body is a flex column: a
+    // fixed-height header, then the plot flexes to fill the rest.
+    let esc_html = |s: &str| {
+        s.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+    };
+    let title_html = esc_html(&data.title);
+    let caption_html = match &data.caption {
+        Some(caption) => {
+            let lines = caption
+                .lines()
+                .map(esc_html)
+                .collect::<Vec<_>>()
+                .join("<br>");
+            format!("<div class=\"meta\">{lines}</div>")
+        }
+        None => String::new(),
+    };
+
     let html = format!(
         concat!(
             "<!DOCTYPE html>\n",
@@ -105,13 +127,19 @@ pub fn render(
             "<title>{title}</title>\n",
             "<script src=\"https://cdn.plot.ly/plotly-2.35.2.min.js\"></script>\n",
             "<style>\n",
-            "  body {{ margin: 0; padding: 0; background: white; }}\n",
-            "  #plot {{ width: 100vw; height: 100vh; }}\n",
-            "</style>\n</head>\n<body>\n<div id=\"plot\"></div>\n",
+            "  html, body {{ height: 100%; margin: 0; padding: 0; background: white; }}\n",
+            "  body {{ display: flex; flex-direction: column; font-family: sans-serif; }}\n",
+            "  #header {{ flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }}\n",
+            "  #header .title {{ font-size: 20px; font-weight: 600; color: #222; }}\n",
+            "  #header .meta {{ margin-top: 4px; font-size: 12px; color: #555; }}\n",
+            "  #plot {{ flex: 1 1 auto; min-height: 0; width: 100%; }}\n",
+            "</style>\n</head>\n<body>\n",
+            "<div id=\"header\"><div class=\"title\">{title_html}</div>{caption_html}</div>\n",
+            "<div id=\"plot\"></div>\n",
             "<script>\n",
             "var traces = [{traces}];\n",
             "var layout = {{\n",
-            "  title: {{ text: \"{title}\", font: {{ size: 20 }} }},\n",
+            "  margin: {{ t: 20 }},\n",
             "  xaxis: {{ title: \"Recall@10\", {x_axis_config} }},\n",
             "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
@@ -129,7 +157,9 @@ pub fn render(
             "</div>\n",
             "</body>\n</html>",
         ),
-        title = data.title,
+        title = title_html,
+        title_html = title_html,
+        caption_html = caption_html,
         traces = traces,
         x_axis_config = x_axis_config,
         y_type = y_type,

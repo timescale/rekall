@@ -636,19 +636,41 @@ fn cmd_report(
         );
     }
 
+    // Carry the run's metadata (dataset, host, PG settings, extension
+    // versions) from the loaded results into each plot so the caption can
+    // render it. The first loaded summary is representative of the run.
+    let meta_dataset = summaries
+        .first()
+        .map(|s| s.dataset.clone())
+        .unwrap_or_default();
+    let meta_env = summaries.first().and_then(|s| s.environment.clone());
+    let meta_pg = summaries.first().and_then(|s| s.pg_runtime.clone());
+    let meta_config = summaries
+        .first()
+        .map(|s| s.config.clone())
+        .unwrap_or(serde_json::Value::Null);
+    let make_summary = |results: Vec<SearchResult>| RunSummary {
+        dataset: meta_dataset.clone(),
+        environment: meta_env.clone(),
+        config: meta_config.clone(),
+        pg_runtime: meta_pg.clone(),
+        index_builds: Vec::new(),
+        search_results: results,
+        pareto: Vec::new(),
+    };
+    // Prefix plot filenames with the dataset name for at-a-glance grouping,
+    // e.g. "cohere-5m-report-pareto.svg".
+    let file_prefix = if meta_dataset.is_empty() {
+        String::new()
+    } else {
+        format!("{meta_dataset}-")
+    };
+
     // 1. Pareto plot (grouped by algorithm)
     {
-        let summary = RunSummary {
-            dataset: String::new(),
-            environment: None,
-            config: serde_json::Value::Null,
-            pg_runtime: None,
-            index_builds: Vec::new(),
-            search_results: all_results.clone(),
-            pareto: Vec::new(),
-        };
+        let summary = make_summary(all_results.clone());
         let opts = plot::PlotOptions::default();
-        let path = out.join(format!("report-pareto.{ext}"));
+        let path = out.join(format!("{file_prefix}report-pareto.{ext}"));
         if let Err(e) =
             plot::generate_plot(&[summary], &path, Some("Recall vs QPS (Pareto)"), &opts)
         {
@@ -660,20 +682,12 @@ fn cmd_report(
 
     // 2. Per-config plot
     {
-        let summary = RunSummary {
-            dataset: String::new(),
-            environment: None,
-            config: serde_json::Value::Null,
-            pg_runtime: None,
-            index_builds: Vec::new(),
-            search_results: all_results.clone(),
-            pareto: Vec::new(),
-        };
+        let summary = make_summary(all_results.clone());
         let opts = plot::PlotOptions {
             per_config: true,
             ..Default::default()
         };
-        let path = out.join(format!("report-per-config.{ext}"));
+        let path = out.join(format!("{file_prefix}report-per-config.{ext}"));
         if let Err(e) =
             plot::generate_plot(&[summary], &path, Some("Recall vs QPS (per config)"), &opts)
         {
@@ -746,20 +760,12 @@ fn cmd_report(
             }
         }
 
-        let summary = RunSummary {
-            dataset: String::new(),
-            environment: None,
-            config: serde_json::Value::Null,
-            pg_runtime: None,
-            index_builds: Vec::new(),
-            search_results: dist_results,
-            pareto: Vec::new(),
-        };
+        let summary = make_summary(dist_results);
         let opts = plot::PlotOptions {
             per_config: true,
             ..Default::default()
         };
-        let path = out.join(format!("report-distance-recall.{ext}"));
+        let path = out.join(format!("{file_prefix}report-distance-recall.{ext}"));
         if let Err(e) = plot::generate_plot(
             &[summary],
             &path,
