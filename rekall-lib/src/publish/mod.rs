@@ -234,8 +234,35 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
         let s = read_summary_file(p)?;
         base.index_builds.extend(s.index_builds);
         base.search_results.extend(s.search_results);
+        merge_pg_runtime(&mut base.pg_runtime, s.pg_runtime);
     }
     Ok(base)
+}
+
+/// Merge one per-index file's `pg_runtime` into the accumulator. Different
+/// index types load different extensions (an hnsw run records pgvector but not
+/// meerkat, and vice-versa), so the union across files is what reflects the
+/// whole run. Adopt `pg_runtime` if absent; otherwise union the extensions,
+/// preferring an entry that carries a git commit over one that doesn't.
+fn merge_pg_runtime(
+    base: &mut Option<crate::metrics::PgRuntimeInfo>,
+    other: Option<crate::metrics::PgRuntimeInfo>,
+) {
+    let Some(other) = other else { return };
+    match base {
+        None => *base = Some(other),
+        Some(base) => {
+            for (name, info) in other.extensions {
+                let replace = match base.extensions.get(&name) {
+                    None => true,
+                    Some(existing) => existing.git_commit.is_none() && info.git_commit.is_some(),
+                };
+                if replace {
+                    base.extensions.insert(name, info);
+                }
+            }
+        }
+    }
 }
 
 /// Archive `dir` to S3 (and, in Stage 2, publish to GitHub Pages).
@@ -339,7 +366,60 @@ fn rel_key(dir: &Path, file: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metrics::{HostInfo, RekallInfo, RunEnvironment, SearchResult};
+    use crate::metrics::{
+        ExtensionInfo, HostInfo, PgRuntimeInfo, RekallInfo, RunEnvironment, SearchResult,
+    };
+
+    fn pg_runtime(exts: &[(&str, Option<&str>)]) -> PgRuntimeInfo {
+        PgRuntimeInfo {
+            version: "PostgreSQL 18.4".into(),
+            settings: Default::default(),
+            extensions: exts
+                .iter()
+                .map(|(n, c)| {
+                    (
+                        n.to_string(),
+                        ExtensionInfo {
+                            version: "1.0".into(),
+                            git_commit: c.map(str::to_string),
+                            library_version: None,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn merge_pg_runtime_unions_extensions_preferring_commits() {
+        // First file (e.g. an hnsw run) has pgvector but meerkat has no commit;
+        // a later mkt run carries meerkat with a real commit.
+        let mut base = Some(pg_runtime(&[("vector", None), ("meerkat", None)]));
+        merge_pg_runtime(
+            &mut base,
+            Some(pg_runtime(&[
+                ("meerkat", Some("65df24d")),
+                ("vchord", Some("abc1234")),
+            ])),
+        );
+        let exts = base.unwrap().extensions;
+        // meerkat now carries the commit (replaced the commit-less entry)
+        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        // vchord got unioned in
+        assert_eq!(exts["vchord"].git_commit.as_deref(), Some("abc1234"));
+        // pgvector retained
+        assert!(exts.contains_key("vector"));
+    }
+
+    #[test]
+    fn merge_pg_runtime_adopts_when_base_absent() {
+        let mut base = None;
+        merge_pg_runtime(&mut base, Some(pg_runtime(&[("meerkat", Some("c"))])));
+        assert_eq!(
+            base.unwrap().extensions["meerkat"].git_commit.as_deref(),
+            Some("c")
+        );
+    }
 
     fn summary(dataset: &str, ts: &str, instance: Option<&str>, hostname: &str) -> RunSummary {
         RunSummary {
