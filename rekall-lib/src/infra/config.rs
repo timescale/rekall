@@ -431,6 +431,29 @@ impl InfraConfig {
             config.insert(k.clone(), v.clone());
         }
 
+        // Invariant (all instance types, even with explicit overrides):
+        // maintenance_work_mem must stay under the /dev/shm ceiling (~50% of
+        // RAM), since pgvector's parallel HNSW build allocates a DSM segment up
+        // to maintenance_work_mem there. Clamp the effective value to 2·RAM/5
+        // (40%) so nothing — a future formula tweak or a user override — can
+        // reintroduce the "could not resize shared memory segment" failure.
+        if let Some(ram_gb) = self.instance_ram_gb() {
+            let ceiling_gb = (ram_gb * 2 / 5).max(1);
+            let ceiling_bytes = ceiling_gb as u64 * 1024u64.pow(3);
+            if let Some(mwm) = config.get("maintenance_work_mem") {
+                if parse_size_bytes(mwm).is_some_and(|b| b > ceiling_bytes) {
+                    tracing::warn!(
+                        "maintenance_work_mem={mwm} exceeds 2·RAM/5 ({ceiling_gb}GB); \
+                         capping to keep pgvector parallel builds within /dev/shm"
+                    );
+                    config.insert(
+                        "maintenance_work_mem".to_string(),
+                        format!("{ceiling_gb}GB"),
+                    );
+                }
+            }
+        }
+
         config
     }
 
@@ -687,6 +710,31 @@ git_ref = "feat/parallel-build"
         assert_eq!(pg["shared_buffers"], "8GB"); // explicit override wins
         assert_eq!(pg["maintenance_work_mem"], "25GB"); // auto 2·RAM/5
         assert_eq!(pg["huge_pages"], "try");
+    }
+
+    #[test]
+    fn maintenance_work_mem_override_clamped_under_dev_shm() {
+        // An explicit override above 2·RAM/5 (the /dev/shm-safe ceiling) is
+        // capped, so pgvector parallel builds can't exhaust /dev/shm.
+        let mut pg_config = HashMap::new();
+        pg_config.insert("maintenance_work_mem".to_string(), "60GB".to_string()); // ~RAM/2 on 128GB
+        let cfg = InfraConfig {
+            instance_type: "r8g.4xlarge".to_string(), // 128 GB
+            pg_config,
+            ..Default::default()
+        };
+        // 128·2/5 = 51 GB ceiling.
+        assert_eq!(cfg.effective_pg_config()["maintenance_work_mem"], "51GB");
+
+        // A below-ceiling override is left untouched.
+        let mut pg_config = HashMap::new();
+        pg_config.insert("maintenance_work_mem".to_string(), "16GB".to_string());
+        let cfg = InfraConfig {
+            instance_type: "r8g.4xlarge".to_string(),
+            pg_config,
+            ..Default::default()
+        };
+        assert_eq!(cfg.effective_pg_config()["maintenance_work_mem"], "16GB");
     }
 
     #[test]
