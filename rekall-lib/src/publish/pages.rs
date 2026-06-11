@@ -358,10 +358,12 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
 
     // The label links to the interactive HTML; a small "svg" link beside it
     // offers the static SVG for download (when present).
+    // Distance-recall (ann-benchmarks method, tie-aware) is the primary recall
+    // view, so it leads the non-pareto plots; per-config is the ID-based view.
     let links: Vec<String> = [
         ("pareto", "Pareto"),
-        ("per-config", "Per-config"),
         ("distance-recall", "Distance-recall"),
+        ("per-config", "Per-config"),
         ("build-times", "Build times"),
     ]
     .iter()
@@ -382,7 +384,14 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
     } else {
         b.push_str(&links.join(" &nbsp;·&nbsp; "));
         b.push_str("<div class=\"thumbs\">");
-        for kind in ["pareto", "per-config", "distance-recall", "build-times"] {
+        // Recall thumbnail: prefer distance-recall (the correct recall);
+        // fall back to per-config when distance-recall wasn't generated.
+        let recall_thumb = if has("distance-recall", "svg") {
+            "distance-recall"
+        } else {
+            "per-config"
+        };
+        for kind in ["pareto", recall_thumb, "build-times"] {
             if has(kind, "svg") {
                 let svg = format!("{prefix}-report-{kind}.svg");
                 // The SVG is just the preview image; clicking opens the
