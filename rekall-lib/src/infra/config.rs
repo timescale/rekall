@@ -365,20 +365,23 @@ impl InfraConfig {
             let mut set = |k: &str, v: String| config.insert(k.to_string(), v);
 
             // Memory. shared_buffers = RAM/4 and effective_cache_size = 3·RAM/4
-            // follow pgtune. maintenance_work_mem = RAM/2 is far above pgtune's
-            // 8 GB cap, deliberately: it is a per-operation CEILING allocated
-            // on demand (not reserved at startup, and never touched by
-            // queries), so sizing it large simply lets a pgvector HNSW build
-            // keep its whole graph resident in RAM instead of spilling to the
-            // slow on-disk pass. Since we can't know the dataset in advance, we
-            // err big — running out mid-build is far costlier than an unused
-            // ceiling. RAM/4 (shared_buffers) + RAM/2 (a build that fills the
-            // ceiling) = 3·RAM/4, leaving a RAM/4 cushion for the OS, (mostly
-            // reclaimable) page cache, and workers; builds run one at a time
-            // and pgvector shares the graph across parallel workers, not ×N.
+            // follow pgtune. maintenance_work_mem is set far above pgtune's 8 GB
+            // cap deliberately, to let a pgvector HNSW build keep its whole
+            // graph resident instead of spilling to the slow on-disk pass.
+            //
+            // BUT pgvector's *parallel* HNSW build places that graph in a
+            // shared-memory (DSM) segment sized up to maintenance_work_mem, and
+            // DSM lives in /dev/shm — a tmpfs capped at ~50% of RAM. Setting
+            // maintenance_work_mem = RAM/2 made the build request the entire
+            // /dev/shm and fail with "could not resize shared memory segment:
+            // No space left on device". So cap it at 2·RAM/5 (40%): still large,
+            // but safely under the 50% /dev/shm ceiling with headroom.
             set("shared_buffers", format!("{}GB", ram_gb / 4));
             set("effective_cache_size", format!("{}GB", ram_gb * 3 / 4));
-            set("maintenance_work_mem", format!("{}GB", (ram_gb / 2).max(1)));
+            set(
+                "maintenance_work_mem",
+                format!("{}GB", (ram_gb * 2 / 5).max(1)),
+            );
             set("work_mem", "256MB".to_string());
 
             // WAL: fewer, larger checkpoints during bulk load + build.
@@ -589,7 +592,7 @@ git_ref = "feat/parallel-build"
         let pg = cfg.effective_pg_config();
         // 64 GB / 8 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "16GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "32GB"); // RAM/2 (≫ pgtune cap)
+        assert_eq!(pg["maintenance_work_mem"], "25GB"); // 2·RAM/5 (40%)
         assert_eq!(pg["effective_cache_size"], "48GB"); // 3·RAM/4
         assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers"], "8");
@@ -608,7 +611,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = small.effective_pg_config();
         assert_eq!(pg["max_parallel_maintenance_workers"], "4"); // 8/2
-        assert_eq!(pg["maintenance_work_mem"], "32GB"); // RAM/2
+        assert_eq!(pg["maintenance_work_mem"], "25GB"); // 2·RAM/5
 
         let big = InfraConfig {
             instance_type: "r8i.24xlarge".to_string(), // 96 vCPU / 768 GB
@@ -616,7 +619,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = big.effective_pg_config();
         assert_eq!(pg["max_parallel_maintenance_workers"], "32"); // 96/2 → cap 32
-        assert_eq!(pg["maintenance_work_mem"], "384GB"); // RAM/2
+        assert_eq!(pg["maintenance_work_mem"], "307GB"); // 2·RAM/5
     }
 
     #[test]
@@ -663,7 +666,7 @@ git_ref = "feat/parallel-build"
         let pg = cfg.effective_pg_config();
         // 128 GB / 16 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "32GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "64GB"); // RAM/2
+        assert_eq!(pg["maintenance_work_mem"], "51GB"); // 2·RAM/5
         assert_eq!(pg["effective_cache_size"], "96GB"); // 3·RAM/4
         assert_eq!(pg["max_parallel_maintenance_workers"], "15"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers_per_gather"], "8"); // ceil(vCPU/2)
@@ -682,7 +685,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = cfg.effective_pg_config();
         assert_eq!(pg["shared_buffers"], "8GB"); // explicit override wins
-        assert_eq!(pg["maintenance_work_mem"], "32GB"); // auto RAM/2
+        assert_eq!(pg["maintenance_work_mem"], "25GB"); // auto 2·RAM/5
         assert_eq!(pg["huge_pages"], "try");
     }
 
