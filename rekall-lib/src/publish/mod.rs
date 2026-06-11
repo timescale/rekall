@@ -1,10 +1,12 @@
-//! Publishing: archive a run's results directory to S3 and (Stage 2) push
-//! HTML reports + a catalog to GitHub Pages.
+//! Publishing: archive a run's results directory to S3 and push HTML reports
+//! + a catalog to GitHub Pages.
 //!
 //! The run-id is **deterministic from the run's recorded metadata** (dataset,
 //! run-start date/time, instance), so re-publishing a run maps to the same
 //! S3 prefix / Pages entry rather than creating a duplicate.
 
+mod pages;
+mod report;
 mod s3;
 
 use std::collections::BTreeMap;
@@ -246,6 +248,13 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
     let s3_url = format!("s3://{bucket}/{prefix}/");
     let marker_key = format!("{prefix}/meta.json");
     let meta = RunMeta::from_summary(&summary, &rid, &s3_url)?;
+    let do_pages = config.pages && !opts.s3_only && !opts.no_pages;
+
+    // Step 1: generate the report HTML/SVG into the results dir so they are
+    // archived to S3 *and* available for the Pages copy. (Skipped on dry-run.)
+    if !opts.dry_run {
+        report::generate_into_dir(&summary, dir);
+    }
 
     let mut files =
         s3::walk_files(dir).map_err(|e| Error::Config(format!("scan {}: {e}", dir.display())))?;
@@ -261,6 +270,9 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
             println!("  {s3_url}{rel}");
         }
         println!("  {s3_url}meta.json  (completion marker, written last)");
+        if do_pages {
+            pages::publish(&summary, &meta, dir, &rid, config, true)?;
+        }
         return Ok(());
     }
 
@@ -286,8 +298,15 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
         .await?;
     tracing::info!("archived {} files to {s3_url}", files.len());
 
-    // Stage 2: GitHub Pages publish goes here (gated by config.pages &&
-    // !opts.s3_only && !opts.no_pages).
+    // GitHub Pages publish. Non-fatal: a Pages misconfig must not mask a
+    // successful S3 archive — log and continue.
+    if do_pages {
+        match pages::publish(&summary, &meta, dir, &rid, config, false) {
+            Ok(Some(url)) => tracing::info!("published run page: {url}"),
+            Ok(None) => {}
+            Err(e) => eprintln!("GitHub Pages publish failed (S3 archive succeeded): {e}"),
+        }
+    }
 
     Ok(())
 }
