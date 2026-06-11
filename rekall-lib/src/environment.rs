@@ -147,15 +147,27 @@ pub fn collect_host_info() -> HostInfo {
 }
 
 pub fn collect_rekall_info() -> RekallInfo {
+    // Prefer the commit/branch embedded at build time (see build.rs) — that's
+    // available regardless of the run's cwd. Fall back to a runtime
+    // `git rev-parse` for the dev case of building and running inside a clone.
+    let commit = non_empty(env!("REKALL_GIT_COMMIT"))
+        .or_else(|| command_output("git", &["rev-parse", "--short", "HEAD"]));
+    let branch = non_empty(env!("REKALL_GIT_BRANCH"))
+        .or_else(|| command_output("git", &["rev-parse", "--abbrev-ref", "HEAD"]));
     RekallInfo {
         version: env!("CARGO_PKG_VERSION").to_string(),
-        git_commit: command_output("git", &["rev-parse", "--short", "HEAD"]),
-        git_branch: command_output("git", &["rev-parse", "--abbrev-ref", "HEAD"]),
-        note: "git info is from the local repo at benchmark time; \
-               extension versions in pg_runtime.extensions are \
+        git_commit: commit,
+        git_branch: branch,
+        note: "rekall git info is captured at build time (or the local repo at \
+               benchmark time); extension versions in pg_runtime.extensions are \
                authoritative (queried from the running PG instance)"
             .to_string(),
     }
+}
+
+fn non_empty(s: &str) -> Option<String> {
+    let s = s.trim();
+    (!s.is_empty()).then(|| s.to_string())
 }
 
 pub fn collect() -> RunEnvironment {
@@ -165,5 +177,28 @@ pub fn collect() -> RunEnvironment {
         timestamp: chrono::Local::now()
             .format("%Y-%m-%dT%H:%M:%S%z")
             .to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn non_empty_trims_and_nullifies_blank() {
+        assert_eq!(non_empty("  abc "), Some("abc".to_string()));
+        assert_eq!(non_empty("   "), None);
+        assert_eq!(non_empty(""), None);
+    }
+
+    #[test]
+    fn rekall_info_reports_commit_when_built_in_repo() {
+        // build.rs embeds the commit; this crate is built inside the repo, so
+        // the commit must be present (build-time value, cwd-independent).
+        let info = collect_rekall_info();
+        assert!(
+            info.git_commit.is_some(),
+            "expected an embedded rekall git commit"
+        );
     }
 }
