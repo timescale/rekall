@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::metrics::RunSummary;
-use crate::output::plot::{generate_plot, PlotOptions};
+use crate::output::plot::{generate_build_plot, generate_plot, PlotOptions};
 
 /// Report kinds we always generate from a `RunSummary` (these need only the
 /// summarized search results, not the dataset / ground truth).
@@ -42,5 +42,22 @@ pub fn generate_into_dir(summary: &RunSummary, dir: &Path) -> Vec<PathBuf> {
             }
         }
     }
+
+    // Build-time bar chart, when the run recorded index builds.
+    if !summary.index_builds.is_empty() {
+        for ext in ["html", "svg"] {
+            let path = dir.join(format!("{prefix}-report-build-times.{ext}"));
+            match generate_build_plot(
+                &summary.index_builds,
+                std::slice::from_ref(summary),
+                &path,
+                Some("Index build time"),
+            ) {
+                Ok(()) => written.push(path),
+                Err(e) => tracing::warn!("could not generate {}: {e}", path.display()),
+            }
+        }
+    }
+
     written
 }

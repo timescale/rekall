@@ -60,17 +60,11 @@ pub fn render(
 
     writeln!(f)?;
     // Title, with the metadata caption appended as smaller extra lines.
-    // A double-quoted gnuplot string lets embedded "\n" become real line
-    // breaks and enhanced "{/=N ...}" shrink the caption font.
-    let mut title = escape_gp(&data.title);
-    if let Some(caption) = &data.caption {
-        for line in caption.lines() {
-            title.push_str("\\n{/=9 ");
-            title.push_str(&escape_gp(line));
-            title.push('}');
-        }
-    }
-    writeln!(f, "set title \"{title}\"")?;
+    writeln!(
+        f,
+        "set title \"{}\"",
+        title_string(&data.title, data.caption.as_deref())
+    )?;
     writeln!(f, "set xlabel noenhanced 'Recall@10' offset 0,-1")?;
     writeln!(f, "set ylabel 'Queries per second'")?;
     writeln!(f, "set grid")?;
@@ -208,7 +202,7 @@ pub fn render(
 /// literally we must get a backslash past the string parser to enhanced,
 /// hence the doubled `\\` for metacharacters. The caller adds its own
 /// `\n` line breaks and `{/=N ...}` font markup outside this function.
-fn escape_gp(s: &str) -> String {
+pub(super) fn escape_gp(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
@@ -226,4 +220,18 @@ fn escape_gp(s: &str) -> String {
         }
     }
     out
+}
+
+/// The payload for `set title "<...>"`: the main title plus each caption line
+/// appended as a smaller enhanced-text line. Shared by the plot renderers.
+pub(super) fn title_string(title: &str, caption: Option<&str>) -> String {
+    let mut t = escape_gp(title);
+    if let Some(c) = caption {
+        for line in c.lines() {
+            t.push_str("\\n{/=9 ");
+            t.push_str(&escape_gp(line));
+            t.push('}');
+        }
+    }
+    t
 }

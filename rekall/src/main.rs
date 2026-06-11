@@ -866,6 +866,19 @@ fn cmd_report(
                 size_mb
             );
         }
+
+        let summary = make_summary(Vec::new());
+        let path = out.join(format!("{file_prefix}report-build-times.{ext}"));
+        if let Err(e) = plot::generate_build_plot(
+            &build_results,
+            std::slice::from_ref(&summary),
+            &path,
+            Some("Index build time"),
+        ) {
+            eprintln!("Build-time plot failed: {e}");
+        } else {
+            println!("Plot: {}", path.display());
+        }
     }
 
     Ok(())

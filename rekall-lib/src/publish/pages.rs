@@ -230,8 +230,11 @@ pub fn publish(
         .map_err(|e| Error::Config(format!("serialize meta.json: {e}")))?;
     std::fs::write(run_dir.join("meta.json"), meta_json)
         .map_err(|e| Error::Config(format!("write meta.json: {e}")))?;
-    std::fs::write(run_dir.join("index.html"), render_run_page(summary, meta))
-        .map_err(|e| Error::Config(format!("write run index.html: {e}")))?;
+    std::fs::write(
+        run_dir.join("index.html"),
+        render_run_page(summary, meta, &report_files),
+    )
+    .map_err(|e| Error::Config(format!("write run index.html: {e}")))?;
 
     // Regenerate the catalog from every run's meta.json.
     let metas = load_all_meta(&work);
@@ -272,7 +275,7 @@ fn pages_workdir(url: &str) -> PathBuf {
 fn collect_report_files(summary: &RunSummary, dir: &Path) -> Vec<PathBuf> {
     let prefix = report::report_prefix(summary);
     let mut out = Vec::new();
-    for kind in ["pareto", "per-config", "distance-recall"] {
+    for kind in ["pareto", "per-config", "distance-recall", "build-times"] {
         for ext in ["html", "svg"] {
             let p = dir.join(format!("{prefix}-report-{kind}.{ext}"));
             if p.exists() {
@@ -329,7 +332,7 @@ fn page(title: &str, body: &str) -> String {
 }
 
 /// Full per-run metadata page.
-fn render_run_page(summary: &RunSummary, meta: &RunMeta) -> String {
+fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf]) -> String {
     let ds = pretty_dataset(&meta.dataset);
     let mut b = String::new();
 
@@ -342,32 +345,45 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta) -> String {
         meta.qps_at_peak
     ));
 
-    // Plots
+    // Plots — link only the report files that were actually generated for this
+    // run (distance-recall, e.g., only exists if a ground-truth recompute ran).
     b.push_str("<h2>Plots</h2>");
     let prefix = report::report_prefix(summary);
-    let mut any_plot = false;
-    for (kind, label) in [
+    let present: std::collections::HashSet<String> = report_files
+        .iter()
+        .filter_map(|p| p.file_name().and_then(|n| n.to_str()).map(String::from))
+        .collect();
+    let has = |kind: &str, ext: &str| present.contains(&format!("{prefix}-report-{kind}.{ext}"));
+
+    let links: Vec<String> = [
         ("pareto", "Pareto"),
         ("per-config", "Per-config"),
         ("distance-recall", "Distance-recall"),
-    ] {
-        let html = format!("{prefix}-report-{kind}.html");
-        // Link only if we copied it (best-effort: the catalog/page are static).
-        b.push_str(&format!(
-            "<a href=\"{html}\">{label}</a>&nbsp;&nbsp;",
-            html = esc(&html),
-            label = label
-        ));
-        any_plot = true;
-    }
-    if any_plot {
+        ("build-times", "Build times"),
+    ]
+    .iter()
+    .filter(|(kind, _)| has(kind, "html"))
+    .map(|(kind, label)| {
+        format!(
+            "<a href=\"{}\">{label}</a>",
+            esc(&format!("{prefix}-report-{kind}.html"))
+        )
+    })
+    .collect();
+
+    if links.is_empty() {
+        b.push_str("<p class=\"sub\">(no plots for this run)</p>");
+    } else {
+        b.push_str(&links.join(" &nbsp;·&nbsp; "));
         b.push_str("<div class=\"thumbs\">");
-        for kind in ["pareto", "per-config"] {
-            let svg = format!("{prefix}-report-{kind}.svg");
-            b.push_str(&format!(
-                "<a href=\"{svg}\"><img src=\"{svg}\" alt=\"{kind}\"></a>",
-                svg = esc(&svg)
-            ));
+        for kind in ["pareto", "per-config", "build-times"] {
+            if has(kind, "svg") {
+                let svg = format!("{prefix}-report-{kind}.svg");
+                b.push_str(&format!(
+                    "<a href=\"{svg}\"><img src=\"{svg}\" alt=\"{kind}\"></a>",
+                    svg = esc(&svg)
+                ));
+            }
         }
         b.push_str("</div>");
     }
@@ -626,15 +642,23 @@ mod tests {
     }
 
     #[test]
-    fn run_page_shows_metadata_and_plot_links() {
+    fn run_page_shows_metadata_and_only_present_plot_links() {
         let m = meta("cohere-5m", "2026-06-10", "09:56:42");
-        let html = render_run_page(&summary_for(&m), &m);
+        // Only pareto + per-config were generated for this run.
+        let files = [
+            PathBuf::from("cohere-5m-report-pareto.html"),
+            PathBuf::from("cohere-5m-report-pareto.svg"),
+            PathBuf::from("cohere-5m-report-per-config.html"),
+        ];
+        let html = render_run_page(&summary_for(&m), &m, &files);
         assert!(html.contains("Cohere-5M"));
         assert!(html.contains("r8i.2xlarge")); // instance
         assert!(html.contains("Xeon")); // cpu
         assert!(html.contains("num_queries")); // search config
-        assert!(html.contains("cohere-5m-report-pareto.html")); // plot link
+        assert!(html.contains("cohere-5m-report-pareto.html")); // present plot link
         assert!(html.contains("s3://rekall/runs/x/")); // s3 link
+                                                       // distance-recall wasn't generated → must NOT be linked (no 404s).
+        assert!(!html.contains("distance-recall"));
     }
 
     // Full git flow against a local bare "origin": clone, create gh-pages,

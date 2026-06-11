@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use crate::metrics::{RunSummary, SearchResult};
+use crate::metrics::{IndexBuildResult, RunSummary, SearchResult};
 
+mod build;
 mod gnuplot;
 mod html;
 
@@ -81,19 +82,65 @@ pub fn generate_plot(
         "svg" | "png" => {
             let gp_path = output_path.with_extension("gnuplot");
             gnuplot::render(&gp_path, Some(output_path), &data, opts)?;
-            match std::process::Command::new("gnuplot").arg(&gp_path).status() {
-                Ok(s) if s.success() => {
-                    if ext == "svg" {
-                        fix_svg_text(output_path);
-                    }
-                }
-                _ => {
-                    eprintln!(
-                        "gnuplot not found or failed. Run manually:\n  gnuplot {}",
-                        gp_path.display()
-                    );
-                }
+            run_gnuplot(&gp_path, output_path);
+            Ok(())
+        }
+        _ => Err(format!("Unsupported format: {ext}. Use .html, .svg, .png, or .gnuplot").into()),
+    }
+}
+
+/// Run gnuplot on `gp_path` to produce `output_path`; on success, post-process
+/// SVG text. Best-effort: a missing/failing gnuplot prints a hint and leaves
+/// the `.gnuplot` script for manual rendering (HTML reports are unaffected).
+fn run_gnuplot(gp_path: &Path, output_path: &Path) {
+    let is_svg = output_path.extension().and_then(|e| e.to_str()) == Some("svg");
+    match std::process::Command::new("gnuplot").arg(gp_path).status() {
+        Ok(s) if s.success() => {
+            if is_svg {
+                fix_svg_text(output_path);
             }
+        }
+        _ => eprintln!(
+            "gnuplot not found or failed. Run manually:\n  gnuplot {}",
+            gp_path.display()
+        ),
+    }
+}
+
+/// Render an index build-time bar chart (one bar per index, tallest first) to
+/// `.html`, `.svg`, `.png`, or `.gnuplot`. `summaries` supplies the metadata
+/// caption (same as the recall plots). Errors if there are no builds.
+pub fn generate_build_plot(
+    builds: &[IndexBuildResult],
+    summaries: &[RunSummary],
+    output_path: &Path,
+    title: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if builds.is_empty() {
+        return Err("No index builds to plot".into());
+    }
+    let title = title.unwrap_or("Index build time");
+    let caption = build_caption(summaries);
+    let ext = output_path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("html");
+
+    match ext {
+        "html" | "htm" => build::render_html(output_path, builds, title, caption.as_deref()),
+        "gnuplot" | "gp" => {
+            build::render_gnuplot(output_path, None, builds, title, caption.as_deref())
+        }
+        "svg" | "png" => {
+            let gp_path = output_path.with_extension("gnuplot");
+            build::render_gnuplot(
+                &gp_path,
+                Some(output_path),
+                builds,
+                title,
+                caption.as_deref(),
+            )?;
+            run_gnuplot(&gp_path, output_path);
             Ok(())
         }
         _ => Err(format!("Unsupported format: {ext}. Use .html, .svg, .png, or .gnuplot").into()),
