@@ -137,6 +137,11 @@ pub struct InfraConfig {
     /// S3 bucket for datasets. Used to scope the IAM policy template.
     #[serde(default)]
     pub s3_bucket: Option<String>,
+    /// S3 bucket the publish step writes run archives to. Scopes the IAM
+    /// policy's write permission. Defaults to `rekall-bench`; keep it in sync
+    /// with `[publish].s3_bucket` in the benchmark config.
+    #[serde(default)]
+    pub results_bucket: Option<String>,
     /// Pre-created IAM instance profile name. If set, rekall uses this
     /// instead of creating IAM resources (which requires iam:CreateRole).
     /// Generate the template with `rekall infra iam-policy`.
@@ -168,6 +173,7 @@ impl Default for InfraConfig {
             vectorchord: None,
             ssh_key: None,
             s3_bucket: None,
+            results_bucket: None,
             iam_instance_profile: None,
             name_prefix: default_name_prefix(),
         }
@@ -188,6 +194,12 @@ pub struct GitSourceConfig {
 }
 
 impl InfraConfig {
+    /// Results/publish bucket the IAM policy grants write to. Defaults to
+    /// `rekall-bench`.
+    pub fn results_bucket(&self) -> &str {
+        self.results_bucket.as_deref().unwrap_or("rekall-bench")
+    }
+
     /// Load infra config from a standalone TOML file.
     /// Supports .local.toml overrides (same as benchmark configs).
     pub fn from_file(path: &std::path::Path) -> std::result::Result<Self, String> {

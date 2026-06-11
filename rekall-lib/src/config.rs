@@ -268,7 +268,7 @@ pub struct PublishConfig {
     /// `--publish` CLI flag; `rekall infra run` defaults it on for the remote.
     #[serde(default)]
     pub enabled: bool,
-    /// S3 bucket for the raw-results archive. Defaults to `rekall` when unset.
+    /// S3 bucket for the raw-results archive. Defaults to `rekall-bench`.
     pub s3_bucket: Option<String>,
     /// AWS region for the bucket. Defaults to the credential chain's region,
     /// falling back to us-east-1.
@@ -317,9 +317,9 @@ impl Default for PublishConfig {
 }
 
 impl PublishConfig {
-    /// Bucket name, defaulting to `rekall`.
+    /// Bucket name, defaulting to `rekall-bench`.
     pub fn bucket(&self) -> &str {
-        self.s3_bucket.as_deref().unwrap_or("rekall")
+        self.s3_bucket.as_deref().unwrap_or("rekall-bench")
     }
 
     /// Load just the `[publish]` section from a config file, applying the same
@@ -1607,7 +1607,7 @@ dataset = "datasets/ds-a.toml"
         let suite = dir.path().join("suite.toml");
         std::fs::write(&suite, "[[suite]]\ndataset = \"foo.toml\"").unwrap();
         let cfg = PublishConfig::from_config_path(&suite).unwrap();
-        assert_eq!(cfg.bucket(), "rekall");
+        assert_eq!(cfg.bucket(), "rekall-bench");
         assert!(cfg.pages);
     }
 

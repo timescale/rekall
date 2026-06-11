@@ -700,15 +700,16 @@ pub fn list_instances_aws(region: &str) -> Result<Vec<InfraInstance>> {
 }
 
 pub fn iam_terraform_template(config: &InfraConfig) -> String {
-    // When a datasets bucket is named, also grant the `rekall` results bucket
-    // (publish target) so the role can write the run archive. With no bucket
-    // named the policy is already `*`, which covers both.
+    // When a datasets bucket is named, also grant the results bucket (publish
+    // target) so the role can write the run archive. With no bucket named the
+    // policy is already `*`, which covers both.
+    let results_bucket = config.results_bucket();
     let s3_resources = if let Some(ref bucket) = config.s3_bucket {
         format!(
             r#"      "arn:aws:s3:::{bucket}",
       "arn:aws:s3:::{bucket}/*",
-      "arn:aws:s3:::rekall",
-      "arn:aws:s3:::rekall/*""#
+      "arn:aws:s3:::{results_bucket}",
+      "arn:aws:s3:::{results_bucket}/*""#
         )
     } else {
         r#"      "arn:aws:s3:::*""#.to_string()
@@ -834,15 +835,16 @@ output "operator_secret_access_key" {{
 }
 
 pub fn iam_cloudformation_template(config: &InfraConfig) -> String {
-    // Also grant the `rekall` results bucket (publish target) so the role can
-    // write the run archive; `*` already covers it when no bucket is named.
+    // Also grant the results bucket (publish target) so the role can write the
+    // run archive; `*` already covers it when no bucket is named.
+    let results_bucket = config.results_bucket();
     let s3_resources = if let Some(ref bucket) = config.s3_bucket {
         format!(
             r#"                Resource:
                   - "arn:aws:s3:::{bucket}"
                   - "arn:aws:s3:::{bucket}/*"
-                  - "arn:aws:s3:::rekall"
-                  - "arn:aws:s3:::rekall/*""#
+                  - "arn:aws:s3:::{results_bucket}"
+                  - "arn:aws:s3:::{results_bucket}/*""#
         )
     } else {
         r#"                Resource:
