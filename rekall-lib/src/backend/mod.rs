@@ -294,8 +294,27 @@ pub trait IndexBackend: Send + Sync {
             .map(|m| tokio::spawn(async move { m.monitor_until_done(progress_tx.as_ref()).await }));
 
         let start = Instant::now();
-        self.pg().client().execute(&sql, &[]).await?;
+        let build_res = self.pg().client().execute(&sql, &[]).await;
         let build_time = start.elapsed();
+
+        // Always stop the monitor before returning. On success, await it (it
+        // ends once the build leaves pg_stat_progress_create_index). On
+        // failure, ABORT it: a build that errors before it ever appears there
+        // (e.g. a shared-memory allocation failure at setup) never sets the
+        // monitor's `started` flag, so monitor_until_done would loop forever —
+        // and because it holds a clone of the progress-channel sender, that
+        // would keep the run's progress receiver open and hang the entire run
+        // instead of surfacing the build error. Aborting drops that sender.
+        let monitor_result = match monitor_handle {
+            Some(handle) if build_res.is_ok() => handle.await.ok(),
+            Some(handle) => {
+                handle.abort();
+                None
+            }
+            None => None,
+        };
+
+        build_res?;
 
         if let Some(ref tx) = self.pg().progress {
             let _ = tx.send(crate::progress::ProgressEvent::IndexBuildEnd {
@@ -303,11 +322,6 @@ pub trait IndexBackend: Send + Sync {
                 elapsed_secs: build_time.as_secs_f64(),
             });
         }
-
-        let monitor_result = match monitor_handle {
-            Some(handle) => handle.await.ok(),
-            None => None,
-        };
         let peak_workers = monitor_result.as_ref().map(|m| m.peak_workers).unwrap_or(0);
 
         let size = self.index_size().await?;
