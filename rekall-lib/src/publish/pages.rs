@@ -461,7 +461,14 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
             row(&mut b, k, &v.to_string());
         }
     }
-    row(&mut b, "S3 archive", &meta.s3_url);
+    // S3 archive: show the s3:// path (copy-pasteable for `aws s3 cp`) linked
+    // to the S3 console (reachable for viewers with AWS access; others get the
+    // AWS login). A direct object URL would 404/AccessDenied on a private bucket.
+    let s3_cell = match s3_console_url(&meta.s3_url) {
+        Some(url) => format!("<a href=\"{}\">{}</a>", esc(&url), esc(&meta.s3_url)),
+        None => esc(&meta.s3_url),
+    };
+    b.push_str(&format!("<tr><td>S3 archive</td><td>{s3_cell}</td></tr>"));
     b.push_str("</table>");
 
     // Index builds
@@ -507,6 +514,17 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
 
 fn row(b: &mut String, k: &str, v: &str) {
     b.push_str(&format!("<tr><td>{}</td><td>{}</td></tr>", esc(k), esc(v)));
+}
+
+/// AWS S3 console URL for an `s3://bucket/prefix/` location — clickable for
+/// viewers with access to the account (others get the AWS login). Returns
+/// `None` if the string isn't an `s3://` URL.
+fn s3_console_url(s3_url: &str) -> Option<String> {
+    let rest = s3_url.strip_prefix("s3://")?;
+    let (bucket, prefix) = rest.split_once('/').unwrap_or((rest, ""));
+    Some(format!(
+        "https://s3.console.aws.amazon.com/s3/buckets/{bucket}?prefix={prefix}"
+    ))
 }
 
 fn human_bytes(n: u64) -> String {
@@ -567,7 +585,7 @@ fn render_catalog(metas: &[RunMeta]) -> String {
                 qps = m.qps_at_peak,
                 commit = esc(commit),
                 pre = esc(&prefix),
-                s3 = esc(&m.s3_url),
+                s3 = esc(&s3_console_url(&m.s3_url).unwrap_or_else(|| m.s3_url.clone())),
             ));
         }
         b.push_str("</table>");
