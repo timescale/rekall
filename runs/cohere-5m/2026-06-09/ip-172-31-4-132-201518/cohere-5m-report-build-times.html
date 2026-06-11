@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index build time</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index build time</div><div class="meta">cohere-5m  |  2026-06-09  |  Intel(R) Xeon(R) 6975P-C, 8 vCPU, 62 GB<br>PG 18.4  |  shared_buffers=16 GB  |  work_mem=512 MB  |  max_parallel_maintenance_workers=4</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["hnsw-m24", "hnsw-m24-bq", "mkt-n16000-cctrue-fs16-soar", "mkt-n8000-cctrue-fs16-soar", "mkt-n16000-ccfalse-fs16-soar", "mkt-n16000-cctrue-fs16", "mkt-n4000-cctrue-fs16-soar", "mkt-n16000-ccfalse-fs16", "mkt-n8000-cctrue-fs16", "mkt-n8000-ccfalse-fs16-soar", "mkt-n8000-ccfalse-fs16", "mkt-n4000-cctrue-fs16", "mkt-n2000-cctrue-fs16-soar", "mkt-n2000-ccfalse-fs16-soar", "mkt-n4000-ccfalse-fs16-soar", "mkt-n2000-ccfalse-fs16", "mkt-n4000-ccfalse-fs16"], y:[5014.802091457, 2122.52221919, 967.85170049, 835.858182567, 830.07019615, 819.861797083, 796.222621332, 701.310797584, 607.88496929, 472.353142862, 424.161785143, 361.029674826, 285.443904276, 262.333618147, 254.633693699, 223.034074876, 205.56266799], text:["19529 MB", "2372 MB", "2227 MB", "2165 MB", "2227 MB", "2220 MB", "2133 MB", "2220 MB", "2158 MB", "2165 MB", "2158 MB", "2127 MB", "2114 MB", "2115 MB", "2132 MB", "2110 MB", "2127 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["5014.8s · 19529 MB · 4 workers", "2122.5s · 2372 MB · 4 workers", "967.9s · 2227 MB · 4 workers", "835.9s · 2165 MB · 4 workers", "830.1s · 2227 MB · 4 workers", "819.9s · 2220 MB · 4 workers", "796.2s · 2133 MB · 4 workers", "701.3s · 2220 MB · 4 workers", "607.9s · 2158 MB · 4 workers", "472.4s · 2165 MB · 4 workers", "424.2s · 2158 MB · 4 workers", "361.0s · 2127 MB · 4 workers", "285.4s · 2114 MB · 4 workers", "262.3s · 2115 MB · 4 workers", "254.6s · 2132 MB · 4 workers", "223.0s · 2110 MB · 4 workers", "205.6s · 2127 MB · 4 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Build time (seconds)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>
