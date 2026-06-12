@@ -12,10 +12,12 @@
   "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
   "rekall_commit": "f5764a8",
   "extensions": {
+    "meerkat": "0.1.0 (65df24d)",
+    "pg_prewarm": "1.2",
     "vector": "0.8.2"
   },
-  "peak_recall": 0.9975200000000004,
-  "qps_at_peak": 33.74842820070496,
-  "num_indexes": 6,
+  "peak_recall": 0.9980599999999998,
+  "qps_at_peak": 30.206336342093863,
+  "num_indexes": 11,
   "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-06-11/r8i.16xlarge-224329/"
 }

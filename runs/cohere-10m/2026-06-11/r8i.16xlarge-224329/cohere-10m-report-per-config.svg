@@ -62,7 +62,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M89.31,479.34 L1161.95,479.34  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M89.31,479.34 L97.70,479.34 M391.96,479.34 L1161.95,479.34  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -109,7 +109,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M112.18,674.00 L112.18,665.00 M112.18,557.00 L112.18,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M112.18,674.00 L112.18,665.00 M112.18,431.00 L112.18,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -122,7 +122,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M173.80,674.00 L173.80,665.00 M173.80,557.00 L173.80,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M173.80,674.00 L173.80,665.00 M173.80,431.00 L173.80,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -135,7 +135,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M240.96,674.00 L240.96,665.00 M240.96,557.00 L240.96,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M240.96,674.00 L240.96,665.00 M240.96,431.00 L240.96,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -148,7 +148,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M322.88,674.00 L322.88,665.00 M322.88,557.00 L322.88,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M322.88,674.00 L322.88,665.00 M322.88,431.00 L322.88,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -161,7 +161,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M375.82,674.00 L375.82,665.00 M375.82,557.00 L375.82,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M375.82,674.00 L375.82,665.00 M375.82,431.00 L375.82,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -267,7 +267,7 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M97.70,665.00 L97.70,557.00 L383.57,557.00 L383.57,665.00 L97.70,665.00 Z  '/></g>
+	<path stroke='black'  d='M97.70,665.00 L97.70,431.00 L391.96,431.00 L391.96,665.00 L97.70,665.00 Z  '/></g>
 	<g id="gnuplot_plot_1" ><title>hnsw-m24</title>
 <g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
@@ -324,86 +324,240 @@
 <g fill="none" color="#FFFFFF" stroke="rgb( 44, 160,  44)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(941.18,543.31) scale(2.25)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(941.18,543.25) scale(2.25)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(941.18,543.18) scale(2.25)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(989.67,558.04) scale(2.25)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(989.67,558.05) scale(2.25)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(989.67,558.03) scale(2.25)' color='rgb(214,  39,  40)'/>
 </g>
 	</g>
-	<g id="gnuplot_plot_6" ><title>mkt-n12000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_6" ><title>mkt-n12000-ccfalse-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(214,  39,  40)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(214,  39,  40)'  d='M295.38,296.41 L380.57,329.47 L472.18,367.97 L572.67,408.85 L689.05,454.84 L825.41,505.92 L941.18,543.08  '/>	<use xlink:href='#gpPt6' transform='translate(295.38,296.41) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(380.57,329.47) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(472.18,367.97) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(572.67,408.85) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(689.05,454.84) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(825.41,505.92) scale(4.50)' color='rgb(214,  39,  40)'/>
-	<use xlink:href='#gpPt6' transform='translate(941.18,543.08) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<path stroke='rgb(214,  39,  40)'  d='M318.61,313.35 L407.11,351.11 L498.87,393.04 L604.83,441.08 L734.99,488.98 L880.91,527.58 L989.67,557.87  '/>	<use xlink:href='#gpPt6' transform='translate(318.61,313.35) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(407.11,351.11) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(498.87,393.04) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(604.83,441.08) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(734.99,488.98) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(880.91,527.58) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<use xlink:href='#gpPt6' transform='translate(989.67,557.87) scale(4.50)' color='rgb(214,  39,  40)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_7"  fill="none"><title>gnuplot_plot_7</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(214,  39,  40)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(890.39,524.68) scale(2.25)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(2.25)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(2.25)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(941.18,543.31) scale(2.25)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(941.18,543.25) scale(2.25)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(941.18,543.18) scale(2.25)' color='rgb(148, 103, 189)'/>
 </g>
 	</g>
-	<g id="gnuplot_plot_8" ><title>mkt-n16000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_8" ><title>mkt-n12000-cctrue-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(148, 103, 189)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(148, 103, 189)'  d='M283.02,297.90 L369.59,324.87 L455.45,357.82 L553.86,395.69 L659.33,439.26 L790.20,488.26 L890.39,524.62  '/>	<use xlink:href='#gpPt6' transform='translate(283.02,297.90) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(369.59,324.87) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(455.45,357.82) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(553.86,395.69) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(659.33,439.26) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(790.20,488.26) scale(4.50)' color='rgb(148, 103, 189)'/>
-	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<path stroke='rgb(148, 103, 189)'  d='M295.38,296.41 L380.57,329.47 L472.18,367.97 L572.67,408.85 L689.05,454.84 L825.41,505.92 L941.18,543.08  '/>	<use xlink:href='#gpPt6' transform='translate(295.38,296.41) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(380.57,329.47) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(472.18,367.97) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(572.67,408.85) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(689.05,454.84) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(825.41,505.92) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<use xlink:href='#gpPt6' transform='translate(941.18,543.08) scale(4.50)' color='rgb(148, 103, 189)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_9"  fill="none"><title>gnuplot_plot_9</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(148, 103, 189)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(1023.68,571.51) scale(2.25)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(937.63,546.98) scale(2.25)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(937.63,547.44) scale(2.25)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(937.63,547.11) scale(2.25)' color='rgb(140,  86,  75)'/>
 </g>
 	</g>
-	<g id="gnuplot_plot_10" ><title>mkt-n8000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_10" ><title>mkt-n16000-ccfalse-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(140,  86,  75)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(140,  86,  75)'  d='M231.18,306.41 L319.71,328.84 L409.78,358.65 L505.24,393.91 L612.74,435.12 L684.86,461.13 L788.33,498.17 L958.61,551.50
-		L1023.68,571.17  '/>	<use xlink:href='#gpPt6' transform='translate(231.18,306.41) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(319.71,328.84) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(409.78,358.65) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(505.24,393.91) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(612.74,435.12) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(684.86,461.13) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(788.33,498.17) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(958.61,551.50) scale(4.50)' color='rgb(140,  86,  75)'/>
-	<use xlink:href='#gpPt6' transform='translate(1023.68,571.17) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<path stroke='rgb(140,  86,  75)'  d='M305.31,307.65 L388.52,344.62 L476.11,385.42 L578.80,432.52 L699.27,480.01 L839.92,519.33 L937.63,546.57  '/>	<use xlink:href='#gpPt6' transform='translate(305.31,307.65) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(388.52,344.62) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(476.11,385.42) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(578.80,432.52) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(699.27,480.01) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(839.92,519.33) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<use xlink:href='#gpPt6' transform='translate(937.63,546.57) scale(4.50)' color='rgb(140,  86,  75)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_11"  fill="none"><title>gnuplot_plot_11</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(140,  86,  75)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(890.39,524.68) scale(2.25)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(2.25)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(2.25)' color='rgb(227, 119, 194)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_12" ><title>mkt-n16000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(227, 119, 194)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(227, 119, 194)'  d='M283.02,297.90 L369.59,324.87 L455.45,357.82 L553.86,395.69 L659.33,439.26 L790.20,488.26 L890.39,524.62  '/>	<use xlink:href='#gpPt6' transform='translate(283.02,297.90) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(369.59,324.87) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(455.45,357.82) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(553.86,395.69) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(659.33,439.26) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(790.20,488.26) scale(4.50)' color='rgb(227, 119, 194)'/>
+	<use xlink:href='#gpPt6' transform='translate(890.39,524.62) scale(4.50)' color='rgb(227, 119, 194)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_13"  fill="none"><title>gnuplot_plot_13</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(227, 119, 194)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(906.67,540.48) scale(2.25)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(906.67,539.81) scale(2.25)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(906.67,539.72) scale(2.25)' color='rgb(127, 127, 127)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_14" ><title>mkt-n20000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(127, 127, 127)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(127, 127, 127)'  d='M295.38,295.95 L377.81,333.48 L462.39,377.95 L555.29,427.88 L665.31,475.23 L801.07,517.09 L906.67,539.23  '/>	<use xlink:href='#gpPt6' transform='translate(295.38,295.95) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(377.81,333.48) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(462.39,377.95) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(555.29,427.88) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(665.31,475.23) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(801.07,517.09) scale(4.50)' color='rgb(127, 127, 127)'/>
+	<use xlink:href='#gpPt6' transform='translate(906.67,539.23) scale(4.50)' color='rgb(127, 127, 127)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_15"  fill="none"><title>gnuplot_plot_15</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(127, 127, 127)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(854.30,511.90) scale(2.25)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(854.30,512.58) scale(2.25)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(854.30,512.54) scale(2.25)' color='rgb(188, 189,  34)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_16" ><title>mkt-n20000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(188, 189,  34)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(188, 189,  34)'  d='M274.01,272.84 L356.00,306.50 L442.36,345.82 L533.10,385.08 L635.17,427.35 L754.71,475.92 L854.30,511.83  '/>	<use xlink:href='#gpPt6' transform='translate(274.01,272.84) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(356.00,306.50) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(442.36,345.82) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(533.10,385.08) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(635.17,427.35) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(754.71,475.92) scale(4.50)' color='rgb(188, 189,  34)'/>
+	<use xlink:href='#gpPt6' transform='translate(854.30,511.83) scale(4.50)' color='rgb(188, 189,  34)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_17"  fill="none"><title>gnuplot_plot_17</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(188, 189,  34)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(861.81,538.76) scale(2.25)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(861.81,538.88) scale(2.25)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(861.81,539.02) scale(2.25)' color='rgb( 23, 190, 207)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_18" ><title>mkt-n24000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 23, 190, 207)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 23, 190, 207)'  d='M288.36,294.32 L371.20,331.17 L453.02,371.70 L543.78,423.56 L647.24,474.44 L765.59,518.72 L861.81,538.73  '/>	<use xlink:href='#gpPt6' transform='translate(288.36,294.32) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(371.20,331.17) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(453.02,371.70) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(543.78,423.56) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(647.24,474.44) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(765.59,518.72) scale(4.50)' color='rgb( 23, 190, 207)'/>
+	<use xlink:href='#gpPt6' transform='translate(861.81,538.73) scale(4.50)' color='rgb( 23, 190, 207)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_19"  fill="none"><title>gnuplot_plot_19</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 23, 190, 207)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(835.89,504.55) scale(2.25)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(835.89,504.52) scale(2.25)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(835.89,504.19) scale(2.25)' color='rgb( 31, 119, 180)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_20" ><title>mkt-n24000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 31, 119, 180)'  d='M263.55,271.22 L346.85,304.33 L432.39,342.08 L523.00,380.42 L621.24,421.51 L743.14,468.84 L835.89,504.11  '/>	<use xlink:href='#gpPt6' transform='translate(263.55,271.22) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(346.85,304.33) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(432.39,342.08) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(523.00,380.42) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(621.24,421.51) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(743.14,468.84) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(835.89,504.11) scale(4.50)' color='rgb( 31, 119, 180)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_21"  fill="none"><title>gnuplot_plot_21</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(1061.08,580.54) scale(2.25)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(1061.08,580.69) scale(2.25)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(1061.08,580.83) scale(2.25)' color='rgb(255, 127,  14)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_22" ><title>mkt-n8000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(255, 127,  14)'  d='M337.86,338.99 L429.39,372.92 L525.71,411.12 L634.37,457.66 L771.69,503.03 L930.79,547.10 L1061.08,580.45  '/>	<use xlink:href='#gpPt6' transform='translate(337.86,338.99) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(429.39,372.92) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(525.71,411.12) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(634.37,457.66) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(771.69,503.03) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(930.79,547.10) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(1061.08,580.45) scale(4.50)' color='rgb(255, 127,  14)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_23"  fill="none"><title>gnuplot_plot_23</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(1023.68,571.51) scale(2.25)' color='rgb( 44, 160,  44)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_24" ><title>mkt-n8000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 44, 160,  44)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 44, 160,  44)'  d='M231.18,306.41 L319.71,328.84 L409.78,358.65 L505.24,393.91 L612.74,435.12 L684.86,461.13 L788.33,498.17 L958.61,551.50
+		L1023.68,571.17  '/>	<use xlink:href='#gpPt6' transform='translate(231.18,306.41) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(319.71,328.84) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(409.78,358.65) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(505.24,393.91) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(612.74,435.12) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(684.86,461.13) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(788.33,498.17) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(958.61,551.50) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(1023.68,571.17) scale(4.50)' color='rgb( 44, 160,  44)'/>
 </g>
 	</g>
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = '#FFFFFF' points = '97.70,665.00 383.57,665.00 383.57,557.00 97.70,557.00 '/>
+		<polygon fill = '#FFFFFF' points = '97.70,665.00 391.96,665.00 391.96,431.00 97.70,431.00 '/>
 	</g>
 <g fill="none" color="#FFFFFF" stroke="#FFFFFF" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M97.70,665.00 L97.70,557.00 L383.57,557.00 L383.57,665.00 L97.70,665.00 Z  '/></g>
+	<path stroke='black'  d='M97.70,665.00 L97.70,431.00 L391.96,431.00 L391.96,665.00 L97.70,665.00 Z  '/></g>
 	<g id="gnuplot_plot_1" ><title>hnsw-m24</title>
 <g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,569.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(332.62,443.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >hnsw-m24</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 31, 119, 180)'  d='M332.62,566.00 L375.18,566.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,566.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<path stroke='rgb( 31, 119, 180)'  d='M341.01,440.00 L383.57,440.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,440.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
@@ -416,22 +570,22 @@
 <g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,587.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(332.62,461.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >hnsw-m24-bq-raw</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,  14)'  d='M332.62,584.00 L375.18,584.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,584.00) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<path stroke='rgb(255, 127,  14)'  d='M341.01,458.00 L383.57,458.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,458.00) scale(4.50)' color='rgb(255, 127,  14)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_4" ><title>hnsw-m24-bq-rerank</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,605.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(332.62,479.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >hnsw-m24-bq-rerank</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 44, 160,  44)'  d='M332.62,602.00 L375.18,602.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,602.00) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<path stroke='rgb( 44, 160,  44)'  d='M341.01,476.00 L383.57,476.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,476.00) scale(4.50)' color='rgb( 44, 160,  44)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_5"  fill="none"><title>gnuplot_plot_5</title>
@@ -440,16 +594,16 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
-	<g id="gnuplot_plot_6" ><title>mkt-n12000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_6" ><title>mkt-n12000-ccfalse-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(214,  39,  40)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,623.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
-		<text><tspan font-family="sans" >mkt-n12000-cctrue-fs16-soar</tspan></text>
+	<g transform="translate(332.62,497.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n12000-ccfalse-fs16-soar</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(214,  39,  40)'  d='M332.62,620.00 L375.18,620.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,620.00) scale(4.50)' color='rgb(214,  39,  40)'/>
+	<path stroke='rgb(214,  39,  40)'  d='M341.01,494.00 L383.57,494.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,494.00) scale(4.50)' color='rgb(214,  39,  40)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_7"  fill="none"><title>gnuplot_plot_7</title>
@@ -458,16 +612,16 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
-	<g id="gnuplot_plot_8" ><title>mkt-n16000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_8" ><title>mkt-n12000-cctrue-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(148, 103, 189)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,641.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
-		<text><tspan font-family="sans" >mkt-n16000-cctrue-fs16-soar</tspan></text>
+	<g transform="translate(332.62,515.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n12000-cctrue-fs16-soar</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(148, 103, 189)'  d='M332.62,638.00 L375.18,638.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,638.00) scale(4.50)' color='rgb(148, 103, 189)'/>
+	<path stroke='rgb(148, 103, 189)'  d='M341.01,512.00 L383.57,512.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,512.00) scale(4.50)' color='rgb(148, 103, 189)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_9"  fill="none"><title>gnuplot_plot_9</title>
@@ -476,19 +630,145 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
-	<g id="gnuplot_plot_10" ><title>mkt-n8000-cctrue-fs16-soar</title>
+	<g id="gnuplot_plot_10" ><title>mkt-n16000-ccfalse-fs16-soar</title>
 <g fill="none" color="#FFFFFF" stroke="rgb(140,  86,  75)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(324.23,659.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(332.62,533.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n16000-ccfalse-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(140,  86,  75)'  d='M341.01,530.00 L383.57,530.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,530.00) scale(4.50)' color='rgb(140,  86,  75)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_11"  fill="none"><title>gnuplot_plot_11</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(140,  86,  75)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_12" ><title>mkt-n16000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(227, 119, 194)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,551.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n16000-cctrue-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(227, 119, 194)'  d='M341.01,548.00 L383.57,548.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,548.00) scale(4.50)' color='rgb(227, 119, 194)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_13"  fill="none"><title>gnuplot_plot_13</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(227, 119, 194)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_14" ><title>mkt-n20000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(127, 127, 127)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,569.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n20000-ccfalse-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(127, 127, 127)'  d='M341.01,566.00 L383.57,566.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,566.00) scale(4.50)' color='rgb(127, 127, 127)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_15"  fill="none"><title>gnuplot_plot_15</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(127, 127, 127)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_16" ><title>mkt-n20000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(188, 189,  34)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,587.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n20000-cctrue-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(188, 189,  34)'  d='M341.01,584.00 L383.57,584.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,584.00) scale(4.50)' color='rgb(188, 189,  34)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_17"  fill="none"><title>gnuplot_plot_17</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(188, 189,  34)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_18" ><title>mkt-n24000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 23, 190, 207)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,605.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n24000-ccfalse-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 23, 190, 207)'  d='M341.01,602.00 L383.57,602.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,602.00) scale(4.50)' color='rgb( 23, 190, 207)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_19"  fill="none"><title>gnuplot_plot_19</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 23, 190, 207)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_20" ><title>mkt-n24000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,623.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n24000-cctrue-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 31, 119, 180)'  d='M341.01,620.00 L383.57,620.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,620.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_21"  fill="none"><title>gnuplot_plot_21</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_22" ><title>mkt-n8000-ccfalse-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,641.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >mkt-n8000-ccfalse-fs16-soar</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(255, 127,  14)'  d='M341.01,638.00 L383.57,638.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,638.00) scale(4.50)' color='rgb(255, 127,  14)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_23"  fill="none"><title>gnuplot_plot_23</title>
+<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_24" ><title>mkt-n8000-cctrue-fs16-soar</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 44, 160,  44)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(332.62,659.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >mkt-n8000-cctrue-fs16-soar</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(140,  86,  75)'  d='M332.62,656.00 L375.18,656.00  '/>	<use xlink:href='#gpPt6' transform='translate(353.90,656.00) scale(4.50)' color='rgb(140,  86,  75)'/>
+	<path stroke='rgb( 44, 160,  44)'  d='M341.01,656.00 L383.57,656.00  '/>	<use xlink:href='#gpPt6' transform='translate(362.29,656.00) scale(4.50)' color='rgb( 44, 160,  44)'/>
 </g>
 	</g>
-<g fill="none" color="#FFFFFF" stroke="rgb(140,  86,  75)" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
+<g fill="none" color="#FFFFFF" stroke="rgb( 44, 160,  44)" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
@@ -514,7 +794,7 @@
 		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-10m  |  2026-06-11  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
 	</g>
 	<g transform="translate(625.63,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  pgvector 0.8.2</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (65df24d), pgvector 0.8.2</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
