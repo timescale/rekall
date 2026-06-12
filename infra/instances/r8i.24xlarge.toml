@@ -25,8 +25,13 @@ instance_type = "r8i.24xlarge"
 
 # r8i is EBS-only (no instance store), so give the root volume enough
 # space for the dataset + indexes + WAL, and max out gp3 IOPS/throughput
-# so load and build aren't I/O bound.
-disk_size_gb    = 600
+# so load and build aren't I/O bound. Sized for cohere-50M, where the HDF5
+# file (~155 GB), the heap (~155 GB), and the pgvector HNSW graph (~165 GB,
+# which stores the vectors) dominate, plus the HNSW-bq and Meerkat indexes
+# (~30 GB combined — Meerkat reranks from the heap, so its index is small)
+# and WAL. That's ~600 GB of working set; 1000 GB leaves headroom for WAL
+# spikes during the big HNSW build and temp/sort space.
+disk_size_gb    = 1000
 disk_iops       = 16000
 disk_throughput = 1000
 
