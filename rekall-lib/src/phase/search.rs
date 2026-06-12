@@ -101,15 +101,6 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
         all.extend(summary.search_results);
     }
 
-    // Also check legacy json_path
-    if let Some(path) = &config.output.json_path {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(summary) = serde_json::from_str::<crate::metrics::RunSummary>(&content) {
-                all.extend(summary.search_results);
-            }
-        }
-    }
-
     all
 }
 
@@ -205,7 +196,11 @@ fn save_index_results(
     let summary = crate::metrics::RunSummary {
         dataset: config.dataset.name.clone(),
         environment: environment.cloned(),
-        config: serde_json::Value::Null,
+        // Carry the run config so each per-index file is self-describing: the
+        // report/publish aggregator reads `config.search` (k/runs/warmup/
+        // num_queries) for the run's Search section, now that there is no
+        // consolidated results.json. Cheap next to the query results.
+        config: serde_json::to_value(config).unwrap_or(serde_json::Value::Null),
         pg_runtime: pg_runtime.cloned(),
         index_builds,
         search_results: index_results,

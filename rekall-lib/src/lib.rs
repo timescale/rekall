@@ -250,7 +250,7 @@ impl Agent {
             // With interleave, Index and Search run together after this loop
             // (run_index_search_interleaved) and the report runs after them.
             // Skip all three here so Report doesn't fire prematurely — before
-            // any search results exist — and overwrite results.json empty.
+            // any search results exist — and print an empty summary.
             if interleave
                 && (phase == Phase::Index || phase == Phase::Search || phase == Phase::Report)
             {

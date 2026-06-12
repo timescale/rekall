@@ -53,8 +53,12 @@ index = "hnsw-m16"
 
 [output]
 format = ["table", "json"]
-json_path = "results/cohere-1m.json"
+results_dir = "results/cohere-1m"
 ```
+
+Each searched index writes a timestamped `{index}-{ts}.json.gz` under
+`results_dir` (the source of truth). The consolidated view is produced on
+demand by `rekall report <results_dir>` / `rekall publish <results_dir>`.
 
 ## Index Params vs GUCs
 

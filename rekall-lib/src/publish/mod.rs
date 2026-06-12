@@ -203,15 +203,17 @@ fn read_summary_file(path: &Path) -> Result<RunSummary> {
         .map_err(|e| Error::Config(format!("invalid result JSON {}: {e}", path.display())))
 }
 
-/// Load the best available `RunSummary` for a results dir: prefer the
-/// consolidated `results.json`, else merge the per-index `*.json.gz` files.
+/// Load the aggregated `RunSummary` for a results dir by merging the per-index
+/// `*.json.gz` files (the source of truth). Older runs also wrote a
+/// consolidated `results.json`; when present it is used as the base for
+/// backwards compatibility, but it is no longer produced at benchmark time.
 ///
 /// In both cases the per-index files' `pg_runtime.extensions` are unioned into
-/// the result. The consolidated `results.json` captures `pg_runtime` once,
-/// early in the run — often before `CREATE EXTENSION meerkat` runs in the index
-/// phase — so it can omit meerkat's version/commit entirely. The per-index
-/// files (written after each build) do record it, so merging them in restores
-/// the full extension set for the report's Versions table and plot captions.
+/// the result. A legacy `results.json` captured `pg_runtime` once, early in the
+/// run — often before `CREATE EXTENSION meerkat` runs in the index phase — so
+/// it can omit meerkat's version/commit entirely. The per-index files (written
+/// after each build) do record it, so merging them in restores the full
+/// extension set for the report's Versions table and plot captions.
 pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
     let mut gz: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| Error::Config(format!("scan {}: {e}", dir.display())))?
@@ -265,7 +267,10 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
 /// meerkat, and vice-versa), so the union across files is what reflects the
 /// whole run. Adopt `pg_runtime` if absent; otherwise union the extensions,
 /// preferring an entry that carries a git commit over one that doesn't.
-fn merge_pg_runtime(
+///
+/// Public so `rekall report` reconciles versions across per-index files the
+/// same way `publish` does.
+pub fn merge_pg_runtime(
     base: &mut Option<crate::metrics::PgRuntimeInfo>,
     other: Option<crate::metrics::PgRuntimeInfo>,
 ) {
@@ -476,6 +481,42 @@ mod tests {
         let exts = loaded.pg_runtime.unwrap().extensions;
         assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
         assert!(exts.contains_key("vector"));
+    }
+
+    #[test]
+    fn load_run_summary_merges_per_index_without_results_json() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+        let write_gz = |name: &str, s: &RunSummary| {
+            let f = std::fs::File::create(dir.path().join(name)).unwrap();
+            let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+            enc.write_all(&serde_json::to_vec(s).unwrap()).unwrap();
+            enc.finish().unwrap();
+        };
+
+        // Two self-describing per-index files, NO consolidated results.json
+        // (the post-change layout). Each records only its own extension set.
+        let mut hnsw = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        hnsw.pg_runtime = Some(pg_runtime(&[("vector", None)]));
+        hnsw.config = serde_json::json!({"search": {"k": 10, "runs": 3}});
+        write_gz("hnsw-m24-20260610-000000.json.gz", &hnsw);
+
+        let mut mkt = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        mkt.pg_runtime = Some(pg_runtime(&[
+            ("meerkat", Some("65df24d")),
+            ("vector", None),
+        ]));
+        mkt.config = serde_json::json!({"search": {"k": 10, "runs": 3}});
+        write_gz("mkt-n16000-20260610-000100.json.gz", &mkt);
+
+        let loaded = load_run_summary(dir.path()).unwrap();
+        // Extensions are unioned across the per-index files (meerkat survives).
+        let exts = &loaded.pg_runtime.as_ref().unwrap().extensions;
+        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        assert!(exts.contains_key("vector"));
+        // Config is carried by the self-describing per-index file, so the
+        // report's Search section works without a results.json.
+        assert_eq!(loaded.config["search"]["k"], serde_json::json!(10));
     }
 
     fn summary(dataset: &str, ts: &str, instance: Option<&str>, hostname: &str) -> RunSummary {

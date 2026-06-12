@@ -228,7 +228,6 @@ pub struct QueryConfig {
 pub struct OutputConfig {
     #[serde(default = "default_formats")]
     pub format: Vec<String>,
-    pub json_path: Option<String>,
     #[serde(default = "default_results_dir")]
     pub results_dir: String,
 }
@@ -254,7 +253,6 @@ impl Default for OutputConfig {
         Self {
             format: default_formats(),
             results_dir: default_results_dir(),
-            json_path: None,
         }
     }
 }
@@ -977,7 +975,6 @@ index = "hnsw-16"
 
 [output]
 format = ["table", "json"]
-json_path = "out.json"
 "#;
 
     fn parse_config(toml_str: &str) -> BenchmarkConfig {
@@ -1010,7 +1007,6 @@ json_path = "out.json"
         assert_eq!(cfg.search.sweep.len(), 2);
         assert_eq!(cfg.search.sweep[0].params["mkt.nprobe"].len(), 3);
         assert_eq!(cfg.output.format, vec!["table", "json"]);
-        assert_eq!(cfg.output.json_path, Some("out.json".to_string()));
     }
 
     #[test]

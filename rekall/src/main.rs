@@ -4,7 +4,6 @@ use clap::{Parser, Subcommand};
 
 use rekall_lib::config::{self, BenchmarkConfig};
 use rekall_lib::dataset::hdf5::Hdf5Reader;
-use rekall_lib::output::json::JsonSink;
 use rekall_lib::output::stdout::StdoutSink;
 use rekall_lib::output::OutputSink;
 use rekall_lib::phase::Phase;
@@ -99,7 +98,8 @@ enum Command {
     /// The run-id is derived deterministically from the run metadata, so
     /// re-publishing overwrites the same location rather than duplicating.
     Publish {
-        /// Results directory (contains results.json / per-index *.json.gz).
+        /// Results directory (per-index *.json.gz; older runs may also have a
+        /// consolidated results.json, which is still honored).
         dir: PathBuf,
 
         /// Optional config providing the `[publish]` section (bucket, region,
@@ -693,16 +693,27 @@ fn cmd_report(
 
     // Carry the run's metadata (dataset, host, PG settings, extension
     // versions) from the loaded results into each plot so the caption can
-    // render it. The first loaded summary is representative of the run.
+    // render it. Reconcile across all loaded files the same way `publish`
+    // does: different index types record different extensions (an hnsw file
+    // has pgvector but not meerkat, and vice-versa), so the per-file
+    // `pg_runtime.extensions` are unioned — otherwise picking just the first
+    // file would drop meerkat's version/commit from the report.
     let meta_dataset = summaries
-        .first()
+        .iter()
         .map(|s| s.dataset.clone())
+        .find(|d| !d.is_empty())
         .unwrap_or_default();
-    let meta_env = summaries.first().and_then(|s| s.environment.clone());
-    let meta_pg = summaries.first().and_then(|s| s.pg_runtime.clone());
+    let meta_env = summaries.iter().find_map(|s| s.environment.clone());
+    let mut meta_pg = None;
+    for s in &summaries {
+        rekall_lib::publish::merge_pg_runtime(&mut meta_pg, s.pg_runtime.clone());
+    }
+    // Prefer a non-null config (older per-index files stored config: null;
+    // newer ones are self-describing).
     let meta_config = summaries
-        .first()
+        .iter()
         .map(|s| s.config.clone())
+        .find(|c| !c.is_null())
         .unwrap_or(serde_json::Value::Null);
     let make_summary = |results: Vec<SearchResult>| RunSummary {
         dataset: meta_dataset.clone(),
@@ -1494,10 +1505,10 @@ fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {
         outputs.push(Box::new(StdoutSink::new()));
     }
 
-    if cfg.output.format.contains(&"json".to_string()) {
-        let path = cfg.output.json_path.as_deref().unwrap_or("results.json");
-        outputs.push(Box::new(JsonSink::new(PathBuf::from(path))));
-    }
+    // JSON results are no longer emitted as a single consolidated file at
+    // benchmark time. The search phase always writes a timestamped per-index
+    // `{index}-{ts}.json.gz` (the source of truth); the consolidated view is an
+    // aggregation produced on demand by `rekall report` / `rekall publish`.
 
     if outputs.is_empty() {
         outputs.push(Box::new(StdoutSink::new()));
