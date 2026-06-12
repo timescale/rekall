@@ -388,6 +388,96 @@ impl AwsNativeBackend {
         self.terminate_instance(instance_id)
     }
 
+    /// Change a running instance's type in place, preserving the root
+    /// EBS volume (and any index built on it): stop -> change type ->
+    /// start. Returns the new public IP, which AWS reassigns on
+    /// stop/start. The caller MUST re-tune PostgreSQL for the new size
+    /// *before* calling this — the box reboots into the new RAM, and a
+    /// `shared_buffers` left over from a larger type would stop PG
+    /// starting.
+    pub fn resize_instance(&self, instance_id: &str, new_type: &str) -> Result<String> {
+        info!("Stopping instance {instance_id} to change type to {new_type}...");
+        self.run_aws_json(&["ec2", "stop-instances", "--instance-ids", instance_id])?;
+        let _ = self.run_aws_json(&[
+            "ec2",
+            "wait",
+            "instance-stopped",
+            "--instance-ids",
+            instance_id,
+        ]);
+
+        info!("Changing instance type to {new_type}...");
+        self.run_aws_json(&[
+            "ec2",
+            "modify-instance-attribute",
+            "--instance-id",
+            instance_id,
+            "--instance-type",
+            &format!("Value={new_type}"),
+        ])?;
+
+        info!("Starting instance...");
+        self.run_aws_json(&["ec2", "start-instances", "--instance-ids", instance_id])?;
+        let _ = self.run_aws_json(&[
+            "ec2",
+            "wait",
+            "instance-running",
+            "--instance-ids",
+            instance_id,
+        ]);
+
+        let desc = self.run_aws_json(&[
+            "ec2",
+            "describe-instances",
+            "--instance-ids",
+            instance_id,
+            "--query",
+            "Reservations[0].Instances[0].PublicIpAddress",
+        ])?;
+        desc.as_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| Error::Config("Instance has no public IP after resize.".to_string()))
+    }
+
+    /// Re-point the `rekall:suite` tag at this backend's configured
+    /// name_prefix, so a box that changed instance type (and thus target
+    /// config) is discoverable under the new config.
+    pub fn retag_suite(&self, instance_id: &str) -> Result<()> {
+        self.tag_resource(instance_id, &self.config.name_prefix)
+    }
+
+    /// Persist local state for an instance under this backend's
+    /// name_prefix/state_dir, so a resized box is adopted by the target
+    /// config (`infra ssh/dsn/status -c <target>` then resolve it).
+    /// Carries SG/key-pair ids over from any prior state here so a later
+    /// `infra down -c <target>` can still clean them up.
+    pub fn adopt(
+        &self,
+        instance_id: &str,
+        public_ip: &str,
+        instance_type: &str,
+        instance_name: Option<String>,
+    ) -> Result<()> {
+        let prior = self.load_state().ok().flatten();
+        let state = AwsState {
+            instance_id: instance_id.to_string(),
+            security_group_id: prior
+                .as_ref()
+                .map(|s| s.security_group_id.clone())
+                .unwrap_or_default(),
+            key_pair_name: prior
+                .as_ref()
+                .map(|s| s.key_pair_name.clone())
+                .unwrap_or_else(|| format!("{}-key", self.config.name_prefix)),
+            public_ip: public_ip.to_string(),
+            region: self.config.region.clone(),
+            instance_type: instance_type.to_string(),
+            pg_port: self.config.pg_port,
+            instance_name,
+        };
+        self.save_state(&state)
+    }
+
     fn terminate_instance(&self, instance_id: &str) -> Result<()> {
         info!("Terminating instance {instance_id}");
         self.run_aws_json(&["ec2", "terminate-instances", "--instance-ids", instance_id])?;

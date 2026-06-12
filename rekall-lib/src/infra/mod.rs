@@ -630,6 +630,103 @@ pub fn terminate_instance(region: &str, instance_id: &str) -> Result<()> {
     backend.terminate_by_id(instance_id)
 }
 
+/// Result of an in-place instance resize.
+pub struct ResizeOutcome {
+    pub instance_id: String,
+    pub old_type: String,
+    pub new_type: String,
+    /// AWS reassigns the public IP across the stop/start.
+    pub new_ip: String,
+}
+
+/// Resize a running instance to `target`'s instance type in place,
+/// preserving the EBS volume (and any index built on it).
+///
+/// PostgreSQL is re-tuned for the new size *before* the box is stopped:
+/// the GUCs from `target.effective_pg_config()` are written via
+/// `ALTER SYSTEM` (postgresql.auto.conf, which overrides the cloud-init
+/// postgresql.conf), so the smaller box boots with a `shared_buffers`
+/// etc. that fit its RAM. The change is then made via stop -> modify
+/// instance type -> start, and the box is re-tagged + adopted under the
+/// target config's name_prefix.
+///
+/// Architecture must match (no x86<->Graviton — that needs a different
+/// AMI). The public IP changes (stop/start reassigns it).
+pub fn resize_instance_to(
+    target: &InfraConfig,
+    instance_id: &str,
+    current_ip: &str,
+    current_type: &str,
+    instance_name: Option<String>,
+) -> Result<ResizeOutcome> {
+    // Arch guard: an in-place type change can't cross architectures.
+    let current_cfg = InfraConfig {
+        instance_type: current_type.to_string(),
+        ..Default::default()
+    };
+    if current_cfg.is_graviton() != target.is_graviton() {
+        return Err(Error::Config(format!(
+            "Cannot resize across architectures in place: {current_type} and \
+             {} differ (x86 vs Graviton need different AMIs). Launch a fresh \
+             instance instead.",
+            target.instance_type
+        )));
+    }
+
+    let (_, ssh_priv) = target.require_ssh_key().map_err(Error::Config)?;
+
+    // 1. Re-tune PostgreSQL for the target size while the box is still
+    //    up. One ALTER SYSTEM per GUC (separate `-c` options run as
+    //    independent statements — ALTER SYSTEM can't run in a multi-
+    //    statement transaction block). The values take effect on the
+    //    restart that the resize stop/start performs.
+    let pg = target.effective_pg_config();
+    let mut keys: Vec<&String> = pg.keys().collect();
+    keys.sort();
+    let mut psql = format!(
+        "sudo -u postgres psql -p {} -v ON_ERROR_STOP=1",
+        target.pg_port
+    );
+    for k in &keys {
+        psql.push_str(&format!(" -c \"ALTER SYSTEM SET {} = '{}'\"", k, pg[*k]));
+    }
+    info!(
+        "Re-tuning PostgreSQL for {} ({} settings) before resize...",
+        target.instance_type,
+        pg.len()
+    );
+    ssh_run(current_ip, &ssh_priv, &psql)?;
+
+    // 2. Change the instance type in place (preserves the EBS volume).
+    let state = StateManager::new(&target.name_prefix)?;
+    let backend = AwsNativeBackend::new(state.base_dir().to_path_buf(), target);
+    let new_ip = backend.resize_instance(instance_id, &target.instance_type)?;
+
+    // 3. Adopt the box under the target config: re-tag the suite and
+    //    persist local state so `-c <target>` resolves it afterward.
+    let _ = backend.retag_suite(instance_id);
+    let _ = backend.adopt(instance_id, &new_ip, &target.instance_type, instance_name);
+
+    // 4. Wait for SSH + PostgreSQL on the new IP.
+    ssh_wait(&new_ip, &ssh_priv)?;
+    info!("Waiting for PostgreSQL to accept connections on the resized instance...");
+    let key_path = Path::new(&ssh_priv);
+    let deadline = Instant::now() + Duration::from_secs(300);
+    while !check_pg_via_ssh(&new_ip, key_path, target.pg_port) {
+        if Instant::now() > deadline {
+            return Err(Error::InfraTimeout { timeout_secs: 300 });
+        }
+        std::thread::sleep(Duration::from_secs(10));
+    }
+
+    Ok(ResizeOutcome {
+        instance_id: instance_id.to_string(),
+        old_type: current_type.to_string(),
+        new_type: target.instance_type.clone(),
+        new_ip,
+    })
+}
+
 /// Look up an instance by its Name tag (as set via `infra up --name`
 /// or the timestamp default). Errors if no match or multiple matches
 /// — collisions are surfaced with the matching instance-ids so the

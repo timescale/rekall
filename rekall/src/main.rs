@@ -365,6 +365,40 @@ enum InfraCommand {
         instance_name: Option<String>,
     },
 
+    /// Resize a running instance in place to a target instance config.
+    ///
+    /// Re-tunes PostgreSQL for the new size (ALTER SYSTEM), then stops,
+    /// changes the EC2 instance type, and restarts — the EBS volume and
+    /// any built index are preserved. Architecture must match (no
+    /// x86<->Graviton). The public IP changes (stop/start reassigns it),
+    /// and the box is re-tagged + adopted under the target config so
+    /// `-c <target>` resolves it afterward. The root volume size is left
+    /// unchanged. Typical use: build a big index on a large box, then
+    /// downsize for an out-of-RAM query benchmark.
+    Resize {
+        /// Target instance config TOML — supplies the new instance_type
+        /// and [pg_config]. (This is the `-c` config you'd pass to `up`.)
+        #[arg(short, long)]
+        config: PathBuf,
+
+        /// Select the running instance by its Name tag. Falls back to
+        /// the target config's name_prefix when omitted.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// Select the running instance by AWS instance-id.
+        #[arg(short = 'i', long)]
+        instance_id: Option<String>,
+
+        /// AWS region (defaults to the target config's region).
+        #[arg(short, long)]
+        region: Option<String>,
+
+        /// Skip the confirmation prompt.
+        #[arg(short = 'y', long)]
+        yes: bool,
+    },
+
     /// Destroy cloud infrastructure.
     ///
     /// With -c/--suite (the default), tears down the latest-launched
@@ -2086,6 +2120,112 @@ iam_instance_profile = "rekall-profile"
             } else {
                 println!();
                 println!("Instance info saved to {info_path}");
+            }
+        }
+
+        InfraCommand::Resize {
+            config,
+            instance_name,
+            instance_id,
+            region,
+            yes,
+        } => {
+            let mut target = load_infra_config(Some(&config))?;
+            if let Some(r) = region {
+                target.region = r;
+            }
+            let region = target.region.clone();
+
+            // Resolve the running instance: --instance-id > --name >
+            // discovery by the target config's name_prefix.
+            let status = if let Some(id) = instance_id.as_deref() {
+                rekall_lib::infra::find_instance(&region, id)?.status
+            } else if let Some(n) = instance_name.as_deref() {
+                rekall_lib::infra::find_instance_by_name(&region, n)?.status
+            } else {
+                rekall_lib::infra::InfraManager::new(&target)?.status()?
+            };
+
+            if !status.running {
+                return Err(anyhow::anyhow!(
+                    "Target instance is not running — resize changes a live \
+                     instance's type. Use `infra up` to launch one."
+                ));
+            }
+            let id = status
+                .instance_id
+                .ok_or_else(|| anyhow::anyhow!("Could not determine the instance-id to resize"))?;
+            let ip = status
+                .public_ip
+                .ok_or_else(|| anyhow::anyhow!("Instance {id} has no public IP"))?;
+            let cur_type = status.instance_type.clone().unwrap_or_default();
+
+            let pg = target.effective_pg_config();
+            let sb = pg.get("shared_buffers").map(String::as_str).unwrap_or("?");
+            let mwm = pg
+                .get("maintenance_work_mem")
+                .map(String::as_str)
+                .unwrap_or("?");
+
+            println!(
+                "Resize {id} ({})",
+                status.instance_name.as_deref().unwrap_or("-")
+            );
+            println!(
+                "  Type:                 {cur_type} -> {}",
+                target.instance_type
+            );
+            println!("  shared_buffers:       {sb}");
+            println!("  maintenance_work_mem: {mwm}");
+            println!(
+                "\nThis stops the instance, changes its type, and restarts it. The EBS \n\
+                 volume (and any built index) is preserved; the public IP will change."
+            );
+
+            if !yes {
+                use std::io::Write;
+                print!("\nProceed? [y/N] ");
+                std::io::stdout().flush().ok();
+                let mut answer = String::new();
+                std::io::stdin().read_line(&mut answer)?;
+                if !matches!(answer.trim(), "y" | "Y" | "yes") {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+
+            let outcome = rekall_lib::infra::resize_instance_to(
+                &target,
+                &id,
+                &ip,
+                &cur_type,
+                status.instance_name.clone(),
+            )?;
+
+            let summary = format!(
+                "Instance resized:\n\
+                 \n\
+                 IP:            {} (changed)\n\
+                 Instance:      {} ({} -> {})\n\
+                 \n\
+                 Managed as:    {} (re-tagged)\n\
+                 SSH:  rekall infra ssh -c {}\n",
+                outcome.new_ip,
+                outcome.instance_id,
+                outcome.old_type,
+                outcome.new_type,
+                target.name_prefix,
+                config.display(),
+            );
+            println!();
+            print!("{summary}");
+
+            let info_path = format!(".rekall/infra/{}/instance.txt", target.name_prefix);
+            if let Some(parent) = std::path::Path::new(&info_path).parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
+            if let Err(e) = std::fs::write(&info_path, &summary) {
+                tracing::warn!("Could not save instance info: {e}");
             }
         }
 
