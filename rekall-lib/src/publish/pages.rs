@@ -451,6 +451,16 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
     for (name, tag) in &meta.extensions {
         row(&mut b, name, tag);
     }
+    // The meerkat branch the run was built from, when [meerkat] branch drove
+    // the build (the commit above is authoritative; this is the readable ref).
+    if let Some(branch) = summary
+        .config
+        .get("meerkat")
+        .and_then(|m| m.get("branch"))
+        .and_then(|v| v.as_str())
+    {
+        row(&mut b, "meerkat branch", branch);
+    }
     b.push_str("</table>");
 
     // Search config

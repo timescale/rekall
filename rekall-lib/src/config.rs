@@ -913,6 +913,23 @@ fn collect_dependencies(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
     Ok(())
 }
 
+/// Deepest directory that is an ancestor of every path. Used to preserve the
+/// relative layout of a config's dependency files when uploading to a remote.
+pub fn common_ancestor(paths: &[PathBuf]) -> PathBuf {
+    let mut prefix = match paths.first().and_then(|p| p.parent()) {
+        Some(p) => p.to_path_buf(),
+        None => return PathBuf::from("/"),
+    };
+    for p in paths {
+        while !p.starts_with(&prefix) {
+            if !prefix.pop() {
+                return PathBuf::from("/");
+            }
+        }
+    }
+    prefix
+}
+
 /// Build config groups from explicit dataset and index paths (anonymous suite).
 ///
 /// Each dataset is paired with all indexes, producing one `ConfigGroup` per dataset.
@@ -1197,6 +1214,17 @@ index = "i1"
         assert_eq!(cfg.search.k, 10); // inherited from base
         assert_eq!(cfg.index.len(), 1); // index inherited
         assert_eq!(cfg.index[0].name, "i1");
+    }
+
+    #[test]
+    fn common_ancestor_of_benchmark_layout() {
+        let paths = vec![
+            PathBuf::from("/b/profiles/x.toml"),
+            PathBuf::from("/b/cohere-10m.toml"),
+            PathBuf::from("/b/datasets/d.toml"),
+            PathBuf::from("/b/indexes/i.toml"),
+        ];
+        assert_eq!(super::common_ancestor(&paths), PathBuf::from("/b"));
     }
 
     #[test]

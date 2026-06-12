@@ -2287,11 +2287,17 @@ iam_instance_profile = "rekall-profile"
                 ));
             }
 
-            // Upload benchmark configs
+            // Upload everything each config needs — following `extends` chains
+            // and suite dependencies — preserving their layout under a common
+            // root so relative references (extends, suite indexes/datasets)
+            // resolve on the remote. `.local.toml` files are NOT uploaded
+            // (local-machine overrides); the instance gets a generated
+            // connection below. Directories upload recursively as-is.
             println!("Uploading benchmark configs...");
+            let mut remote_configs: Vec<String> = Vec::new();
             for bench_path in &benchmarks {
-                let scp_status = if bench_path.is_dir() {
-                    std::process::Command::new("scp")
+                if bench_path.is_dir() {
+                    let scp_status = std::process::Command::new("scp")
                         .args([
                             "-o",
                             "StrictHostKeyChecking=no",
@@ -2301,89 +2307,60 @@ iam_instance_profile = "rekall-profile"
                             bench_path.to_str().unwrap(),
                             &format!("{ssh_target}:{remote_dir}/"),
                         ])
-                        .status()?
-                } else {
-                    std::process::Command::new("scp")
+                        .status()?;
+                    if !scp_status.success() {
+                        return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
+                    }
+                    let name = bench_path.file_name().unwrap_or_default().to_string_lossy();
+                    remote_configs.push(format!("{remote_dir}/{name}"));
+                    continue;
+                }
+
+                let deps = rekall_lib::config::config_dependencies(bench_path)
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                let root = rekall_lib::config::common_ancestor(&deps);
+                let bench_abs =
+                    std::fs::canonicalize(bench_path).unwrap_or_else(|_| bench_path.clone());
+
+                let mut subdirs: std::collections::BTreeSet<String> =
+                    std::collections::BTreeSet::new();
+                for dep in &deps {
+                    if let Ok(rel) = dep.strip_prefix(&root) {
+                        if let Some(parent) = rel.parent() {
+                            let s = parent.to_string_lossy().to_string();
+                            if !s.is_empty() {
+                                subdirs.insert(s);
+                            }
+                        }
+                    }
+                }
+                for sub in &subdirs {
+                    let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")]).status();
+                }
+                for dep in &deps {
+                    let rel = dep.strip_prefix(&root).unwrap_or(dep.as_path());
+                    let remote_target = format!("{remote_dir}/{}", rel.display());
+                    let scp_status = std::process::Command::new("scp")
                         .args([
                             "-o",
                             "StrictHostKeyChecking=no",
                             "-i",
                             ssh_priv,
-                            bench_path.to_str().unwrap(),
-                            &format!("{ssh_target}:{remote_dir}/"),
+                            dep.to_str().unwrap(),
+                            &format!("{ssh_target}:{remote_target}"),
                         ])
-                        .status()?
-                };
-                if !scp_status.success() {
-                    return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
-                }
-
-                // `.local.toml` files are deliberately NOT uploaded: they are
-                // local-machine overrides (and carry a machine-specific
-                // connection DSN). The instance gets its own connection
-                // generated below.
-
-                // If this is a suite file, also upload every index +
-                // dataset it references, preserving their relative paths
-                // so the suite's references resolve on the remote.
-                if !bench_path.is_dir() {
-                    if let Some(deps) = rekall_lib::config::suite_dependencies(bench_path)
-                        .map_err(|e| anyhow::anyhow!("{e}"))?
-                    {
-                        let suite_parent = bench_path.parent().unwrap_or(std::path::Path::new("."));
-                        // mkdir for each subdirectory referenced, dedup.
-                        let mut subdirs: std::collections::BTreeSet<String> =
-                            std::collections::BTreeSet::new();
-                        for dep in &deps {
-                            if let Some(d) = dep.parent() {
-                                let s = d.to_string_lossy().to_string();
-                                if !s.is_empty() {
-                                    subdirs.insert(s);
-                                }
-                            }
-                        }
-                        for sub in &subdirs {
-                            let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")]).status();
-                        }
-                        for dep in &deps {
-                            let local_dep = suite_parent.join(dep);
-                            if !local_dep.exists() {
-                                return Err(anyhow::anyhow!(
-                                    "Suite '{}' references missing file: {}",
-                                    bench_path.display(),
-                                    local_dep.display()
-                                ));
-                            }
-                            // Remote path mirrors the relative path from the
-                            // suite's parent dir.
-                            let remote_target = format!("{remote_dir}/{}", dep.display());
-                            let scp_status = std::process::Command::new("scp")
-                                .args([
-                                    "-o",
-                                    "StrictHostKeyChecking=no",
-                                    "-i",
-                                    ssh_priv,
-                                    local_dep.to_str().unwrap(),
-                                    &format!("{ssh_target}:{remote_target}"),
-                                ])
-                                .status()?;
-                            if !scp_status.success() {
-                                return Err(anyhow::anyhow!(
-                                    "Failed to upload suite dep {}",
-                                    local_dep.display()
-                                ));
-                            }
-                            // The dep's `.local.toml` is intentionally not
-                            // uploaded (local-machine override); the instance
-                            // connection is generated below.
-                        }
-                        println!(
-                            "Uploaded {} suite dependency file(s) for {}",
-                            deps.len(),
-                            bench_path.display()
-                        );
+                        .status()?;
+                    if !scp_status.success() {
+                        return Err(anyhow::anyhow!("Failed to upload {}", dep.display()));
                     }
                 }
+                let bench_rel = bench_abs.strip_prefix(&root).unwrap_or(bench_abs.as_path());
+                remote_configs.push(format!("{remote_dir}/{}", bench_rel.display()));
+                println!(
+                    "Uploaded {} file(s) for {}",
+                    deps.len(),
+                    bench_path.display()
+                );
             }
 
             // Point every uploaded config at the instance's own PostgreSQL by
@@ -2427,12 +2404,8 @@ done"#
                 let _ = ssh_args(&[&update_cmd]).status();
             }
 
-            // Build the remote rekall run command
-            let mut remote_configs: Vec<String> = Vec::new();
-            for bench_path in &benchmarks {
-                let name = bench_path.file_name().unwrap_or_default().to_string_lossy();
-                remote_configs.push(format!("{remote_dir}/{name}"));
-            }
+            // Build the remote rekall run command (remote_configs were
+            // recorded during upload, as paths relative to the common root).
             let configs_str = remote_configs.join(" ");
             let rebuild_flag = if rebuild { " --rebuild" } else { "" };
             // Publish is on by default for remote runs; --no-publish disables.
