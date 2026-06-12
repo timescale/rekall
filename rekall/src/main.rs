@@ -2152,6 +2152,12 @@ iam_instance_profile = "rekall-profile"
             let ip = ip.as_str();
             let ssh_priv = ssh_priv.as_str();
 
+            // The PG port the instance was provisioned with (default 5432);
+            // used to build the instance-side connection override below.
+            let pg_port = resolve_infra_config(config.as_ref(), suite.as_ref())
+                .map(|c| c.pg_port)
+                .unwrap_or(5432);
+
             let ssh_target = format!("ubuntu@{ip}");
             let ssh_args = |extra: &[&str]| -> std::process::Command {
                 let mut cmd = std::process::Command::new("ssh");
@@ -2206,26 +2212,10 @@ iam_instance_profile = "rekall-profile"
                     return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
                 }
 
-                // Upload .local.toml if exists
-                if bench_path.is_dir() {
-                    // For directories, local overrides are inside already
-                } else {
-                    let stem = bench_path.file_stem().unwrap_or_default().to_string_lossy();
-                    let parent = bench_path.parent().unwrap_or(std::path::Path::new("."));
-                    let local_path = parent.join(format!("{stem}.local.toml"));
-                    if local_path.exists() {
-                        let _ = std::process::Command::new("scp")
-                            .args([
-                                "-o",
-                                "StrictHostKeyChecking=no",
-                                "-i",
-                                ssh_priv,
-                                local_path.to_str().unwrap(),
-                                &format!("{ssh_target}:{remote_dir}/"),
-                            ])
-                            .status();
-                    }
-                }
+                // `.local.toml` files are deliberately NOT uploaded: they are
+                // local-machine overrides (and carry a machine-specific
+                // connection DSN). The instance gets its own connection
+                // generated below.
 
                 // If this is a suite file, also upload every index +
                 // dataset it references, preserving their relative paths
@@ -2277,28 +2267,9 @@ iam_instance_profile = "rekall-profile"
                                     local_dep.display()
                                 ));
                             }
-                            // Also push the dep's .local.toml if present.
-                            let stem = local_dep.file_stem().unwrap_or_default().to_string_lossy();
-                            let local_overlay = local_dep
-                                .parent()
-                                .unwrap_or(std::path::Path::new("."))
-                                .join(format!("{stem}.local.toml"));
-                            if local_overlay.exists() {
-                                let remote_overlay_dir = dep
-                                    .parent()
-                                    .map(|p| format!("{remote_dir}/{}", p.display()))
-                                    .unwrap_or_else(|| remote_dir.to_string());
-                                let _ = std::process::Command::new("scp")
-                                    .args([
-                                        "-o",
-                                        "StrictHostKeyChecking=no",
-                                        "-i",
-                                        ssh_priv,
-                                        local_overlay.to_str().unwrap(),
-                                        &format!("{ssh_target}:{remote_overlay_dir}/"),
-                                    ])
-                                    .status();
-                            }
+                            // The dep's `.local.toml` is intentionally not
+                            // uploaded (local-machine override); the instance
+                            // connection is generated below.
                         }
                         println!(
                             "Uploaded {} suite dependency file(s) for {}",
@@ -2309,18 +2280,22 @@ iam_instance_profile = "rekall-profile"
                 }
             }
 
-            // Generate a .local.toml on the remote with the correct DSN
-            let dsn = "host=localhost port=5432 dbname=rekall user=rekall password=rekall";
+            // Point every uploaded config at the instance's own PostgreSQL by
+            // generating a `<stem>.local.toml` connection override next to each
+            // `*.toml` (recursively — the connection often lives in a dataset
+            // file under datasets/, not just base.toml/top-level). First drop
+            // any `*.local.toml` that rode along (e.g. via a directory upload):
+            // those are local-machine overrides and must not apply here. The
+            // generated overrides all carry the same instance DSN, so it wins
+            // regardless of which config the merge takes the connection from.
+            let dsn =
+                format!("host=localhost port={pg_port} dbname=rekall user=rekall password=rekall");
             let remote_local_setup = format!(
-                r#"for base in {remote_dir}/*/base.toml {remote_dir}/*.toml; do
-  [ -f "$base" ] || continue
-  dir=$(dirname "$base")
-  stem=$(basename "$base" .toml)
-  local="$dir/$stem.local.toml"
-  if [ ! -f "$local" ]; then
-    echo '[connection]' > "$local"
-    echo 'dsn = "{dsn}"' >> "$local"
-  fi
+                r#"find {remote_dir} -name '*.local.toml' -delete 2>/dev/null
+find {remote_dir} -name '*.toml' ! -name '*.local.toml' | while read -r cfg; do
+  dir=$(dirname "$cfg")
+  stem=$(basename "$cfg" .toml)
+  printf '[connection]\ndsn = "{dsn}"\n' > "$dir/$stem.local.toml"
 done"#
             );
             let _ = ssh_args(&[&remote_local_setup]).status();
