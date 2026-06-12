@@ -13,6 +13,8 @@ indexes = [
     "indexes/mkt-n12000-ccfalse-fs16-soar.toml",
     "indexes/mkt-n16000-cctrue-fs16-soar.toml",
     "indexes/mkt-n16000-ccfalse-fs16-soar.toml",
+    "indexes/mkt-n20000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n20000-ccfalse-fs16-soar.toml",
     "indexes/mkt-n24000-cctrue-fs16-soar.toml",
     "indexes/mkt-n24000-ccfalse-fs16-soar.toml",
 ]
