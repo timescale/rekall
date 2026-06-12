@@ -16,6 +16,8 @@ struct MeerkatParams {
     #[serde(default)]
     centroid_compression: Option<bool>,
     #[serde(default)]
+    centroid_fastscan: Option<bool>,
+    #[serde(default)]
     rerank_vectors: Option<bool>,
     #[serde(default)]
     fastscan: Option<bool>,
@@ -107,8 +109,15 @@ fn options_from_params(params: &MeerkatParams) -> Vec<(&'static str, String)> {
     if let Some(fan_out) = params.fan_out {
         opts.push(("fan_out", fan_out.to_string()));
     }
-    if params.centroid_compression == Some(true) {
-        opts.push(("centroid_compression", "true".to_string()));
+    // Forward both true and false: meerkat's default is AUTO (compresses for
+    // cosine/L2), so omitting on `false` would silently leave compression ON.
+    // Emit the explicit value so `centroid_compression = false` truly disables
+    // it.
+    if let Some(cc) = params.centroid_compression {
+        opts.push(("centroid_compression", cc.to_string()));
+    }
+    if params.centroid_fastscan == Some(true) {
+        opts.push(("centroid_fastscan", "true".to_string()));
     }
     if params.rerank_vectors == Some(true) {
         opts.push(("rerank_vectors", "true".to_string()));
@@ -138,6 +147,7 @@ mod tests {
             nlist: None,
             fan_out: None,
             centroid_compression: None,
+            centroid_fastscan: None,
             rerank_vectors: None,
             fastscan: None,
             fastscan_bits: None,
@@ -164,11 +174,21 @@ mod tests {
     #[test]
     fn options_skip_bool_flags_when_false() {
         let mut p = default_params();
-        p.centroid_compression = Some(false);
         p.rerank_vectors = Some(false);
         p.fastscan = Some(false);
-        // Bools only fire when Some(true) — Some(false) is a no-op.
+        // rerank_vectors / fastscan only fire when Some(true) — false is a no-op.
         assert!(options_from_params(&p).is_empty());
+    }
+
+    #[test]
+    fn options_emit_centroid_compression_both_ways() {
+        // centroid_compression must be forwarded on false too: meerkat defaults
+        // to AUTO (compresses cosine/L2), so omitting it would leave it ON.
+        let mut p = default_params();
+        p.centroid_compression = Some(false);
+        assert!(options_from_params(&p).contains(&("centroid_compression", "false".to_string())));
+        p.centroid_compression = Some(true);
+        assert!(options_from_params(&p).contains(&("centroid_compression", "true".to_string())));
     }
 
     #[test]
@@ -179,6 +199,14 @@ mod tests {
         let opts = options_from_params(&p);
         assert!(opts.contains(&("centroid_compression", "true".to_string())));
         assert!(opts.contains(&("fastscan", "true".to_string())));
+    }
+
+    #[test]
+    fn options_emit_centroid_fastscan_when_true() {
+        let mut p = default_params();
+        p.centroid_fastscan = Some(true);
+        let opts = options_from_params(&p);
+        assert!(opts.contains(&("centroid_fastscan", "true".to_string())));
     }
 
     #[test]
