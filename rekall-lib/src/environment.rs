@@ -165,6 +165,19 @@ pub fn collect_rekall_info() -> RekallInfo {
     }
 }
 
+/// Human-readable version for `rekall --version`: the crate version plus the
+/// build-time git commit and branch when available, e.g.
+/// `0.1.0 (a91106a / main)`. Falls back to just the version when no git info
+/// was embedded.
+pub fn version_string() -> String {
+    let info = collect_rekall_info();
+    match (info.git_commit, info.git_branch) {
+        (Some(c), Some(b)) => format!("{} ({c} / {b})", info.version),
+        (Some(c), None) => format!("{} ({c})", info.version),
+        _ => info.version,
+    }
+}
+
 fn non_empty(s: &str) -> Option<String> {
     let s = s.trim();
     (!s.is_empty()).then(|| s.to_string())

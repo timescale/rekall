@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 
 use rekall_lib::config::{self, BenchmarkConfig};
 use rekall_lib::dataset::hdf5::Hdf5Reader;
@@ -1092,7 +1092,16 @@ enum DatasetCommand {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
+    // Inject the rich version (crate version + build-time git commit/branch)
+    // so `rekall --version` reports exactly which build is installed — the
+    // git env is embedded in rekall-lib, so it's resolved there at runtime.
+    let cli = {
+        // clap wants a 'static version string; leak the one-off build version.
+        let version: &'static str =
+            Box::leak(rekall_lib::environment::version_string().into_boxed_str());
+        let matches = Cli::command().version(version).get_matches();
+        Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.exit())
+    };
 
     let filter = if cli.verbose {
         "rekall_lib=debug,rekall=debug"

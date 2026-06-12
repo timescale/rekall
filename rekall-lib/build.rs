@@ -22,12 +22,27 @@ fn main() {
     println!("cargo:rustc-env=REKALL_GIT_COMMIT={commit}");
     println!("cargo:rustc-env=REKALL_GIT_BRANCH={branch}");
 
-    // Re-run when HEAD (or the branch ref it points at) moves, so the embedded
-    // commit doesn't go stale across rebuilds. Paths are relative to this
-    // package dir; the workspace `.git` is one level up.
-    for p in ["../.git/HEAD", ".git/HEAD"] {
-        if std::path::Path::new(p).exists() {
-            println!("cargo:rerun-if-changed={p}");
+    // Re-run when the commit changes so the embedded value doesn't go stale.
+    // Watching just `.git/HEAD` isn't enough: on a branch, HEAD only changes
+    // when you *switch* branches — a new commit on the same branch updates the
+    // ref file HEAD points at (`.git/refs/heads/<branch>`) instead. So also
+    // watch that ref, plus `packed-refs` (refs may be packed away) and the
+    // reflog `logs/HEAD` (updated on every commit/checkout) as fallbacks.
+    // Paths are relative to this package dir; the workspace `.git` is one
+    // level up.
+    for git_dir in ["../.git", ".git"] {
+        let head = format!("{git_dir}/HEAD");
+        if !std::path::Path::new(&head).exists() {
+            continue;
         }
+        println!("cargo:rerun-if-changed={head}");
+        if let Ok(contents) = std::fs::read_to_string(&head) {
+            if let Some(ref_path) = contents.strip_prefix("ref:").map(str::trim) {
+                println!("cargo:rerun-if-changed={git_dir}/{ref_path}");
+            }
+        }
+        println!("cargo:rerun-if-changed={git_dir}/packed-refs");
+        println!("cargo:rerun-if-changed={git_dir}/logs/HEAD");
+        break;
     }
 }
