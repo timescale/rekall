@@ -437,6 +437,18 @@ impl Agent {
             .cloned()
             .collect();
 
+        // Admin connection to normalize the table's parallel_workers reloption
+        // before each build, mirroring phase::index::run. The interleaved path
+        // previously skipped this, so table_parallel_workers was ignored in a
+        // full `run` and meerkat fell back to the planner's heap-size heuristic.
+        let admin_pg = backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        );
+        let admin = admin_pg.open_connection().await?;
+
         // Phase 1: Build any indexes that don't exist yet
         for idx_config in &index_configs {
             let (progress_tx, mut progress_rx) = progress_channel();
@@ -482,6 +494,13 @@ impl Agent {
                 for output in self.outputs.iter_mut() {
                     output.on_phase_start("index", &idx_config.name);
                 }
+
+                crate::phase::index::normalize_table_parallel_workers(
+                    &admin,
+                    &self.config.table_name(),
+                    idx_config.table_parallel_workers,
+                )
+                .await?;
 
                 let build_handle = tokio::spawn(async move { backend.build_index().await });
 

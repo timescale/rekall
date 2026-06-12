@@ -17,6 +17,30 @@ fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
     }
 }
 
+/// Normalize the table's `parallel_workers` reloption before an index build.
+///
+/// Meerkat's standard-AM build worker count comes from the planner's heap-size
+/// heuristic (`ii_ParallelWorkers`), which derates large builds well below
+/// `max_parallel_maintenance_workers`; an explicit table reloption overrides
+/// that so the build uses the full worker budget. pgvector HNSW reads the GUC
+/// directly and a reloption would only cap it, so we RESET it for any index
+/// that doesn't request one — no leakage between builds on the shared table.
+///
+/// Shared by the standalone `index` phase and the interleaved `run` path so the
+/// two can't drift (the interleaved path previously skipped this entirely).
+pub(crate) async fn normalize_table_parallel_workers(
+    admin: &tokio_postgres::Client,
+    table: &str,
+    workers: Option<i32>,
+) -> Result<()> {
+    let sql = match workers {
+        Some(n) => format!("ALTER TABLE {table} SET (parallel_workers = {n})"),
+        None => format!("ALTER TABLE {table} RESET (parallel_workers)"),
+    };
+    admin.execute(&sql, &[]).await?;
+    Ok(())
+}
+
 pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
@@ -56,35 +80,12 @@ pub async fn run(
             }
         }
 
-        // Meerkat's standard-AM build is derated by the planner's heap-size
-        // heuristic, so set an explicit reloption to let it use the full
-        // max_parallel_maintenance_workers. pgvector HNSW reads that GUC
-        // directly and a reloption would only cap it, so reset it for any
-        // index that doesn't request one — no leakage between builds.
-        match idx_config.table_parallel_workers {
-            Some(n) => {
-                admin
-                    .execute(
-                        &format!(
-                            "ALTER TABLE {} SET (parallel_workers = {n})",
-                            config.table_name()
-                        ),
-                        &[],
-                    )
-                    .await?;
-            }
-            None => {
-                admin
-                    .execute(
-                        &format!(
-                            "ALTER TABLE {} RESET (parallel_workers)",
-                            config.table_name()
-                        ),
-                        &[],
-                    )
-                    .await?;
-            }
-        }
+        normalize_table_parallel_workers(
+            &admin,
+            &config.table_name(),
+            idx_config.table_parallel_workers,
+        )
+        .await?;
 
         let backend = registry
             .create(
