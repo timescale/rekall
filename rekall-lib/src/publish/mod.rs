@@ -205,15 +205,14 @@ fn read_summary_file(path: &Path) -> Result<RunSummary> {
 
 /// Load the best available `RunSummary` for a results dir: prefer the
 /// consolidated `results.json`, else merge the per-index `*.json.gz` files.
+///
+/// In both cases the per-index files' `pg_runtime.extensions` are unioned into
+/// the result. The consolidated `results.json` captures `pg_runtime` once,
+/// early in the run — often before `CREATE EXTENSION meerkat` runs in the index
+/// phase — so it can omit meerkat's version/commit entirely. The per-index
+/// files (written after each build) do record it, so merging them in restores
+/// the full extension set for the report's Versions table and plot captions.
 pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
-    for name in ["results.json", "results.json.gz"] {
-        let p = dir.join(name);
-        if p.exists() {
-            return read_summary_file(&p);
-        }
-    }
-
-    // Fallback: merge per-index RunSummaries written incrementally.
     let mut gz: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
         .map_err(|e| Error::Config(format!("scan {}: {e}", dir.display())))?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -223,18 +222,40 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
         })
         .collect();
     gz.sort();
-    if gz.is_empty() {
-        return Err(Error::Config(format!(
-            "no result files (results.json or per-index *.json.gz) in {}",
-            dir.display()
-        )));
-    }
-    let mut base = read_summary_file(&gz[0])?;
-    for p in &gz[1..] {
-        let s = read_summary_file(p)?;
-        base.index_builds.extend(s.index_builds);
-        base.search_results.extend(s.search_results);
-        merge_pg_runtime(&mut base.pg_runtime, s.pg_runtime);
+
+    // Base summary: the consolidated results.json if present, else the merge of
+    // the per-index files.
+    let consolidated = ["results.json", "results.json.gz"]
+        .iter()
+        .map(|n| dir.join(n))
+        .find(|p| p.exists());
+
+    let mut base = if let Some(p) = consolidated {
+        read_summary_file(&p)?
+    } else {
+        if gz.is_empty() {
+            return Err(Error::Config(format!(
+                "no result files (results.json or per-index *.json.gz) in {}",
+                dir.display()
+            )));
+        }
+        let mut b = read_summary_file(&gz[0])?;
+        for p in &gz[1..] {
+            let s = read_summary_file(p)?;
+            b.index_builds.extend(s.index_builds);
+            b.search_results.extend(s.search_results);
+        }
+        b
+    };
+
+    // Always union per-index extensions (with their git commits) into the base,
+    // so a meerkat commit recorded per-build is never lost — even when the base
+    // came from a results.json whose early pg_runtime capture predates the
+    // extension's creation.
+    for p in &gz {
+        if let Ok(s) = read_summary_file(p) {
+            merge_pg_runtime(&mut base.pg_runtime, s.pg_runtime);
+        }
     }
     Ok(base)
 }
@@ -419,6 +440,42 @@ mod tests {
             base.unwrap().extensions["meerkat"].git_commit.as_deref(),
             Some("c")
         );
+    }
+
+    #[test]
+    fn load_run_summary_enriches_meerkat_from_per_index_files() {
+        use std::io::Write as _;
+        let dir = tempfile::tempdir().unwrap();
+
+        // Consolidated results.json: pg_runtime captured early, before meerkat
+        // existed — so it has pgvector but no meerkat.
+        let mut consolidated = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        consolidated.pg_runtime = Some(pg_runtime(&[("vector", None)]));
+        std::fs::write(
+            dir.path().join("results.json"),
+            serde_json::to_vec(&consolidated).unwrap(),
+        )
+        .unwrap();
+
+        // Per-index file (written after the meerkat build): has meerkat+commit.
+        let mut per_index = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        per_index.pg_runtime = Some(pg_runtime(&[
+            ("meerkat", Some("65df24d")),
+            ("vector", None),
+        ]));
+        let f =
+            std::fs::File::create(dir.path().join("mkt-n16000-20260610-000000.json.gz")).unwrap();
+        let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+        enc.write_all(&serde_json::to_vec(&per_index).unwrap())
+            .unwrap();
+        enc.finish().unwrap();
+
+        // Base comes from results.json (no meerkat) but is enriched from the
+        // per-index file, so meerkat with its commit is present.
+        let loaded = load_run_summary(dir.path()).unwrap();
+        let exts = loaded.pg_runtime.unwrap().extensions;
+        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        assert!(exts.contains_key("vector"));
     }
 
     fn summary(dataset: &str, ts: &str, instance: Option<&str>, hostname: &str) -> RunSummary {
