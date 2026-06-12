@@ -187,6 +187,8 @@ mod tests {
             build_time: Duration::from_secs(secs),
             index_size_bytes: size,
             parallel_workers: workers,
+            create_sql: None,
+            build_gucs: serde_json::Value::Null,
             monitor: None,
         }
     }

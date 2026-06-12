@@ -83,6 +83,13 @@ pub struct IndexBuildResult {
     pub index_size_bytes: u64,
     #[serde(default)]
     pub parallel_workers: u32,
+    /// The exact `CREATE INDEX ...` statement that built this index.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub create_sql: Option<String>,
+    /// Build-session GUCs applied before `CREATE INDEX` (e.g.
+    /// `max_parallel_maintenance_workers`, `mkt.fastscan_bits`).
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub build_gucs: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<crate::backend::build_monitor::BuildMonitorResult>,
 }

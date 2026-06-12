@@ -333,6 +333,9 @@ pub trait IndexBackend: Send + Sync {
             build_time,
             index_size_bytes: size,
             parallel_workers: peak_workers,
+            create_sql: Some(sql),
+            build_gucs: serde_json::to_value(&self.pg().build_gucs)
+                .unwrap_or(serde_json::Value::Null),
             monitor: monitor_result,
         })
     }

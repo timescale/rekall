@@ -104,6 +104,23 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
     all
 }
 
+/// Probe the live PG runtime (version, settings, installed extensions with
+/// their version/git commit) on a throwaway connection. Called at search time
+/// so the captured extension set reflects everything built so far. Returns
+/// `None` if the probe connection can't be opened.
+async fn capture_runtime_info(config: &BenchmarkConfig) -> Option<PgRuntimeInfo> {
+    let mut pg = crate::backend::postgres::PgConnection::new(
+        &config.connection,
+        &config.table_name(),
+        config.dataset.dimension,
+        config.dataset.metric,
+    );
+    if pg.connect().await.is_err() {
+        return None;
+    }
+    pg.runtime_info().await.ok()
+}
+
 /// Save ground truth to a separate file for offline recall recomputation.
 /// Written once per run — skipped if the file already exists.
 fn save_ground_truth(
@@ -255,6 +272,18 @@ pub async fn run(
     };
     let mut all_results = existing.clone();
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
+
+    // Capture the PG runtime now, at search time, rather than trusting the
+    // snapshot threaded in from run start. By now every index has been built,
+    // so all extensions under test exist in the catalog — meaning each
+    // per-index file records the correct extension version + git commit +
+    // settings. The run-start snapshot predates `CREATE EXTENSION` in the
+    // index phase, so it omits e.g. meerkat entirely. In the interleaved
+    // build+search path this runs once per index (filter_index is set), so
+    // each file is captured independently. Falls back to the threaded value
+    // if the probe connection fails.
+    let captured_runtime = capture_runtime_info(config).await;
+    let pg_runtime = captured_runtime.as_ref().or(pg_runtime);
 
     for query in &config.effective_queries() {
         // `filter_index` is a physical-index filter (used by the interleaved
