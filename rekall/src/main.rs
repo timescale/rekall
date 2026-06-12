@@ -89,6 +89,11 @@ enum Command {
         /// off locally; `rekall infra run` enables it on the instance).
         #[arg(long)]
         publish: bool,
+
+        /// Start a clean run: move any existing results dir aside to
+        /// `<dir>-<timestamp>` before running, instead of resuming into it.
+        #[arg(long)]
+        clean_run: bool,
     },
 
     /// Archive a results directory to S3 and publish its reports.
@@ -480,6 +485,11 @@ enum InfraCommand {
         /// remote runs, archiving results to S3 + GitHub Pages).
         #[arg(long)]
         no_publish: bool,
+
+        /// Start a clean run on the instance: move any existing results dir
+        /// aside to `<dir>-<timestamp>` before running, instead of resuming.
+        #[arg(long)]
+        clean_run: bool,
 
         /// S3 path for the dataset (downloaded on instance if not present)
         #[arg(long)]
@@ -1111,9 +1121,16 @@ async fn main() -> anyhow::Result<()> {
             rebuild,
             reload,
             publish,
+            clean_run,
             ..
         } => {
             let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
+
+            // For --clean-run, move each group's existing results dir aside so
+            // the run starts fresh rather than resuming. Dedup across groups so
+            // a shared dir isn't archived twice (the second time would move the
+            // first group's freshly-created results).
+            let mut archived: std::collections::HashSet<String> = std::collections::HashSet::new();
 
             let phases = if let Some(ref p) = phase {
                 vec![p.parse().map_err(|e: String| anyhow::anyhow!(e))?]
@@ -1132,6 +1149,23 @@ async fn main() -> anyhow::Result<()> {
                 if dry_run {
                     print_dry_run(&group.config, phase.as_deref(), index.as_deref());
                     continue;
+                }
+
+                if clean_run {
+                    let results_dir = group.config.output.results_dir.clone();
+                    if archived.insert(results_dir.clone()) {
+                        match rekall_lib::run_dir::archive_results_dir(&results_dir) {
+                            Ok(Some(dest)) => {
+                                println!("Clean run: archived {results_dir} -> {}", dest.display());
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                return Err(anyhow::anyhow!(
+                                    "--clean-run: could not archive '{results_dir}': {e}"
+                                ));
+                            }
+                        }
+                    }
                 }
 
                 let outputs = build_outputs(&group.config);
@@ -2075,6 +2109,7 @@ iam_instance_profile = "rekall-profile"
             session,
             rebuild,
             no_publish,
+            clean_run,
             s3_dataset,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
@@ -2312,6 +2347,7 @@ done"#
             let rebuild_flag = if rebuild { " --rebuild" } else { "" };
             // Publish is on by default for remote runs; --no-publish disables.
             let publish_flag = if no_publish { "" } else { " --publish" };
+            let clean_run_flag = if clean_run { " --clean-run" } else { "" };
 
             // Pipe both stdout and stderr to a log file so it persists even
             // after the run ends.
@@ -2330,7 +2366,7 @@ done"#
             let log_path = format!("{remote_dir}/last-run.log");
             let run_cmd = format!(
                 "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
-                 rekall run {configs_str}{rebuild_flag}{publish_flag} 2>&1 | tee {log_path}; \
+                 rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag} 2>&1 | tee {log_path}; \
                  code=$?; echo; \
                  echo \"=== rekall run exited (status $code) — session kept open; full log: {log_path} ===\"; \
                  exec bash"

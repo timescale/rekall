@@ -12,6 +12,7 @@ pub mod output;
 pub mod phase;
 pub mod progress;
 pub mod publish;
+pub mod run_dir;
 
 use std::sync::Arc;
 use std::time::Instant;
