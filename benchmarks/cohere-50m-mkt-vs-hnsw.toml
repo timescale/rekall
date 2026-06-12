@@ -1,0 +1,32 @@
+# Suite: cohere-50m — Meerkat (centroid_fastscan, nlist sweep n24000 -> n80000)
+# vs pgvector HNSW M=24 (full precision + binary quantization).
+#
+# Meerkat arms all use centroid compression + FASTSCAN centroids + fs16 +
+# SOAR — the perf/fastscan-centroids configuration. nlist starts at 24000
+# (~2083 vecs/list over 50M) and climbs to 80000 (~625 vecs/list), which is
+# the per-list density that performed best at 10M; the sweep shows where the
+# extra lists stop paying for themselves at 50M.
+#
+# centroid_fastscan only exists on the perf/fastscan-centroids branch, so run
+# this via the cohere-50m-fastscan-centroids.toml profile (it builds that
+# branch first). HNSW is branch-agnostic and builds the same either way.
+#
+# Build on a big box: see infra/instances/r8i.{16,24}xlarge.toml, sized for
+# 50M (1000 GB root volume; maintenance_work_mem >= the ~165 GB HNSW graph so
+# the build stays in RAM). The full hnsw-m24 build on 50M is the long pole
+# (hours); drop it if you already have comparable HNSW numbers.
+#
+# Usage: rekall run benchmarks/cohere-50m-fastscan-centroids.toml [--dry-run]
+#   (or this suite directly once centroid_fastscan lands on main)
+
+indexes = [
+    "indexes/mkt-n24000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n40000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n60000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n80000-cctrue-fs16-soar-cfs.toml",
+    "indexes/hnsw-m24.toml",
+    "indexes/hnsw-m24-bq.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-50m.toml"

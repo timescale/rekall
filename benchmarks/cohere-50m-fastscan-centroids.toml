@@ -1,0 +1,15 @@
+# Remote profile: run the cohere-50M Meerkat-vs-HNSW suite on the
+# perf/fastscan-centroids branch. `rekall infra run` uploads this + the suite
+# it extends (+ datasets/indexes); the instance checks out and builds the
+# branch before the run, so the centroid_fastscan params resolve.
+#
+# Prereqs:
+#   - push perf/fastscan-centroids to origin (timescale/meerkat)
+#   - the instance's rekall must be latest main (has [meerkat] branch builds)
+#   - launch on r8i.16xlarge or 24xlarge (1000 GB volume — see infra/instances/)
+extends = "cohere-50m-mkt-vs-hnsw.toml"
+
+[meerkat]
+branch = "perf/fastscan-centroids"
+sudo = true                  # instance builddir + PG lib are root-owned
+# recreate_extension = true  # only if the branch changes extension SQL/metadata
