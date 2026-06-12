@@ -736,6 +736,136 @@ pub fn suite_dependencies(path: &Path) -> Result<Option<Vec<PathBuf>>> {
     Ok(Some(deps))
 }
 
+/// Read a TOML file into a `Value` (no merging).
+fn read_toml_value(path: &Path) -> Result<toml::Value> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| Error::Config(format!("Cannot read config '{}': {e}", path.display())))?;
+    toml::from_str(&content)
+        .map_err(|e| Error::Config(format!("Invalid TOML '{}': {e}", path.display())))
+}
+
+/// Parse an `extends` directive (a string or an array of strings) into base
+/// paths resolved relative to `base_dir`. Empty when absent.
+fn extends_targets(value: &toml::Value, base_dir: &Path) -> Vec<PathBuf> {
+    match value.get("extends") {
+        Some(toml::Value::String(s)) => vec![base_dir.join(s)],
+        Some(toml::Value::Array(arr)) => arr
+            .iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| base_dir.join(s))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn is_suite_value(value: &toml::Value) -> bool {
+    value
+        .get("suite")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty())
+}
+
+/// Deep-merge a partial override (e.g. the non-`extends` body of a profile)
+/// onto a resolved config by round-tripping through a TOML `Value`.
+fn apply_override(config: &mut BenchmarkConfig, overlay: &toml::Value) -> Result<()> {
+    let mut base = toml::Value::try_from(&*config)
+        .map_err(|e| Error::Config(format!("serialize config for override: {e}")))?;
+    deep_merge(&mut base, overlay.clone());
+    *config = base
+        .try_into()
+        .map_err(|e| Error::Config(format!("apply override: {e}")))?;
+    config.validate()?;
+    Ok(())
+}
+
+/// Resolve a single path into config groups, honoring an optional `extends`
+/// directive (config inheritance).
+///
+/// A file with `extends = "<base>"` (or a list) inherits the base's groups —
+/// the base may be a suite, a plain config, or itself another profile — and
+/// deep-merges this file's remaining sections onto each group. This lets you
+/// keep several named override profiles (e.g. `local-quick.toml`,
+/// `remote-full.toml`) that all extend one suite and pick one by running it,
+/// instead of editing the suite. Paths in `extends` are relative to the
+/// profile's own directory.
+///
+/// Without `extends`, behaves as before: a suite file expands to one group per
+/// `[[suite]]` entry; a plain config is a single group.
+pub fn resolve_groups(path: &Path) -> Result<Vec<ConfigGroup>> {
+    let value = read_toml_value(path)?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    let bases = extends_targets(&value, base_dir);
+
+    if !bases.is_empty() {
+        let mut groups = Vec::new();
+        for base in &bases {
+            groups.extend(resolve_groups(base)?);
+        }
+        // Everything except `extends` is the override applied to each group.
+        let mut overlay = value;
+        if let Some(table) = overlay.as_table_mut() {
+            table.remove("extends");
+        }
+        for g in &mut groups {
+            apply_override(&mut g.config, &overlay)?;
+        }
+        return Ok(groups);
+    }
+
+    if is_suite_value(&value) {
+        resolve_suite(path)
+    } else {
+        let name = path
+            .file_stem()
+            .or_else(|| path.file_name())
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        Ok(vec![ConfigGroup {
+            name,
+            config: BenchmarkConfig::from_path(path)?,
+        }])
+    }
+}
+
+/// All files a config path references, as absolute paths, following `extends`
+/// chains and suite dependencies — used to upload everything a profile needs
+/// to a remote instance. Includes the path itself.
+pub fn config_dependencies(path: &Path) -> Result<Vec<PathBuf>> {
+    let mut out = Vec::new();
+    collect_dependencies(path, &mut out)?;
+    out.sort();
+    out.dedup();
+    Ok(out)
+}
+
+fn collect_dependencies(path: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
+    let abs = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    if out.contains(&abs) {
+        return Ok(());
+    }
+    out.push(abs);
+
+    let value = read_toml_value(path)?;
+    let base_dir = path.parent().unwrap_or_else(|| Path::new("."));
+
+    // extends bases (recursive)
+    for base in extends_targets(&value, base_dir) {
+        collect_dependencies(&base, out)?;
+    }
+    // suite deps (datasets + index fragments), relative to this file's dir
+    if let Some(deps) = suite_dependencies(path)? {
+        for dep in deps {
+            let dep_path = base_dir.join(&dep);
+            let abs_dep = std::fs::canonicalize(&dep_path).unwrap_or(dep_path);
+            if !out.contains(&abs_dep) {
+                out.push(abs_dep);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Build config groups from explicit dataset and index paths (anonymous suite).
 ///
 /// Each dataset is paired with all indexes, producing one `ConfigGroup` per dataset.
@@ -981,6 +1111,45 @@ format = ["table", "json"]
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), toml_str).unwrap();
         BenchmarkConfig::from_file(tmp.path()).unwrap()
+    }
+
+    #[test]
+    fn extends_inherits_base_and_applies_overrides() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("base.toml"),
+            r#"
+[dataset]
+name = "t"
+dimension = 8
+metric = "angular"
+[search]
+k = 10
+num_queries = 100
+[[index]]
+type = "meerkat"
+name = "i1"
+[[search.sweep]]
+index = "i1"
+[search.sweep.params]
+"mkt.nprobe" = [10]
+"#,
+        )
+        .unwrap();
+        // A profile that inherits the base and only overrides one setting.
+        std::fs::write(
+            dir.path().join("profile.toml"),
+            "extends = \"base.toml\"\n[search]\nnum_queries = 5\n",
+        )
+        .unwrap();
+
+        let groups = super::resolve_groups(&dir.path().join("profile.toml")).unwrap();
+        assert_eq!(groups.len(), 1);
+        let cfg = &groups[0].config;
+        assert_eq!(cfg.search.num_queries, Some(5)); // overridden by profile
+        assert_eq!(cfg.search.k, 10); // inherited from base
+        assert_eq!(cfg.index.len(), 1); // index inherited
+        assert_eq!(cfg.index[0].name, "i1");
     }
 
     #[test]

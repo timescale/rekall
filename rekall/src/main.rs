@@ -1532,8 +1532,10 @@ fn resolve_run_groups(
             if configs.is_empty() {
                 anyhow::bail!("Provide a suite file, config paths, or --datasets/--indexes");
             }
-            if configs.len() == 1 && config::is_suite_file(&configs[0]) {
-                Ok(config::resolve_suite(&configs[0])?)
+            if configs.len() == 1 {
+                // Single path: honor `extends` (config inheritance / override
+                // profiles), and expand suites — resolve_groups handles both.
+                Ok(config::resolve_groups(&configs[0])?)
             } else {
                 Ok(config::resolve_config_groups(configs)?)
             }
