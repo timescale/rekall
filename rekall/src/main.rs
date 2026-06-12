@@ -1135,6 +1135,15 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
 
+            // [meerkat] branch: build + install the requested branch before the
+            // run (once; the config is shared across a suite's groups). Runs
+            // wherever rekall runs — locally or on the instance under infra run.
+            if !dry_run {
+                if let Some(g) = groups.first() {
+                    prepare_meerkat(&g.config).await?;
+                }
+            }
+
             // For --clean-run, move each group's existing results dir aside so
             // the run starts fresh rather than resuming. Dedup across groups so
             // a shared dir isn't archived twice (the second time would move the
@@ -1541,6 +1550,101 @@ fn resolve_run_groups(
             }
         }
     }
+}
+
+fn expand_tilde(p: &str) -> String {
+    if let Some(rest) = p.strip_prefix("~/") {
+        if let Ok(home) = std::env::var("HOME") {
+            return format!("{home}/{rest}");
+        }
+    }
+    p.to_string()
+}
+
+/// Build + install the meerkat branch named in `[meerkat] branch` before the
+/// run. Runs wherever rekall runs (local box, or the instance under
+/// `infra run`). No-op (returns None) when no branch is configured. Returns
+/// the branch built, for the run log.
+async fn prepare_meerkat(config: &BenchmarkConfig) -> anyhow::Result<Option<String>> {
+    let m = &config.meerkat;
+    let Some(branch) = m.branch.clone() else {
+        return Ok(None);
+    };
+
+    let src = expand_tilde(&m.source_dir());
+    let build_dir = m.build_dir();
+    let meson_args = m.meson_args.join(" ");
+    let sudo = if m.sudo { "sudo " } else { "" };
+
+    println!("=== meerkat: building branch '{branch}' in {src} (build_dir={build_dir}) ===");
+
+    // Fetch + check out the branch. If origin has it (instance clone, or a
+    // pushed local branch), hard-reset to origin to get its latest; otherwise
+    // fall back to a local-only branch checkout. Meson build dir may be
+    // root-owned on the instance (provisioned under sudo), hence `sudo`.
+    let script = format!(
+        r#"set -euo pipefail
+cd "{src}"
+if git fetch origin "{branch}" 2>/dev/null; then
+  git checkout "{branch}"
+  git reset --hard "origin/{branch}"
+else
+  git checkout "{branch}"
+fi
+if [ ! -d "{build_dir}" ]; then
+  {sudo}meson setup "{build_dir}" {meson_args}
+elif [ -n "{meson_args}" ]; then
+  {sudo}meson setup --reconfigure "{build_dir}" {meson_args}
+fi
+{sudo}meson compile -C "{build_dir}"
+{sudo}meson install -C "{build_dir}"
+"#
+    );
+    let status = std::process::Command::new("bash")
+        .arg("-c")
+        .arg(&script)
+        .status()
+        .map_err(|e| anyhow::anyhow!("spawn meerkat build: {e}"))?;
+    if !status.success() {
+        anyhow::bail!("meerkat build/install failed for branch '{branch}'");
+    }
+
+    if let Some(cmd) = m.restart_command.as_deref().filter(|s| !s.is_empty()) {
+        println!("=== meerkat: post-install command: {cmd} ===");
+        let st = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(cmd)
+            .status()
+            .map_err(|e| anyhow::anyhow!("spawn restart_command: {e}"))?;
+        if !st.success() {
+            anyhow::bail!("meerkat restart_command failed");
+        }
+    }
+
+    if m.recreate_extension {
+        println!("=== meerkat: DROP + CREATE EXTENSION (SQL/metadata refresh) ===");
+        let pg = rekall_lib::backend::postgres::PgConnection::new(
+            &config.connection,
+            &config.table_name(),
+            config.dataset.dimension,
+            config.dataset.metric,
+        );
+        let client = pg
+            .open_connection()
+            .await
+            .map_err(|e| anyhow::anyhow!("connect to recreate meerkat extension: {e}"))?;
+        client
+            .execute("DROP EXTENSION IF EXISTS meerkat CASCADE", &[])
+            .await
+            .map_err(|e| anyhow::anyhow!("DROP EXTENSION meerkat: {e}"))?;
+        client
+            .execute("CREATE EXTENSION meerkat", &[])
+            .await
+            .map_err(|e| anyhow::anyhow!("CREATE EXTENSION meerkat: {e}"))?;
+    }
+
+    println!("=== meerkat: ready (branch '{branch}') ===");
+    Ok(Some(branch))
 }
 
 fn build_outputs(cfg: &BenchmarkConfig) -> Vec<Box<dyn OutputSink>> {

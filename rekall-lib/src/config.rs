@@ -374,6 +374,53 @@ pub struct BenchmarkConfig {
     pub output: OutputConfig,
     #[serde(default)]
     pub publish: PublishConfig,
+    /// Optional `[meerkat]` build step: check out + build + install a meerkat
+    /// branch before the run. Absent / no `branch` → use whatever is installed.
+    #[serde(default)]
+    pub meerkat: MeerkatBuildConfig,
+}
+
+/// `[meerkat]` — build & install a specific meerkat branch before the run, so
+/// experimental branches can be benchmarked without manual builds. Runs
+/// wherever rekall runs (your box locally, or the instance under
+/// `infra run`). Defaults match the instance's provisioning layout.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct MeerkatBuildConfig {
+    /// Git ref to fetch + check out + build. None → use the installed binary.
+    pub branch: Option<String>,
+    /// Meerkat checkout dir. Default `~/repos/meerkat` (the instance's clone).
+    pub source_dir: Option<String>,
+    /// Meson build dir. Default `builddir` (matches the instance build).
+    pub build_dir: Option<String>,
+    /// Extra `meson setup` args, e.g. `-Dpg_config=/path/to/pg_config`.
+    #[serde(default)]
+    pub meson_args: Vec<String>,
+    /// Run the meson build + install under sudo. The instance provisions
+    /// meerkat as root, so its `builddir` and PG lib dir are root-owned;
+    /// local user-owned checkouts leave this false.
+    #[serde(default)]
+    pub sudo: bool,
+    /// Command to run after install (e.g. restart PG). Usually unnecessary —
+    /// a fresh session loads the new `.so`. Empty/None → skip.
+    pub restart_command: Option<String>,
+    /// DROP EXTENSION meerkat CASCADE + CREATE EXTENSION before the run.
+    /// Required when the branch changes the extension SQL/metadata (not just
+    /// the `.so`). CASCADE drops dependent indexes; the run rebuilds them.
+    #[serde(default)]
+    pub recreate_extension: bool,
+}
+
+impl MeerkatBuildConfig {
+    pub fn source_dir(&self) -> String {
+        self.source_dir
+            .clone()
+            .unwrap_or_else(|| "~/repos/meerkat".to_string())
+    }
+    pub fn build_dir(&self) -> String {
+        self.build_dir
+            .clone()
+            .unwrap_or_else(|| "builddir".to_string())
+    }
 }
 
 impl BenchmarkConfig {
