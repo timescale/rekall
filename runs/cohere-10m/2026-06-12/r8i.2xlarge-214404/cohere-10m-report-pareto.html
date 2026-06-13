@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">cohere-10m  |  2026-06-12  |  r8i.2xlarge, Intel(R) Xeon(R) 6975P-C, 8 vCPU, 62 GB<br>PG 18.4  |  shared_buffers=16 GB  |  work_mem=512 MB  |  max_parallel_maintenance_workers=4  |  meerkat 0.1.0 (8e85a2b), pgvector 0.8.2</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.1323916525994926, 1.161471548286012, 1.6216314222273231, 1.6582280766036255, 2.13861405489155, 2.198113782445577, 2.713181706910424, 2.714210780170612, 2.7791740729073493, 3.370196304382596, 3.442943416524008, 4.15523329626748, 4.227432532488321, 4.692559611919327, 4.761528669410033, 4.8826407232631075],
+                y: [1235.4821580315115, 1142.9582456779603, 915.15087177272, 756.6543589268632, 613.8390253807705, 473.7850469459392, 384.5696504092672, 323.8310298908346, 299.3479602729332, 225.8719923788982, 181.8754229740308, 124.95324249665764, 105.70473665039016, 80.2080018069259, 75.70212968259302, 68.32223652677303],
+                customdata: [0.7562800000000107, 0.7616000000000093, 0.8350200000000126, 0.8400000000000125, 0.8946000000000061, 0.9000800000000074, 0.9378000000000042, 0.9378600000000046, 0.9415400000000042, 0.9667600000000022, 0.9690200000000024, 0.9845600000000004, 0.9856200000000008, 0.9909199999999996, 0.9915200000000004, 0.9924800000000004],
+                name: "Meerkat",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "Meerkat",
+                hovertemplate: "<b>Meerkat</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [1.272088178087485, 1.9462759135071348, 2.561465333119278, 3.2675881347031206, 3.643246066783366, 4.1751592510815145, 4.768689802280388, 5.355481690536092, 5.563677541529371],
+                y: [1071.4147195668406, 453.8522571116605, 264.01183406645026, 153.12213116117127, 108.27783156058, 69.96488798103704, 37.06665906355359, 19.44747937485906, 15.952465430560746],
+                customdata: [0.7811000000000087, 0.8750400000000053, 0.9283400000000034, 0.9633000000000024, 0.9745000000000033, 0.984860000000002, 0.9915800000000012, 0.9953000000000004, 0.9961800000000004],
+                name: "pgvector HNSW",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "pgvector HNSW",
+                hovertemplate: "<b>pgvector HNSW</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [-0.1501212989287475, 0.6185996769397097, 1.2553233610293086, 1.8325060658067058, 2.1561276942423597, 2.5702166177182755, 3.134159380708273, 3.7436657757206766, 3.9680121535678556],
+                y: [1192.3740525097685, 826.7951748895023, 508.9835598310174, 225.8587692467811, 153.63209942381198, 98.30010802788682, 74.65931461554631, 5.3390290493879755, 3.2091275021066528],
+                customdata: [0.4625399999999979, 0.649900000000006, 0.7782200000000119, 0.862060000000008, 0.8962400000000075, 0.9289200000000069, 0.9582800000000022, 0.976880000000002, 0.9814400000000004],
+                name: "pgvector HNSW (bit)",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "pgvector HNSW (bit)",
+                hovertemplate: "<b>pgvector HNSW (bit)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
