@@ -915,6 +915,16 @@ fn cmd_report(
         }
     }
 
+    // Dedup by index name: the same build can appear both inline in a run
+    // summary's `index_builds` and in its own `build-*.json` log. Keep one
+    // record per index (last wins).
+    {
+        let mut seen = std::collections::HashSet::new();
+        build_results.reverse();
+        build_results.retain(|b| seen.insert(b.index_name.clone()));
+        build_results.reverse();
+    }
+
     if !build_results.is_empty() {
         println!("\n=== Index Build Times ===");
         for b in &build_results {

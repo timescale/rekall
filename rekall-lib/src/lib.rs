@@ -489,6 +489,24 @@ impl Agent {
                         ),
                     });
                 }
+                // Recover the persisted build result so reused indexes still
+                // report build time/size/workers (e.g. in the build-time
+                // graph) instead of silently dropping out.
+                if let Some(prior) =
+                    crate::phase::index::load_build_result(&self.config, &idx_config.name)
+                {
+                    index_builds.push(prior);
+                } else {
+                    for output in self.outputs.iter_mut() {
+                        output.on_progress(&ProgressEvent::Message {
+                            text: format!(
+                                "No saved build log for '{}'; build time unavailable \
+                                 (rebuild with --rebuild to record it)",
+                                idx_config.name,
+                            ),
+                        });
+                    }
+                }
             } else {
                 let idx_start = Instant::now();
                 for output in self.outputs.iter_mut() {
@@ -532,6 +550,11 @@ impl Agent {
                         return Err(e);
                     }
                 };
+
+                // Persist the build result immediately so it survives the run
+                // and is recoverable on later reuse (symmetric with the
+                // load_build_result read-back above).
+                crate::phase::index::save_build_result(&self.config, &build_result);
 
                 for output in self.outputs.iter_mut() {
                     output.on_index_built(&build_result);

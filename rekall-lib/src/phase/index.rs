@@ -5,7 +5,11 @@ use crate::error::{Error, Result};
 use crate::metrics::IndexBuildResult;
 use crate::progress::ProgressTx;
 
-fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
+/// Persist a build result to a per-index log file (`build-{name}.json`) as
+/// soon as the build finishes, so the timing/size/workers survive the run and
+/// can be recovered when the index is later reused (instead of rebuilt). Used
+/// by both the standalone `index` phase and the interleaved `run` path.
+pub(crate) fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
     let dir = &config.output.results_dir;
     let path = format!("{dir}/build-{}.json", result.index_name);
     if let Some(parent) = std::path::Path::new(&path).parent() {
@@ -15,6 +19,19 @@ fn save_build_result(config: &BenchmarkConfig, result: &IndexBuildResult) {
         let _ = std::fs::write(&path, json);
         tracing::info!("Build result saved to {path}");
     }
+}
+
+/// Recover a previously saved build result for `index_name`, if its
+/// `build-{name}.json` log exists. Lets the reuse path report build
+/// time/size/workers without rebuilding.
+pub(crate) fn load_build_result(
+    config: &BenchmarkConfig,
+    index_name: &str,
+) -> Option<IndexBuildResult> {
+    let dir = &config.output.results_dir;
+    let path = format!("{dir}/build-{index_name}.json");
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
 }
 
 /// Normalize the table's `parallel_workers` reloption before an index build.
