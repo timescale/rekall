@@ -1,0 +1,17 @@
+# VectorChord vchordrq with 8-bit RaBitQ, tuned for cohere-10M (lists=24000).
+# rabitq8 is VectorChord's higher-accuracy quantization lever (its productized
+# answer to multi-bit RaBitQ); ~8x smaller than full precision, <1% recall loss
+# per VectorChord's docs. Same partition count as the Meerkat arm.
+[[index]]
+type = "vchordrq-rabitq8"
+name = "vchordrq-rabitq8-n24000"
+[index.params]
+lists = [24000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 16
+
+[[search.sweep]]
+index = "vchordrq-rabitq8-n24000"
+[search.sweep.params]
+"vchordrq.probes" = ["10", "20", "40", "80", "160", "320", "640", "1280", "2560", "4000"]
