@@ -1,19 +1,20 @@
-# VectorChord vchordrq (1-bit RaBitQ) on the plain `vector` column, tuned for
-# cohere-10M. lists=24000 matches Meerkat's nlist for a like-for-like partition
-# count (~417 vecs/list) and sits at the top of VectorChord's recommended
-# 4*sqrt(N)..8*sqrt(N) range for 10M. residual_quantization + spherical
-# centroids on per VectorChord's cosine guidance.
+# VectorChord vchordrq (1-bit RaBitQ) on the plain `vector` column.
+# lists=16000 follows VectorChord's OWN sizing for 10M, not a Meerkat match:
+# their docs recommend 4*sqrt(N)..8*sqrt(N) for 2M-50M rows (12.6k..25.3k for
+# 10M); 16000 is the mid-range (~5*sqrt(N), ~625 vecs/list). VectorChord has no
+# auto-nlist — an empty `lists` builds a FLAT (unpartitioned) index, so it must
+# be set explicitly. residual_quantization + spherical centroids on per
+# VectorChord's cosine guidance (both supported on the 1-bit path).
 [[index]]
 type = "vchordrq"
-name = "vchordrq-n24000"
+name = "vchordrq-n16000"
 [index.params]
-lists = [24000]
+lists = [16000]
 residual_quantization = true
 spherical_centroids = true
 build_threads = 16
 
 [[search.sweep]]
-index = "vchordrq-n24000"
+index = "vchordrq-n16000"
 [search.sweep.params]
-# probes = lists scanned; swept to match Meerkat's nprobe range at n24000.
-"vchordrq.probes" = ["10", "20", "40", "80", "160", "320", "640", "1280", "2560", "4000"]
+"vchordrq.probes" = ["5", "10", "20", "40", "80", "160", "320", "640", "1280", "2560"]
