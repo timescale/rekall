@@ -140,6 +140,21 @@ if [ "$VECTORCHORD" = "1" ]; then
         sudo systemctl restart "postgresql@${PG_VERSION}-main"
         echo "=== VectorChord installed ==="
     fi
+
+    # VectorChord needs its library preloaded. Nothing else sets
+    # shared_preload_libraries (meerkat is a plain IAM and needs no preload), so
+    # add vchord here -- after the .so is installed -- and restart. This must
+    # live in provision.sh, not the config's [pg_config]: cloud-init starts PG
+    # before this script runs, so vchord.so only exists now; setting the preload
+    # earlier would make PG fail to start. Runs for both the freshly-built and
+    # already-installed paths; idempotent.
+    PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
+    if ! grep -qE "^[[:space:]]*shared_preload_libraries[[:space:]]*=.*vchord" \
+        "$PG_CONF"; then
+        echo "shared_preload_libraries = 'vchord'" | sudo tee -a "$PG_CONF" >/dev/null
+        sudo systemctl restart "postgresql@${PG_VERSION}-main"
+        echo "=== Enabled vchord in shared_preload_libraries ==="
+    fi
 fi
 
 # --- Rekall ---
