@@ -1,0 +1,20 @@
+# VectorChord vchordrq with 4-bit RaBitQ + exact-distance rerank, tuned for
+# cohere-10M (lists=24000). Two-phase: pull rerank_n candidates by 4-bit cosine
+# distance, then ORDER BY exact cosine on the original `v` column, LIMIT k.
+# rerank_n recovers recall lost to 4-bit quantization at the cost of fetching a
+# larger candidate pool; tune it in tandem with vchordrq.probes (200 may be low
+# for high-recall targets at 10M — raise if recall plateaus).
+[[index]]
+type = "vchordrq-rabitq4"
+name = "vchordrq-rabitq4-rerank-n24000"
+[index.params]
+lists = [24000]
+residual_quantization = true
+spherical_centroids = true
+build_threads = 16
+rerank_n = 200
+
+[[search.sweep]]
+index = "vchordrq-rabitq4-rerank-n24000"
+[search.sweep.params]
+"vchordrq.probes" = ["10", "20", "40", "80", "160", "320", "640", "1280", "2560", "4000"]

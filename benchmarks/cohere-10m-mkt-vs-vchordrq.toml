@@ -6,9 +6,9 @@
 # mkt-n24000-cctrue-fs16-soar-cfs and run via the fastscan-centroids profile.
 #
 # VectorChord: lists=24000 to match Meerkat's nlist (like-for-like partition
-# granularity), 1-bit (vchordrq-n24000) and 8-bit (vchordrq-rabitq8-n24000).
-# This is the index now packaging Databricks Lakebase / Neon's lakebase_vector,
-# so it's the OSS index to beat.
+# granularity), across its full quantization frontier — 1-bit, 8-bit, and
+# 4-bit+rerank. This is the index now packaging Databricks Lakebase / Neon's
+# lakebase_vector, so it's the OSS index to beat.
 #
 # Both index families are IVF + RaBitQ; the comparison isolates Meerkat's
 # SOAR/boundary replication + hierarchical+fastscan routing against
@@ -20,6 +20,7 @@ indexes = [
     "indexes/mkt-n24000-cctrue-fs16-soar.toml",
     "indexes/vchordrq-n24000.toml",
     "indexes/vchordrq-rabitq8-n24000.toml",
+    "indexes/vchordrq-rabitq4-rerank-n24000.toml",
 ]
 
 [[suite]]
