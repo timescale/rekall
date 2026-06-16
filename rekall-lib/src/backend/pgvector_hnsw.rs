@@ -51,14 +51,6 @@ pub enum Encoding {
 }
 
 impl Encoding {
-    /// Parenthesized expression to index, or `None` for `Vector` (which
-    /// indexes the bare `v` column). `build_create_index_sql` emits
-    /// `(<this> <opclass>)`; the parens make pgvector treat it as an
-    /// expression index, e.g. `((v::halfvec(N)) halfvec_cosine_ops)`.
-    fn index_expr(self, dim: u32) -> Option<String> {
-        self.order_expr(dim).map(|e| format!("({e})"))
-    }
-
     /// The encoded operand as it appears in a query `ORDER BY` (no outer
     /// parens), e.g. `binary_quantize(v)::bit(N)`. `None` for `Vector`,
     /// which is queried by column name.
@@ -237,7 +229,8 @@ impl IndexBackend for PgvectorHnswBackend {
     fn index_target(&self) -> String {
         self.params
             .encoding
-            .index_expr(self.pg.dimension)
+            .order_expr(self.pg.dimension)
+            .map(|e| crate::backend::expr_index::index_target(&e))
             .unwrap_or_else(|| "v".to_string())
     }
 
@@ -256,23 +249,15 @@ impl IndexBackend for PgvectorHnswBackend {
             // re-rank that pool by full-precision distance on `v` (pgvector's
             // recommended two-stage quantized query).
             let full = self.params.encoding.full_order_op(self.pg.metric);
-            let sql = format!(
-                "SELECT id FROM ( \
-                     SELECT id, v FROM {table} \
-                     ORDER BY {order_expr} {op} {bind} \
-                     LIMIT $3 \
-                 ) candidates \
-                 ORDER BY v {full} $1 \
-                 LIMIT $2"
-            );
-            Some((sql, vec![Type::INT8]))
+            Some((
+                crate::backend::expr_index::rerank_sql(table, &order_expr, op, &bind, full),
+                vec![Type::INT8],
+            ))
         } else {
-            let sql = format!(
-                "SELECT id FROM {table} \
-                 ORDER BY {order_expr} {op} {bind} \
-                 LIMIT $2"
-            );
-            Some((sql, Vec::new()))
+            Some((
+                crate::backend::expr_index::search_sql(table, &order_expr, op, &bind),
+                Vec::new(),
+            ))
         }
     }
 
@@ -389,17 +374,19 @@ mod tests {
 
     #[test]
     fn index_expr_parenthesizes_quantized_encodings() {
-        // Quantized encodings are expression indexes — the parens make
-        // pgvector treat them as such; `vector` indexes the bare column.
+        // Quantized encodings are expression indexes — the shared
+        // `expr_index::index_target` parenthesizes them so pgvector treats
+        // them as such; `vector` indexes the bare column.
+        let target = |e: Option<String>| e.map(|s| crate::backend::expr_index::index_target(&s));
         assert_eq!(
-            Encoding::Bit.index_expr(768).as_deref(),
+            target(Encoding::Bit.order_expr(768)).as_deref(),
             Some("(binary_quantize(v)::bit(768))")
         );
         assert_eq!(
-            Encoding::Halfvec.index_expr(768).as_deref(),
+            target(Encoding::Halfvec.order_expr(768)).as_deref(),
             Some("(v::halfvec(768))")
         );
-        assert!(Encoding::Vector.index_expr(768).is_none());
+        assert!(Encoding::Vector.order_expr(768).is_none());
     }
 
     #[test]

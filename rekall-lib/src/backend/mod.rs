@@ -519,6 +519,54 @@ fn build_create_index_sql(
     format!("CREATE INDEX {idx_name} ON {table} USING {method} ({column} {opclass}){with_clause}")
 }
 
+/// Shared helpers for *expression-index* quantized encodings — used by
+/// both the pgvector (`halfvec`/`bit`) and vchordrq (`rabitq4`/`rabitq8`)
+/// backends. The index is built over a quantize expression on `v` (e.g.
+/// `binary_quantize(v)::bit(N)` or `(quantize_to_rabitq8(v))::rabitq8(N)`)
+/// rather than a materialized column, so the shared rekall table is never
+/// modified and other backends on the same table see the schema they
+/// expect.
+///
+/// Each backend supplies the encoding-specific strings (`order_expr` over
+/// `v`, the `$1` `bind` cast, and the index `order_op`); the query *shapes*
+/// — expression-index target, single-stage scan, and two-stage rerank —
+/// are common and live here.
+pub(crate) mod expr_index {
+    /// Parenthesized target for `CREATE INDEX ... ((<order_expr>) <opclass>)`.
+    /// The parens are what make PG treat it as an expression index.
+    pub(crate) fn index_target(order_expr: &str) -> String {
+        format!("({order_expr})")
+    }
+
+    /// Single-stage quantized search: order directly by the quantized
+    /// distance. Binds `$1` (query vector) and `$2` (`LIMIT`).
+    pub(crate) fn search_sql(table: &str, order_expr: &str, order_op: &str, bind: &str) -> String {
+        format!("SELECT id FROM {table} ORDER BY {order_expr} {order_op} {bind} LIMIT $2")
+    }
+
+    /// Two-stage rerank quantized search: over-fetch `$3` candidates by the
+    /// quantized distance, then reorder that pool by exact `full_op`
+    /// distance on full-precision `v`. Binds `$1` (query vector), `$2`
+    /// (`LIMIT`), and `$3` (candidate-pool size).
+    pub(crate) fn rerank_sql(
+        table: &str,
+        order_expr: &str,
+        order_op: &str,
+        bind: &str,
+        full_op: &str,
+    ) -> String {
+        format!(
+            "SELECT id FROM ( \
+                 SELECT id, v FROM {table} \
+                 ORDER BY {order_expr} {order_op} {bind} \
+                 LIMIT $3 \
+             ) candidates \
+             ORDER BY v {full_op} $1 \
+             LIMIT $2"
+        )
+    }
+}
+
 /// Shared interface for data loading (PG backends share this via PgConnection).
 #[async_trait]
 pub trait DataLoader: Send + Sync {

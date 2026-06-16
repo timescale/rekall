@@ -8,11 +8,12 @@
 //!     quantized distance, then reorders by exact distance on the
 //!     original `vector` column.
 //!
-//! For rabitq variants, the backend `ALTER TABLE`s a quantized column
-//! into the shared rekall table before building the index, and drops
-//! the column (and index) in `drop_index`. The plain `v` column is
-//! never modified, so other backends operating on the same table see
-//! the schema they expect.
+//! The rabitq variants index a quantized *expression* over `v`
+//! (`(quantize_to_rabitq8(v))::rabitq8(N)`) — an expression index, so the
+//! shared rekall table is never modified. The explicit `::rabitq8(N)` cast
+//! restores the dimension typmod vchordrq needs to build the index (a bare
+//! `quantize_to_rabitq8(v)` loses it, and the build fails). Other backends
+//! sharing the same table always see the schema they expect.
 
 use async_trait::async_trait;
 use postgres_types::Type;
@@ -82,17 +83,8 @@ impl Variant {
         }
     }
 
-    /// Quantized column name added to the rekall table, if any. The
-    /// plain variant indexes the existing `v` column directly.
-    fn quantized_column(self) -> Option<&'static str> {
-        match self {
-            Self::Plain => None,
-            Self::Rabitq8 => Some("v_rabitq8"),
-            Self::Rabitq4Rerank => Some("v_rabitq4"),
-        }
-    }
-
-    /// Quantized PG type, used in `ALTER TABLE ADD COLUMN ...`.
+    /// RaBitQ type name used in the `::rabitq8(N)` cast of the index
+    /// expression. `None` for the plain variant (indexes `v` directly).
     fn quantized_type(self) -> Option<&'static str> {
         match self {
             Self::Plain => None,
@@ -101,13 +93,36 @@ impl Variant {
         }
     }
 
-    /// quantize_to_rabitq{4,8}() function name used to populate the
-    /// quantized column and to quantize query vectors at search time.
+    /// quantize_to_rabitq{4,8}() function used to quantize `v` (in the
+    /// index expression) and query vectors (at search time). `None` for
+    /// the plain variant.
     fn quantize_fn(self) -> Option<&'static str> {
         match self {
             Self::Plain => None,
             Self::Rabitq8 => Some("quantize_to_rabitq8"),
             Self::Rabitq4Rerank => Some("quantize_to_rabitq4"),
+        }
+    }
+
+    /// Un-parenthesized quantize expression over `v`, as it appears in a
+    /// query `ORDER BY` and (parenthesized) in `CREATE INDEX`, e.g.
+    /// `(quantize_to_rabitq8(v))::rabitq8(768)`. The explicit cast
+    /// restores the dimension typmod vchordrq needs to build the index —
+    /// a bare `quantize_to_rabitq8(v)` loses it. `None` for the plain
+    /// variant, which indexes/queries the `v` column directly.
+    fn order_expr(self, dim: u32) -> Option<String> {
+        match (self.quantize_fn(), self.quantized_type()) {
+            (Some(f), Some(ty)) => Some(format!("({f}(v))::{ty}({dim})")),
+            _ => None,
+        }
+    }
+
+    /// Casts the bound `$1` (sent as a `vector`) to the quantized operand
+    /// the index expects, e.g. `quantize_to_rabitq8($1::vector(768))`.
+    fn bind_expr(self, dim: u32) -> String {
+        match self.quantize_fn() {
+            None => "$1".to_string(),
+            Some(f) => format!("{f}($1::vector({dim}))"),
         }
     }
 }
@@ -230,52 +245,40 @@ impl IndexBackend for VchordrqBackend {
         serde_json::to_value(&self.params).unwrap_or_default()
     }
 
-    fn derived_column(&self) -> Option<&str> {
-        self.variant.quantized_column()
-    }
-
-    fn derived_column_type(&self) -> Option<String> {
+    /// `vector` indexes the bare `v` column; the rabitq variants index a
+    /// parenthesized quantize expression (an expression index — no
+    /// materialized column, so the shared table is never modified).
+    /// `derived_column` stays `None` (the trait default) for all variants.
+    fn index_target(&self) -> String {
         self.variant
-            .quantized_type()
-            .map(|ty| format!("{ty}({})", self.pg.dimension))
+            .order_expr(self.pg.dimension)
+            .map(|e| super::expr_index::index_target(&e))
+            .unwrap_or_else(|| "v".to_string())
     }
 
-    fn derive_from_v_expr(&self) -> Option<String> {
-        self.variant.quantize_fn().map(|f| format!("{f}(v)"))
-    }
-
-    fn query_column(&self) -> &'static str {
-        self.variant.quantized_column().unwrap_or("v")
-    }
-
-    fn query_bind(&self) -> String {
-        match self.variant.quantize_fn() {
-            None => "$1".to_string(),
-            Some(f) => format!("{f}($1::vector)"),
-        }
-    }
-
-    /// Rabitq4-rerank wraps a candidate-pool subquery and binds a
-    /// third `$3` param for the pool LIMIT. The default `query_column`
-    /// / `query_bind` template can't express that shape, so override.
+    /// The rabitq variants order by the quantize expression — and `rabitq4`
+    /// over-fetches a candidate pool re-ranked on full-precision `v`. The
+    /// plain variant falls back to the default `ORDER BY v <op> $1`
+    /// template. The quantized and full-precision distances share the same
+    /// metric operator, so `order_op` doubles as the rerank `full_op`.
     fn custom_search_sql(&self) -> Option<(String, Vec<Type>)> {
-        if self.variant != Variant::Rabitq4Rerank {
-            return None;
-        }
-        let qcol = self.variant.quantized_column().unwrap();
-        let qfn = self.variant.quantize_fn().unwrap();
+        let dim = self.pg.dimension;
+        let order_expr = self.variant.order_expr(dim)?;
+        let bind = self.variant.bind_expr(dim);
         let order_op = self.order_op();
         let table = &self.pg.table_name;
-        let sql = format!(
-            "SELECT id FROM ( \
-                 SELECT id, v FROM {table} \
-                 ORDER BY {qcol} {order_op} {qfn}($1::vector) \
-                 LIMIT $3 \
-             ) candidates \
-             ORDER BY v {order_op} $1::vector \
-             LIMIT $2"
-        );
-        Some((sql, vec![Type::INT8]))
+
+        if self.variant == Variant::Rabitq4Rerank {
+            Some((
+                super::expr_index::rerank_sql(table, &order_expr, order_op, &bind, order_op),
+                vec![Type::INT8],
+            ))
+        } else {
+            Some((
+                super::expr_index::search_sql(table, &order_expr, order_op, &bind),
+                Vec::new(),
+            ))
+        }
     }
 
     /// Rabitq4-rerank binds an extra `$3` for the candidate pool. All
@@ -407,26 +410,49 @@ mod tests {
     }
 
     #[test]
-    fn variant_quantized_column_plain_is_none() {
-        assert!(Variant::Plain.quantized_column().is_none());
+    fn variant_plain_has_no_quantization() {
         assert!(Variant::Plain.quantized_type().is_none());
         assert!(Variant::Plain.quantize_fn().is_none());
+        assert!(Variant::Plain.order_expr(768).is_none());
+        assert_eq!(Variant::Plain.bind_expr(768), "$1");
     }
 
+    /// rabitq8 is an expression index: the order/index expression casts
+    /// the quantize result back to `rabitq8(N)` to keep the dimension
+    /// typmod, and the `$1` bind quantizes the query vector.
     #[test]
-    fn variant_quantized_accessors_for_rabitq8() {
-        assert_eq!(Variant::Rabitq8.quantized_column(), Some("v_rabitq8"));
+    fn variant_rabitq8_expression_index() {
         assert_eq!(Variant::Rabitq8.quantized_type(), Some("rabitq8"));
         assert_eq!(Variant::Rabitq8.quantize_fn(), Some("quantize_to_rabitq8"));
+        assert_eq!(
+            Variant::Rabitq8.order_expr(768).as_deref(),
+            Some("(quantize_to_rabitq8(v))::rabitq8(768)")
+        );
+        assert_eq!(
+            Variant::Rabitq8.bind_expr(768),
+            "quantize_to_rabitq8($1::vector(768))"
+        );
     }
 
     #[test]
-    fn variant_quantized_accessors_for_rabitq4_rerank() {
-        assert_eq!(Variant::Rabitq4Rerank.quantized_column(), Some("v_rabitq4"));
+    fn variant_rabitq4_expression_index() {
         assert_eq!(Variant::Rabitq4Rerank.quantized_type(), Some("rabitq4"));
         assert_eq!(
             Variant::Rabitq4Rerank.quantize_fn(),
             Some("quantize_to_rabitq4")
         );
+        assert_eq!(
+            Variant::Rabitq4Rerank.order_expr(768).as_deref(),
+            Some("(quantize_to_rabitq4(v))::rabitq4(768)")
+        );
+    }
+
+    /// The rabitq index target is the parenthesized quantize expression
+    /// (an expression index), never a materialized column.
+    #[test]
+    fn rabitq_index_target_is_expression() {
+        let target =
+            crate::backend::expr_index::index_target(&Variant::Rabitq8.order_expr(768).unwrap());
+        assert_eq!(target, "((quantize_to_rabitq8(v))::rabitq8(768))");
     }
 }
