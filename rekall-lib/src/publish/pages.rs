@@ -145,26 +145,34 @@ fn ensure_orphan(work: &Path, branch: &str) -> Result<()> {
     Ok(())
 }
 
-/// Stage, commit, and push the branch. No-op (Ok) when nothing changed.
-fn commit_push(work: &Path, branch: &str, ssh: Option<&str>, msg: &str) -> Result<()> {
+/// Stage, commit, and push the branch. When nothing changed this is a no-op
+/// (Ok) — unless `force` is set, in which case it re-commits (empty) and
+/// re-pushes anyway, so `--force` always republishes the regenerated
+/// artifacts even when they're byte-identical to what's already live.
+fn commit_push(work: &Path, branch: &str, ssh: Option<&str>, msg: &str, force: bool) -> Result<()> {
     git(work, None, &["add", "-A"])?;
-    if git(work, None, &["status", "--porcelain"])?.is_empty() {
+    let unchanged = git(work, None, &["status", "--porcelain"])?.is_empty();
+    if unchanged && !force {
         tracing::info!("gh-pages: nothing changed, skipping commit");
         return Ok(());
     }
-    git(
-        work,
-        None,
-        &[
-            "-c",
-            "user.email=rekall@localhost",
-            "-c",
-            "user.name=rekall",
-            "commit",
-            "-m",
-            msg,
-        ],
-    )?;
+    if unchanged {
+        tracing::info!("gh-pages: no content changes, forcing republish (--force)");
+    }
+    let mut commit_args = vec![
+        "-c",
+        "user.email=rekall@localhost",
+        "-c",
+        "user.name=rekall",
+        "commit",
+        "-m",
+        msg,
+    ];
+    if unchanged {
+        // Nothing staged, but `--force` asked us to republish anyway.
+        commit_args.push("--allow-empty");
+    }
+    git(work, None, &commit_args)?;
     if git(work, ssh, &["push", "origin", branch]).is_err() {
         // A concurrent publish moved the branch — rebase onto it and retry once.
         git(work, ssh, &["fetch", "origin", branch])?;
@@ -189,6 +197,7 @@ pub fn publish(
     run_id: &str,
     config: &PublishConfig,
     dry_run: bool,
+    force: bool,
 ) -> Result<Option<String>> {
     let report_files = collect_report_files(summary, results_dir);
 
@@ -241,7 +250,13 @@ pub fn publish(
     std::fs::write(work.join("index.html"), render_catalog(&metas))
         .map_err(|e| Error::Config(format!("write catalog index.html: {e}")))?;
 
-    commit_push(&work, branch, ssh.as_deref(), &format!("publish {run_id}"))?;
+    commit_push(
+        &work,
+        branch,
+        ssh.as_deref(),
+        &format!("publish {run_id}"),
+        force,
+    )?;
     tracing::info!("published gh-pages run page for {run_id}");
     Ok(public_url(config, run_id))
 }
@@ -748,7 +763,16 @@ mod tests {
             public_base_url: Some("https://x.github.io/rekall".into()),
             ..Default::default()
         };
-        let url = publish(&summary_for(&m), &m, &results, &m.run_id, &cfg, false).unwrap();
+        let url = publish(
+            &summary_for(&m),
+            &m,
+            &results,
+            &m.run_id,
+            &cfg,
+            false,
+            false,
+        )
+        .unwrap();
         assert_eq!(
             url.as_deref(),
             Some("https://x.github.io/rekall/runs/cohere-5m/2026-06-10/i-095642/")
@@ -774,6 +798,48 @@ mod tests {
         assert!(verify
             .join("runs/cohere-5m/2026-06-10/i-095642/meta.json")
             .exists());
+
+        // Commit count on the bare origin's gh-pages branch.
+        let count = |bare: &Path| -> usize {
+            let out = Command::new("git")
+                .args([
+                    "-C",
+                    bare.to_str().unwrap(),
+                    "rev-list",
+                    "--count",
+                    "gh-pages",
+                ])
+                .output()
+                .unwrap();
+            String::from_utf8(out.stdout)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap()
+        };
+        let n1 = count(&origin);
+
+        // Re-publishing identical content WITHOUT --force is a no-op (the
+        // rendered pages are deterministic, so nothing changes).
+        publish(
+            &summary_for(&m),
+            &m,
+            &results,
+            &m.run_id,
+            &cfg,
+            false,
+            false,
+        )
+        .unwrap();
+        assert_eq!(count(&origin), n1, "unchanged re-publish must not commit");
+
+        // WITH --force it republishes even when byte-identical (empty commit).
+        publish(&summary_for(&m), &m, &results, &m.run_id, &cfg, false, true).unwrap();
+        assert_eq!(
+            count(&origin),
+            n1 + 1,
+            "--force must republish regenerated artifacts even when unchanged"
+        );
 
         let _ = std::fs::remove_dir_all(&base);
     }

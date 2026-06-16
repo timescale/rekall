@@ -328,7 +328,7 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
         }
         println!("  {s3_url}meta.json  (completion marker, written last)");
         if do_pages {
-            pages::publish(&summary, &meta, dir, &rid, config, true)?;
+            pages::publish(&summary, &meta, dir, &rid, config, true, opts.force)?;
         }
         return Ok(());
     }
@@ -358,7 +358,7 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
     // GitHub Pages publish. Non-fatal: a Pages misconfig must not mask a
     // successful S3 archive — log and continue.
     if do_pages {
-        match pages::publish(&summary, &meta, dir, &rid, config, false) {
+        match pages::publish(&summary, &meta, dir, &rid, config, false, opts.force) {
             Ok(Some(url)) => tracing::info!("published run page: {url}"),
             Ok(None) => {}
             Err(e) => eprintln!("GitHub Pages publish failed (S3 archive succeeded): {e}"),

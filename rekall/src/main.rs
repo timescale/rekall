@@ -112,7 +112,9 @@ enum Command {
         #[arg(long)]
         config: Option<PathBuf>,
 
-        /// Overwrite even if this run was already uploaded.
+        /// Re-publish even if this run was already uploaded: overwrite the S3
+        /// objects and re-commit the (always-regenerated) GitHub Pages
+        /// artifacts, even when they're byte-identical to what's live.
         #[arg(long)]
         force: bool,
 
