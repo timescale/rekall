@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (per config)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (per config)</div><div class="meta">cohere-10m  |  2026-06-15  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB<br>PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [-6.906754778648554],
+                y: [1179.0634180482546],
+                customdata: [0.0],
+                name: "mkt-n24000-cctrue-fs16-soar",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "mkt-n24000-cctrue-fs16-soar",
+                hovertemplate: "<b>mkt-n24000-cctrue-fs16-soar</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                    x: [-6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554, -6.906754778648554],
+                    y: [770.4579309167362, 480.37029247921674, 305.50683400457245, 180.37529099494768, 91.23278815903504, 59.545047257331376, 70.88917770085068, 72.13609877359407, 72.35977139406373],
+                    customdata: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    type: "scatter",
+                    mode: "markers",
+                    marker: { color: "rgb(31,119,180)", size: 5, opacity: 0.4 },
+                    legendgroup: "mkt-n24000-cctrue-fs16-soar",
+                    showlegend: false,
+                    hovertemplate: "<b>mkt-n24000-cctrue-fs16-soar</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+                },{
+                x: [0.7119867037259509, 1.1633450696893248, 1.6238106880669647, 2.097295113004836, 2.6295607847454154, 3.235814012818809, 3.94628173662698, 4.681505678487733, 5.3385232717427336, 5.833247391184688],
+                y: [1042.1999256286142, 705.0189452690956, 428.06643248579127, 256.89556506799846, 142.0012163256184, 76.3511341014217, 38.89516328376246, 20.087735515039267, 10.095803847932444, 7.904689628495782],
+                customdata: [0.670840000000008, 0.7619400000000112, 0.8353200000000128, 0.8906400000000076, 0.9327400000000046, 0.9621600000000046, 0.9810400000000016, 0.9908200000000013, 0.9952200000000004, 0.99708],
+                name: "vchordrq-n16000",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "vchordrq-n16000",
+                hovertemplate: "<b>vchordrq-n16000</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [0.6653448015643936, 1.130331114899272, 1.6060337762418668, 2.092376460389806, 2.6410948419822966, 3.2869962077596404, 4.027899462814067, 4.8934166152896905, 5.94195752300218, 6.906754778648553],
+                y: [158.22295620796783, 97.68338003250112, 56.14118673081949, 46.14152139854578, 29.29381711455172, 18.469905999555937, 11.453051586798304, 6.646407141588928, 4.347479679775631, 2.8724973699873635],
+                customdata: [0.6604600000000053, 0.7559000000000102, 0.8328600000000117, 0.8901600000000075, 0.9334600000000048, 0.9639800000000032, 0.982500000000002, 0.9925600000000006, 0.9973799999999994, 0.99942],
+                name: "vchordrq-rabitq4-rerank-n16000",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "vchordrq-rabitq4-rerank-n16000",
+                hovertemplate: "<b>vchordrq-rabitq4-rerank-n16000</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [0.7236942646415062, 1.1668766963855153, 1.6025895546500284, 2.081377999469085, 2.5851542594436934, 3.1251916987476562, 3.655388327233723, 4.161832607980495, 4.489648105957606, 4.640561561773556],
+                y: [341.82160699498223, 245.5995076614033, 169.90227425067798, 115.26942221755428, 77.57958882259355, 50.82125108909942, 34.22107267403271, 21.136902942520717, 11.464164160080683, 7.5750050334393375],
+                customdata: [0.6734200000000072, 0.7625800000000111, 0.8323800000000139, 0.8890800000000095, 0.9299000000000056, 0.9579200000000028, 0.9748000000000012, 0.9846600000000002, 0.9888999999999994, 0.9904399999999997],
+                name: "vchordrq-rabitq8-n16000",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
+                legendgroup: "vchordrq-rabitq8-n16000",
+                hovertemplate: "<b>vchordrq-rabitq8-n16000</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
