@@ -1,0 +1,25 @@
+{
+  "run_id": "cohere-10m/2026-06-16/r8i.8xlarge-101846",
+  "dataset": "cohere-10m",
+  "date": "2026-06-16",
+  "time": "10:18:46",
+  "timestamp": "2026-06-16T10:18:46+0000",
+  "instance_type": "r8i.8xlarge",
+  "hostname": "ip-172-31-44-251",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 32,
+  "memory_gb": 247.7,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "e083fdb",
+  "extensions": {
+    "meerkat": "0.1.0 (cd8e895)",
+    "pageinspect": "1.13",
+    "pg_prewarm": "1.2",
+    "vchord": "1.1.1",
+    "vector": "0.8.2"
+  },
+  "peak_recall": 0.99942,
+  "qps_at_peak": 2.8724973699873635,
+  "num_indexes": 4,
+  "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-06-16/r8i.8xlarge-101846/"
+}
