@@ -39,6 +39,17 @@ var traces = [{
                 marker: { color: "rgb(255,127,14)", size: 8 },
                 legendgroup: "pgvector HNSW",
                 hovertemplate: "<b>pgvector HNSW</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [1.9895923172779677, 2.3185287433911475, 2.5820901546451567, 2.901084062699627, 3.2818246853744366, 3.73572618188167],
+                y: [352.65370147088356, 269.0938211753157, 217.3389540084694, 157.4237663604617, 100.75596190658896, 54.59591109383451],
+                customdata: [0.879699999999997, 0.9103999999999972, 0.9296999999999976, 0.9478999999999976, 0.9637999999999975, 0.9766999999999976],
+                name: "pgvector HNSW (halfvec)",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "pgvector HNSW (halfvec)",
+                hovertemplate: "<b>pgvector HNSW (halfvec)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
             }];
 var layout = {
   margin: { t: 20 },

@@ -105,7 +105,7 @@
 <g fill="none" color="black" stroke="black" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="gray" stroke="currentColor" stroke-width="0.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M263.74,674.00 L263.74,665.00 M263.74,629.00 L263.74,90.01  '/></g>
+	<path stroke='gray' stroke-dasharray='2,4' class="gridline"  d='M263.74,674.00 L263.74,665.00 M263.74,611.00 L263.74,90.01  '/></g>
 <g fill="none" color="gray" stroke="gray" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -172,7 +172,7 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M97.70,665.00 L97.70,629.00 L266.11,629.00 L266.11,665.00 L97.70,665.00 Z  '/></g>
+	<path stroke='black'  d='M97.70,665.00 L97.70,611.00 L350.01,611.00 L350.01,665.00 L97.70,665.00 Z  '/></g>
 	<g id="gnuplot_plot_1" ><title>Meerkat</title>
 <g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
@@ -200,36 +200,56 @@
 	<use xlink:href='#gpPt6' transform='translate(878.45,458.68) scale(4.50)' color='rgb(255, 127,  14)'/>
 </g>
 	</g>
+	<g id="gnuplot_plot_3" ><title>pgvector HNSW (halfvec)</title>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 44, 160,  44)'  d='M185.46,222.18 L309.48,256.48 L408.86,283.56 L529.14,324.46 L672.70,381.05 L843.84,458.75  '/>	<use xlink:href='#gpPt6' transform='translate(185.46,222.18) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(309.48,256.48) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(408.86,283.56) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(529.14,324.46) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(672.70,381.05) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(843.84,458.75) scale(4.50)' color='rgb( 44, 160,  44)'/>
+</g>
+	</g>
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = '#FFFFFF' points = '97.70,665.00 266.11,665.00 266.11,629.00 97.70,629.00 '/>
+		<polygon fill = '#FFFFFF' points = '97.70,665.00 350.01,665.00 350.01,611.00 97.70,611.00 '/>
 	</g>
 <g fill="none" color="#FFFFFF" stroke="#FFFFFF" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M97.70,665.00 L97.70,629.00 L266.11,629.00 L266.11,665.00 L97.70,665.00 Z  '/></g>
+	<path stroke='black'  d='M97.70,665.00 L97.70,611.00 L350.01,611.00 L350.01,665.00 L97.70,665.00 Z  '/></g>
 	<g id="gnuplot_plot_1" ><title>Meerkat</title>
 <g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(206.77,641.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(290.67,623.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >Meerkat</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 31, 119, 180)'  d='M215.16,638.00 L257.72,638.00  '/>	<use xlink:href='#gpPt6' transform='translate(236.44,638.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<path stroke='rgb( 31, 119, 180)'  d='M299.06,620.00 L341.62,620.00  '/>	<use xlink:href='#gpPt6' transform='translate(320.34,620.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_2" ><title>pgvector HNSW</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(206.77,659.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+	<g transform="translate(290.67,641.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
 		<text><tspan font-family="sans" >pgvector HNSW</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,  14)'  d='M215.16,656.00 L257.72,656.00  '/>	<use xlink:href='#gpPt6' transform='translate(236.44,656.00) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<path stroke='rgb(255, 127,  14)'  d='M299.06,638.00 L341.62,638.00  '/>	<use xlink:href='#gpPt6' transform='translate(320.34,638.00) scale(4.50)' color='rgb(255, 127,  14)'/>
 </g>
 	</g>
-<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g id="gnuplot_plot_3" ><title>pgvector HNSW (halfvec)</title>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g transform="translate(290.67,659.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
+		<text><tspan font-family="sans" >pgvector HNSW (halfvec)</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb( 44, 160,  44)'  d='M299.06,656.00 L341.62,656.00  '/>	<use xlink:href='#gpPt6' transform='translate(320.34,656.00) scale(4.50)' color='rgb( 44, 160,  44)'/>
+</g>
+	</g>
+<g fill="none" color="#FFFFFF" stroke="rgb( 44, 160,  44)" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>

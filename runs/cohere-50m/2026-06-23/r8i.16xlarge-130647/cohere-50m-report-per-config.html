@@ -29,14 +29,25 @@ var traces = [{
                 legendgroup: "hnsw-m24",
                 hovertemplate: "<b>hnsw-m24</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
             },{
+                x: [1.9895923172779677, 2.3185287433911475, 2.5820901546451567, 2.901084062699627, 3.2818246853744366, 3.73572618188167],
+                y: [352.65370147088356, 269.0938211753157, 217.3389540084694, 157.4237663604617, 100.75596190658896, 54.59591109383451],
+                customdata: [0.879699999999997, 0.9103999999999972, 0.9296999999999976, 0.9478999999999976, 0.9637999999999975, 0.9766999999999976],
+                name: "hnsw-m24-halfvec",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "hnsw-m24-halfvec",
+                hovertemplate: "<b>hnsw-m24-halfvec</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
                 x: [2.2117532191228992, 2.5699137535842254, 2.834272666189129, 3.239666157908324, 3.525331612085767, 3.9603546993518197],
                 y: [369.754250232668, 260.3718474502176, 202.8806619427935, 140.10625658499404, 107.5143268216206, 72.75522131483534],
                 customdata: [0.9012999999999974, 0.9288999999999964, 0.9444999999999976, 0.9622999999999976, 0.971399999999998, 0.9812999999999984],
                 name: "mkt-n240000-cctrue-fs16-soar-cfs",
                 type: "scatter",
                 mode: "lines+markers",
-                line: { color: "rgb(255,127,14)", width: 3 },
-                marker: { color: "rgb(255,127,14)", size: 8 },
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
                 legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
                 hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
             },{
@@ -46,8 +57,8 @@ var traces = [{
                 name: "mkt-n480000-cctrue-fs16-soar-cfs",
                 type: "scatter",
                 mode: "lines+markers",
-                line: { color: "rgb(44,160,44)", width: 3 },
-                marker: { color: "rgb(44,160,44)", size: 8 },
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
                 legendgroup: "mkt-n480000-cctrue-fs16-soar-cfs",
                 hovertemplate: "<b>mkt-n480000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
             }];
