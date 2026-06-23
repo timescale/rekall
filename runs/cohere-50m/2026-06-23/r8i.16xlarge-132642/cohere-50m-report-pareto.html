@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">cohere-50m  |  2026-06-23  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB<br>PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (8695684), pgvector 0.8.2</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [2.2117532191228992, 2.5623676004336287, 2.5699137535842254, 2.834272666189129, 2.9614101119877168, 3.261945697520258, 3.525331612085767, 3.627270999071324, 3.9441334803988384, 3.9603546993518197],
+                y: [412.5441473805716, 294.33727460755256, 272.67534046924686, 223.793351010024, 205.0537127947979, 157.71716391734105, 117.37378503460768, 107.33697606406898, 81.28484681382905, 78.6217543563921],
+                customdata: [0.9012999999999974, 0.9283999999999965, 0.9288999999999964, 0.9444999999999976, 0.9507999999999972, 0.9630999999999972, 0.971399999999998, 0.9740999999999976, 0.9809999999999984, 0.9812999999999984],
+                name: "Meerkat",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "Meerkat",
+                hovertemplate: "<b>Meerkat</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [2.053492092987841, 2.3345708809809134, 2.562367600433652, 2.9360496682180983, 3.3227179469704002, 3.827518087716299],
+                y: [441.975471245297, 337.6390186454398, 274.4460786183727, 197.3843416580837, 123.69939365031225, 66.88761429337481],
+                customdata: [0.8862999999999979, 0.9116999999999976, 0.928399999999998, 0.9495999999999982, 0.9651999999999984, 0.978699999999998],
+                name: "pgvector HNSW",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "pgvector HNSW",
+                hovertemplate: "<b>pgvector HNSW</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
