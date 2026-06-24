@@ -4,9 +4,6 @@
 # binary quantization with 80x-oversampling rerank (its memory savings matter
 # most at 100M). Both are expression indexes on v -- no table rewrite.
 #
-# Run with the meerkat perf branch feat/cohere-50m-perf (NOT main) so the
-# error_scale/beam_scale GUCs and the raised nlist/nprobe ceilings exist.
-#
 # DISK: ~600 GB+ free required (heap ~380 GB + halfvec ~190 GB + meerkat ~30 GB)
 # plus the ~300 GB dataset load. Build on a >=2 TB volume; the 100M halfvec
 # graph build and the n400k meerkat build are each multi-hour.

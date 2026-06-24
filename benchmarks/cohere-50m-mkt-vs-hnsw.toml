@@ -8,12 +8,6 @@
 # earlier n24000->n80000 sweep, which was far below the measured optimum; the
 # finer n480000 only tied n240000, so it is dropped too.
 #
-# Requires the feat/cohere-50m-perf branch: centroid_fastscan, the raised
-# nlist/nprobe ceilings (n240k/n480k need MKTANN_MAX_NLIST > 100k and
-# max_nprobe > 512), and the error_scale/beam_scale GUCs. Run via a profile
-# that builds it (see cohere-50m-fastscan-centroids.toml for the pattern;
-# update its [meerkat] branch to feat/cohere-50m-perf).
-#
 # Build on the largest box: n120k/n240k k-means sample buffers are ~94 GB /
 # ~188 GB (nlist*256*dim*4) until the streaming sample fix lands; the full
 # hnsw-m24 build on 50M is also a multi-hour long pole.

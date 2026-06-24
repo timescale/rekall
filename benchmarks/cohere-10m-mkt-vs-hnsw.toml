@@ -6,7 +6,6 @@
 # never went higher, so n40000 (~250 vecs/list) is included to test whether a
 # finer list count is better -- the 50M optimum landed at ~208 vecs/list, so
 # the 10M optimum may be above n24000. Lower nlists are omitted (known worse).
-# Requires the feat/cohere-50m-perf branch.
 #
 # HNSW: halfvec only (m=24, ef_construction=200, expression index on v -- no
 # table rewrite), the default baseline per the pg-aiguide tuning guide.

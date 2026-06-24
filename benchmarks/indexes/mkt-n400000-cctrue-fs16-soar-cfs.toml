@@ -5,9 +5,7 @@
 # data thins out).
 #
 # The index.gucs below (mkt.centroid_error_scale=0, mkt.centroid_beam_scale=0.25)
-# are the recall-neutral query optimizations and require the meerkat perf branch
-# feat/cohere-50m-perf (not yet on main): error_scale and beam_scale GUCs, plus
-# raised MKTANN_MAX_NLIST (>=400k) and max_nprobe (4096) ceilings.
+# are the recall-neutral query optimizations from the 50M tuning.
 [[index]]
 type = "meerkat"
 name = "mkt-n400000-cctrue-fs16-soar-cfs"

@@ -2,7 +2,7 @@
 # nlist=120000 ~= 416 vecs/list at 50M (vs the n240000 sweet spot that beat
 # HNSW). Coarser than optimal -- kept only to show the downslope. Same optimized
 # config otherwise (centroid compression + FASTSCAN centroids + fastscan-16 +
-# SOAR + boundary, error_scale=0, beam_scale=0.25). Requires feat/cohere-50m-perf.
+# SOAR + boundary, error_scale=0, beam_scale=0.25).
 #
 # Build memory: k-means sample buffer ~= nlist*256*dim*4 (~94 GB at 120000/768d).
 [[index]]
