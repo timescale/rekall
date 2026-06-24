@@ -1,30 +1,29 @@
-# Suite: cohere-50m — Meerkat (centroid_fastscan, nlist sweep n24000 -> n80000)
-# vs pgvector HNSW M=24 (full precision + binary quantization).
+# Suite: cohere-50m -- optimized Meerkat vs pgvector HNSW M=24.
 #
-# Meerkat arms all use centroid compression + FASTSCAN centroids + fs16 +
-# SOAR — the perf/fastscan-centroids configuration. nlist starts at 24000
-# (~2083 vecs/list over 50M) and climbs to 80000 (~625 vecs/list), which is
-# the per-list density that performed best at 10M; the sweep shows where the
-# extra lists stop paying for themselves at 50M.
+# Meerkat arms use the tuned configuration (centroid compression + FASTSCAN
+# centroids + fastscan-16 + SOAR + boundary, error_scale=0, beam_scale=0.25) at
+# the nlist sweet spot found during tuning: n240000 (~208 vecs/list) is the
+# config that beat HNSW in the mid-recall band, plus one step below it (n120000,
+# ~416 vecs/list) to show that coarser lists perform worse. This supersedes the
+# earlier n24000->n80000 sweep, which was far below the measured optimum; the
+# finer n480000 only tied n240000, so it is dropped too.
 #
-# centroid_fastscan only exists on the perf/fastscan-centroids branch, so run
-# this via the cohere-50m-fastscan-centroids.toml profile (it builds that
-# branch first). HNSW is branch-agnostic and builds the same either way.
+# Requires the feat/cohere-50m-perf branch: centroid_fastscan, the raised
+# nlist/nprobe ceilings (n240k/n480k need MKTANN_MAX_NLIST > 100k and
+# max_nprobe > 512), and the error_scale/beam_scale GUCs. Run via a profile
+# that builds it (see cohere-50m-fastscan-centroids.toml for the pattern;
+# update its [meerkat] branch to feat/cohere-50m-perf).
 #
-# Build on a big box: see infra/instances/r8i.{16,24}xlarge.toml, sized for
-# 50M (1000 GB root volume; maintenance_work_mem >= the ~165 GB HNSW graph so
-# the build stays in RAM). The full hnsw-m24 build on 50M is the long pole
-# (hours); drop it if you already have comparable HNSW numbers.
+# Build on the largest box: n120k/n240k k-means sample buffers are ~94 GB /
+# ~188 GB (nlist*256*dim*4) until the streaming sample fix lands; the full
+# hnsw-m24 build on 50M is also a multi-hour long pole.
 #
-# Usage: rekall run benchmarks/cohere-50m-fastscan-centroids.toml [--dry-run]
-#   (or this suite directly once centroid_fastscan lands on main)
+# Usage: rekall run benchmarks/cohere-50m-mkt-vs-hnsw.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-n24000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n40000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n60000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n80000-cctrue-fs16-soar-cfs.toml",
-    "indexes/hnsw-m24.toml",
+    "indexes/mkt-n120000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n240000-cctrue-fs16-soar-cfs.toml",
+    "indexes/hnsw-m24-halfvec.toml",
     "indexes/hnsw-m24-bq.toml",
 ]
 

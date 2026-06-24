@@ -1,0 +1,31 @@
+# Meerkat optimized (cohere tuning): centroid compression + FASTSCAN centroids,
+# fastscan-16, SOAR + boundary replication. nlist=240000 ~= 208 vecs/list at
+# 50M -- the measured sweet spot that beat pgvector HNSW in the mid-recall band.
+# Requires feat/cohere-50m-perf (centroid_fastscan, raised nlist/nprobe
+# ceilings, error_scale/beam_scale GUCs).
+#
+# Build memory: the k-means sample buffer is ~nlist*256*dim*4 (~188 GB at
+# 240000/768d), so build on a large box (r8i.24xlarge) until the streaming
+# sample fix lands.
+[[index]]
+type = "meerkat"
+name = "mkt-n240000-cctrue-fs16-soar-cfs"
+table_parallel_workers = 32
+[index.params]
+nlist = 240000
+centroid_compression = true
+centroid_fastscan = true
+fastscan = true
+soar_lambda = 1.0
+boundary_epsilon = 0.05
+[index.gucs]
+"mkt.fastscan_bits" = 16
+# Recall-neutral query optimizations from the 50M tuning. beam_scale is NOT
+# the default on feat/cohere-50m-perf (ships 1.0), so set both explicitly.
+"mkt.centroid_error_scale" = 0
+"mkt.centroid_beam_scale" = 0.25
+
+[[search.sweep]]
+index = "mkt-n240000-cctrue-fs16-soar-cfs"
+[search.sweep.params]
+"mkt.nprobe" = [160, 240, 320, 480, 640, 960, 1280, 1920]

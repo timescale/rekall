@@ -1,7 +1,10 @@
-# pgvector HNSW M=24 over a halfvec (f16) expression index (`v::halfvec(N)`).
-# ~2x smaller index + faster build than the full-precision vector graph, with
-# a small recall loss. No materialized column — indexed directly on `v`. m=24
-# matches the cohere-50M comparison (the repo's hnsw-halfvec is m=16).
+# pgvector HNSW M=24 over a halfvec (f16) EXPRESSION index
+# (`(v::halfvec(N)) halfvec_cosine_ops`) -- the DEFAULT pgvector baseline per
+# the pg-aiguide HNSW tuning guide ("use halfvec by default: 50% smaller, minimal
+# recall loss"). ~2x smaller index + faster build than the full-precision graph.
+# No materialized column / no table rewrite -- indexed directly on the `v::halfvec`
+# expression, so the full `v` column stays in the table for other indexes.
+#   https://github.com/timescale/pg-aiguide/blob/main/skills/pgvector-semantic-search/SKILL.md
 [[index]]
 type = "pgvector-hnsw"
 name = "hnsw-m24-halfvec"

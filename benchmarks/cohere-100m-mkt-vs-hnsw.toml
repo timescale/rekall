@@ -1,6 +1,8 @@
 # Suite: cohere-100M — Meerkat (optimized: centroid_fastscan + SOAR, nlist=400k
 # via the ~256 vecs/list heuristic, recall-neutral error_scale/beam_scale GUCs)
-# vs pgvector HNSW M=24 over a halfvec expression index.
+# vs pgvector HNSW M=24: halfvec expression index (the default baseline) plus
+# binary quantization with 80x-oversampling rerank (its memory savings matter
+# most at 100M). Both are expression indexes on v -- no table rewrite.
 #
 # Run with the meerkat perf branch feat/cohere-50m-perf (NOT main) so the
 # error_scale/beam_scale GUCs and the raised nlist/nprobe ceilings exist.
@@ -14,6 +16,7 @@
 indexes = [
     "indexes/mkt-n400000-cctrue-fs16-soar-cfs.toml",
     "indexes/hnsw-m24-halfvec.toml",
+    "indexes/hnsw-m24-bq.toml",
 ]
 
 [[suite]]

@@ -1,43 +1,36 @@
-# pgvector HNSW M=24 over a binary-quantized expression index
-# (`binary_quantize(v)::bit(768)` with `bit_hamming_ops`) — pgvector's
-# documented recommended setup for binary quantization. No materialized
-# column: the index is built directly on the expression, ~32x smaller than
-# the full-precision graph. Same graph degree (m=24) and build effort
-# (ef_construction=200) as hnsw-m24.toml, so comparing against it isolates
-# the effect of binary quantization from the graph structure.
+# pgvector HNSW M=24 over a binary-quantized EXPRESSION index
+# (`(binary_quantize(v)::bit(768)) bit_hamming_ops`) -- pgvector's documented
+# recommended binary-quantization setup. No materialized column / no table
+# rewrite: the index is built directly on the expression, ~32x smaller than the
+# full-precision graph, and the full `v` column stays in the table for other
+# indexes (and the rerank stage) to use.
 #
-# The one index is searched two ways (many [[query]] → one index), each
-# reported as its own series:
-#   - bq-raw    : single-stage Hamming ranking. Fast but low recall —
-#                 Hamming over sign bits is only a coarse angular proxy.
-#   - bq-rerank : two-stage. Take the HNSW Hamming candidates, then re-rank
-#                 them by full-precision cosine on `v`.
+# Always reranked (per the pg-aiguide HNSW tuning guide): raw Hamming ranking
+# alone has low recall, so this over-fetches a candidate pool by Hamming from
+# the index and re-ranks it by full-precision cosine on `v`.
+#
+#   https://github.com/timescale/pg-aiguide/blob/main/skills/pgvector-semantic-search/SKILL.md
+#
+# Oversampling = 80x the final k (the guide's recommended starting point):
+# k=10 -> rerank_pool=800 candidates, with hnsw.ef_search >= 800 so the scan
+# actually returns the full pool. ef_search is swept >= 800 to trace the
+# recall/QPS curve at fixed 80x oversampling (800 is the recommended point;
+# higher ef_search improves candidate quality at more cost).
 [[index]]
 type = "pgvector-hnsw"
 name = "hnsw-m24-bq"
+table_parallel_workers = 32
 [index.params]
 m = 24
 ef_construction = 200
 encoding = "bit"
 
-# Single-stage Hamming query — the raw recall/QPS curve over ef_search.
-[[query]]
-name = "hnsw-m24-bq-raw"
-index = "hnsw-m24-bq"
-mode = "raw"
-[query.params]
-"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
-
-# Two-stage rerank query. `hnsw.ef_search` is the recall/speed knob — the HNSW
-# scan returns at most ef_search candidates regardless of the inner LIMIT — so
-# sweep it exactly like the raw query. `rerank_pool` is pinned ≥ max(ef_search)
-# so every candidate the scan returns is re-ranked by full-precision cosine
-# (no candidates discarded). This is the fair pgvector frontier: same scan
-# cost as raw at each point, plus the rerank.
 [[query]]
 name = "hnsw-m24-bq-rerank"
 index = "hnsw-m24-bq"
 mode = "rerank"
 [query.params]
-"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
-rerank_pool = [1000]
+# Fixed 80x oversampling: 800 candidates reranked for k=10.
+rerank_pool = [800]
+# Scan depth swept >= the 800-candidate pool; 800 is the guide's recipe.
+"hnsw.ef_search" = [800, 1200, 1600, 2400]

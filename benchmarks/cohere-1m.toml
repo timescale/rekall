@@ -1,13 +1,20 @@
-# Suite: cohere-1m × hnsw + meerkat.
+# Suite: cohere-1m -- optimized Meerkat vs pgvector HNSW.
+#
+# Meerkat arms use the 50M-tuned configuration (centroid compression + FASTSCAN
+# centroids + fastscan-16 + SOAR + boundary, error_scale=0, beam_scale=0.25).
+# n4000 (~250 vecs/list) is the extrapolated 1M optimum -- the ~208-256
+# vecs/list density confirmed at 50M (n240000) scaled down -- with n8000
+# (~125 vecs/list) as the finer arm to confirm the plateau holds at small scale
+# (at 50M finer-than-optimal only tied, never hurt). Coarser nlists are omitted.
+# Requires the feat/cohere-50m-perf branch (run via a profile that builds it;
+# see cohere-*-fastscan-centroids.toml).
+#
 # Usage: rekall run benchmarks/cohere-1m.toml [--dry-run]
 
 indexes = [
-    "indexes/hnsw-m16.toml",
-    "indexes/hnsw-m24.toml",
-    "indexes/mkt-n1000-cctrue-fs16-soar.toml",
-    "indexes/mkt-n2000-cctrue-fs16-soar.toml",
-    "indexes/mkt-n4000-cctrue-fs16-soar.toml",
-    "indexes/mkt-n8000-cctrue-fs16-soar.toml",
+    "indexes/mkt-n4000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n8000-cctrue-fs16-soar-cfs.toml",
+    "indexes/hnsw-m24-halfvec.toml",
 ]
 
 [[suite]]
