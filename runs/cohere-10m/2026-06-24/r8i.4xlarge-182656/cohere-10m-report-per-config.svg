@@ -286,31 +286,27 @@
 	</g>
 	<g id="gnuplot_plot_2" ><title>mkt-n24000-cctrue-fs16-soar-cfs</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,  14)'  d='M126.80,243.13 L216.33,283.28 L287.44,322.99 L364.92,368.76 L451.08,416.94 L546.18,469.48 L655.27,526.72 L796.55,571.21
-		L971.09,644.06  '/>	<use xlink:href='#gpPt6' transform='translate(126.80,243.13) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(216.33,283.28) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(287.44,322.99) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(364.92,368.76) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(451.08,416.94) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(546.18,469.48) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(655.27,526.72) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(796.55,571.21) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(971.09,644.06) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<path stroke='rgb(255, 127,  14)'  d='M126.80,245.36 L216.33,269.85 L287.44,315.61 L364.92,360.26 L451.08,409.03 L546.18,464.04 L655.27,517.48 L796.55,577.05
+		L971.09,646.72  '/>	<use xlink:href='#gpPt6' transform='translate(126.80,245.36) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(216.33,269.85) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(287.44,315.61) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(364.92,360.26) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(451.08,409.03) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(546.18,464.04) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(655.27,517.48) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(796.55,577.05) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(971.09,646.72) scale(4.50)' color='rgb(255, 127,  14)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_3" ><title>mkt-n40000-cctrue-fs16-soar-cfs</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 44, 160,  44)'  d='M112.36,222.30 L194.74,255.58 L265.39,292.85 L336.05,339.20 L411.90,387.89 L498.77,439.81 L591.39,493.52 L705.04,550.17
-		L848.92,599.51 L988.03,638.57  '/>	<use xlink:href='#gpPt6' transform='translate(112.36,222.30) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(194.74,255.58) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(265.39,292.85) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(336.05,339.20) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(411.90,387.89) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(498.77,439.81) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(591.39,493.52) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(705.04,550.17) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(848.92,599.51) scale(4.50)' color='rgb( 44, 160,  44)'/>
-	<use xlink:href='#gpPt6' transform='translate(988.03,638.57) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<path stroke='rgb( 44, 160,  44)'  d='M112.36,220.45 L194.74,249.21 L265.39,286.82 L336.05,332.48 L411.90,380.34 L498.77,431.33 L591.39,485.90  '/>	<use xlink:href='#gpPt6' transform='translate(112.36,220.45) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(194.74,249.21) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(265.39,286.82) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(336.05,332.48) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(411.90,380.34) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(498.77,431.33) scale(4.50)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(591.39,485.90) scale(4.50)' color='rgb( 44, 160,  44)'/>
 </g>
 	</g>
 	<g stroke='none' shape-rendering='crispEdges'>
