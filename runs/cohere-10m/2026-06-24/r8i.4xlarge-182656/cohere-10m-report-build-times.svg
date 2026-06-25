@@ -132,8 +132,18 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M627.87,512.00 L627.87,503.00 M627.87,90.01 L627.87,99.01  '/>	<g transform="translate(625.27,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+	<path stroke='black'  d='M277.26,512.00 L277.26,503.00 M277.26,90.01 L277.26,99.01  '/>	<g transform="translate(274.66,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
 		<text>hnsw-m24-halfvec</text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M627.87,512.00 L627.87,503.00 M627.87,90.01 L627.87,99.01  '/>	<g transform="translate(625.27,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+		<text>mkt-n40000-cctrue-fs16-soar-cfs</text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M978.48,512.00 L978.48,503.00 M978.48,90.01 L978.48,99.01  '/>	<g transform="translate(975.88,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+		<text>mkt-n24000-cctrue-fs16-soar-cfs</text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -145,16 +155,32 @@
 	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '627.87,512.00 627.88,512.00 627.88,171.10 627.87,171.10 '/>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '172.08,512.00 382.45,512.00 382.45,171.10 172.08,171.10 '/>
 	</g>
-	<path stroke='black'  d='M627.87,512.00 L627.87,171.11 L627.87,512.00 Z  '/></g>
+	<path stroke='black'  d='M172.08,512.00 L172.08,171.11 L382.44,171.11 L382.44,512.00 L172.08,512.00 Z  '/></g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g stroke='none' shape-rendering='crispEdges'>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '522.69,512.00 733.06,512.00 733.06,361.26 522.69,361.26 '/>
+	</g>
+	<path stroke='black'  d='M522.69,512.00 L522.69,361.27 L733.05,361.27 L733.05,512.00 L522.69,512.00 Z  '/></g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g stroke='none' shape-rendering='crispEdges'>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '873.30,512.00 1083.67,512.00 1083.67,404.91 873.30,404.91 '/>
+	</g>
+	<path stroke='black'  d='M873.30,512.00 L873.30,404.92 L1083.66,404.92 L1083.66,512.00 L873.30,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
 	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(627.87,159.31)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+	<g transform="translate(277.26,159.31)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >19529 MB</tspan></text>
+	</g>
+	<g transform="translate(627.87,349.47)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+		<text><tspan font-family="sans" >2506 MB</tspan></text>
+	</g>
+	<g transform="translate(978.48,393.12)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+		<text><tspan font-family="sans" >2387 MB</tspan></text>
 	</g>
 </g>
 	</g>

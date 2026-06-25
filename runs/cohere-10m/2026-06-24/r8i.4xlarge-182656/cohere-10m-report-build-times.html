@@ -12,8 +12,8 @@
 <div id="header"><div class="title">Index build time</div><div class="meta">cohere-10m  |  2026-06-24  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (d73b4f0), pgvector 0.8.3</div></div>
 <div id="plot"></div>
 <script>
-var trace = { type:"bar", x:["hnsw-m24-halfvec"], y:[4846.928673542], text:["19529 MB"],
-  textposition:"outside", cliponaxis:false, hovertext:["4846.9s · 19529 MB · 8 workers"],
+var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n40000-cctrue-fs16-soar-cfs", "mkt-n24000-cctrue-fs16-soar-cfs"], y:[4846.928673542, 2143.105057636, 1522.457281135], text:["19529 MB", "2506 MB", "2387 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["4846.9s · 19529 MB · 8 workers", "2143.1s · 2506 MB · 8 workers", "1522.5s · 2387 MB · 8 workers"],
   hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
   marker:{color:"rgb(31,119,180)"} };
 var layout = { margin:{t:20},
