@@ -663,71 +663,29 @@ fn cmd_report(
     dir: &std::path::Path,
     dataset: Option<&std::path::Path>,
     output_dir: Option<&std::path::Path>,
-    html: bool,
+    _html: bool,
 ) -> anyhow::Result<()> {
     use anyhow::Context as _;
-    use rekall_lib::metrics::{RunSummary, SearchResult};
-    use rekall_lib::output::plot;
 
     let out = output_dir.unwrap_or(dir);
     std::fs::create_dir_all(out)
         .with_context(|| format!("Cannot create output directory '{}'", out.display()))?;
-    let ext = if html { "html" } else { "svg" };
 
-    // Scan for result files
-    let mut result_files: Vec<PathBuf> = Vec::new();
-    let mut build_files: Vec<PathBuf> = Vec::new();
-    let mut gt_file: Option<PathBuf> = None;
+    // Single source of truth: merge the dir's per-index result files and resolve
+    // build info from the build-*.json files — the exact same path `publish`
+    // uses, so the standalone report and the post-benchmark/publish report can
+    // never diverge. Always writes both HTML and SVG (the --html flag is kept
+    // for back-compat but no longer changes which artifacts are produced).
+    let summary = rekall_lib::publish::load_run_summary(dir).map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    for entry in std::fs::read_dir(dir)? {
-        let path = entry?.path();
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        if name.starts_with("ground-truth") {
-            gt_file = Some(path);
-        } else if name.starts_with("build-") && name.ends_with(".json") {
-            build_files.push(path);
-        } else if (name.ends_with(".json.gz") || name.ends_with(".json"))
-            && !name.starts_with("run-info")
-            && !name.starts_with("results-")
-        {
-            result_files.push(path);
-        }
-    }
-    result_files.sort();
-    build_files.sort();
-
-    if result_files.is_empty() {
-        return Err(anyhow::anyhow!(
-            "No result files found in {}",
-            dir.display()
-        ));
-    }
-
-    // Load all results
-    let mut all_results: Vec<SearchResult> = Vec::new();
-    let mut summaries: Vec<RunSummary> = Vec::new();
-
-    for path in &result_files {
-        let summary = read_result_file(path)?;
-        println!(
-            "Loaded {} ({} search results)",
-            path.file_name().unwrap_or_default().to_string_lossy(),
-            summary.search_results.len()
-        );
-        all_results.extend(summary.search_results.iter().cloned().map(|mut r| {
-            r.query_results = Vec::new();
-            r
-        }));
-        summaries.push(summary);
-    }
-
+    // Search summary table.
     println!("\n=== Summary ===");
     println!(
         "{:<35} {:>10} {:>10} {:>12}",
         "Config", "Recall@10", "QPS", "Latency(us)"
     );
     println!("{}", "-".repeat(70));
-    for r in &all_results {
+    for r in &summary.search_results {
         println!(
             "{:<35} {:>10.4} {:>10.0} {:>12.1}",
             format!("{} [{}]", r.index_name, r.search_params),
@@ -737,222 +695,30 @@ fn cmd_report(
         );
     }
 
-    // Carry the run's metadata (dataset, host, PG settings, extension
-    // versions) from the loaded results into each plot so the caption can
-    // render it. Reconcile across all loaded files the same way `publish`
-    // does: different index types record different extensions (an hnsw file
-    // has pgvector but not meerkat, and vice-versa), so the per-file
-    // `pg_runtime.extensions` are unioned — otherwise picking just the first
-    // file would drop meerkat's version/commit from the report.
-    let meta_dataset = summaries
-        .iter()
-        .map(|s| s.dataset.clone())
-        .find(|d| !d.is_empty())
-        .unwrap_or_default();
-    let meta_env = summaries.iter().find_map(|s| s.environment.clone());
-    let mut meta_pg = None;
-    for s in &summaries {
-        rekall_lib::publish::merge_pg_runtime(&mut meta_pg, s.pg_runtime.clone());
-    }
-    // Prefer a non-null config (older per-index files stored config: null;
-    // newer ones are self-describing).
-    let meta_config = summaries
-        .iter()
-        .map(|s| s.config.clone())
-        .find(|c| !c.is_null())
-        .unwrap_or(serde_json::Value::Null);
-    let make_summary = |results: Vec<SearchResult>| RunSummary {
-        dataset: meta_dataset.clone(),
-        environment: meta_env.clone(),
-        config: meta_config.clone(),
-        pg_runtime: meta_pg.clone(),
-        index_builds: Vec::new(),
-        search_results: results,
-        pareto: Vec::new(),
-    };
-    // Prefix plot filenames with the dataset name for at-a-glance grouping,
-    // e.g. "cohere-5m-report-pareto.svg".
-    let file_prefix = if meta_dataset.is_empty() {
-        String::new()
-    } else {
-        format!("{meta_dataset}-")
-    };
-
-    // 1. Pareto plot (grouped by algorithm)
-    {
-        let summary = make_summary(all_results.clone());
-        let opts = plot::PlotOptions::default();
-        let path = out.join(format!("{file_prefix}report-pareto.{ext}"));
-        if let Err(e) =
-            plot::generate_plot(&[summary], &path, Some("Recall vs QPS (Pareto)"), &opts)
-        {
-            eprintln!("Pareto plot failed: {e}");
-        } else {
-            println!("\nPlot: {}", path.display());
-        }
-    }
-
-    // 2. Per-config plot
-    {
-        let summary = make_summary(all_results.clone());
-        let opts = plot::PlotOptions {
-            per_config: true,
-            ..Default::default()
-        };
-        let path = out.join(format!("{file_prefix}report-per-config.{ext}"));
-        if let Err(e) =
-            plot::generate_plot(&[summary], &path, Some("Recall vs QPS (per config)"), &opts)
-        {
-            eprintln!("Per-config plot failed: {e}");
-        } else {
-            println!("Plot: {}", path.display());
-        }
-    }
-
-    // 3. Distance-based recall plot
-    //    Source: HDF5 dataset (--dataset) or ground-truth.json.gz with distances
-    let gt_data: Option<(ndarray::Array2<i64>, ndarray::Array2<f32>)> =
-        if let Some(ds_path) = dataset {
-            let file = hdf5::File::open(ds_path)?;
-            let gt_raw: ndarray::Array2<i32> = file.dataset("neighbors")?.read_2d()?;
-            let gt_dists: ndarray::Array2<f32> = file.dataset("distances")?.read_2d()?;
-            Some((gt_raw.mapv(|v| v as i64), gt_dists))
-        } else if let Some(ref gt_path) = gt_file {
-            use std::io::Read as _;
-            #[derive(serde::Deserialize)]
-            struct GT {
-                neighbors: Vec<Vec<i64>>,
-                #[serde(default)]
-                distances: Option<Vec<Vec<f32>>>,
-            }
-            let file = std::fs::File::open(gt_path)?;
-            let mut decoder = flate2::read::GzDecoder::new(file);
-            let mut s = String::new();
-            decoder.read_to_string(&mut s)?;
-            let gt: GT = serde_json::from_str(&s)?;
-            if let Some(dists) = gt.distances {
-                let nq = gt.neighbors.len();
-                let k_gt = if nq > 0 { gt.neighbors[0].len() } else { 0 };
-                let kd = if nq > 0 { dists[0].len() } else { 0 };
-                let ids = ndarray::Array2::from_shape_fn((nq, k_gt), |(i, j)| gt.neighbors[i][j]);
-                let ds = ndarray::Array2::from_shape_fn((nq, kd), |(i, j)| dists[i][j]);
-                Some((ids, ds))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-    if let Some((gt_ids, gt_dists)) = gt_data {
-        let mut dist_results = all_results.clone();
-        for r in &mut dist_results {
-            // Find original with query_results
-            let orig = summaries
-                .iter()
-                .flat_map(|s| &s.search_results)
-                .find(|s| s.index_name == r.index_name && s.search_params == r.search_params);
-            if let Some(orig) = orig {
-                if !orig.query_results.is_empty() {
-                    let k = r.k;
-                    let nq = orig.query_results.len().min(gt_ids.nrows());
-                    let mut total = 0.0;
-                    for qi in 0..nq {
-                        let ids = &orig.query_results[qi].neighbors;
-                        total += rekall_lib::metrics::recall_distance_based(
-                            ids,
-                            &gt_ids.row(qi).to_vec(),
-                            &gt_dists.row(qi).to_vec(),
-                            k,
-                            1e-3,
-                        );
-                    }
-                    r.avg_recall = if nq > 0 { total / nq as f64 } else { 0.0 };
-                }
-            }
-        }
-
-        let summary = make_summary(dist_results);
-        let opts = plot::PlotOptions {
-            per_config: true,
-            ..Default::default()
-        };
-        let path = out.join(format!("{file_prefix}report-distance-recall.{ext}"));
-        if let Err(e) = plot::generate_plot(
-            &[summary],
-            &path,
-            Some("Recall vs QPS (ann-benchmarks distance method)"),
-            &opts,
-        ) {
-            eprintln!("Distance recall plot failed: {e}");
-        } else {
-            println!("Plot: {}", path.display());
-        }
-    } else {
-        let has_query_results = summaries
-            .iter()
-            .flat_map(|s| &s.search_results)
-            .any(|r| !r.query_results.is_empty());
-        if has_query_results {
-            println!(
-                "\nNote: pass --dataset <file.hdf5> to generate \
-                 distance-based recall plot (ann-benchmarks compatible)"
-            );
-        }
-    }
-
-    // 4. Index build time plot (if build results available)
-    // 4. Load build results from build-*.json files
-    let mut build_results: Vec<rekall_lib::metrics::IndexBuildResult> = summaries
-        .iter()
-        .flat_map(|s| s.index_builds.clone())
-        .collect();
-
-    for path in &build_files {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            if let Ok(br) = serde_json::from_str::<rekall_lib::metrics::IndexBuildResult>(&content)
-            {
-                build_results.push(br);
-            }
-        }
-    }
-
-    // Dedup by index name: the same build can appear both inline in a run
-    // summary's `index_builds` and in its own `build-*.json` log. Keep one
-    // record per index (last wins).
-    {
-        let mut seen = std::collections::HashSet::new();
-        build_results.reverse();
-        build_results.retain(|b| seen.insert(b.index_name.clone()));
-        build_results.reverse();
-    }
-
-    if !build_results.is_empty() {
+    // Index build times (from the authoritative build-*.json files).
+    if !summary.index_builds.is_empty() {
         println!("\n=== Index Build Times ===");
-        for b in &build_results {
-            let size_mb = b.index_size_bytes as f64 / (1024.0 * 1024.0);
+        for b in &summary.index_builds {
             println!(
                 "  {}: {:.1}s ({:.1} MB)",
                 b.index_name,
                 b.build_time.as_secs_f64(),
-                size_mb
+                b.index_size_bytes as f64 / (1024.0 * 1024.0)
             );
-        }
-
-        let summary = make_summary(Vec::new());
-        let path = out.join(format!("{file_prefix}report-build-times.{ext}"));
-        if let Err(e) = plot::generate_build_plot(
-            &build_results,
-            std::slice::from_ref(&summary),
-            &path,
-            Some("Index build time"),
-        ) {
-            eprintln!("Build-time plot failed: {e}");
-        } else {
-            println!("Plot: {}", path.display());
         }
     }
 
+    // Single report generator, shared with publish / post-benchmark.
+    let written = rekall_lib::publish::report::generate_into_dir(&summary, out, dataset);
+    for p in &written {
+        println!("Plot: {}", p.display());
+    }
+    if written.is_empty() {
+        eprintln!(
+            "Warning: no report artifacts generated (no result data found in {})",
+            dir.display()
+        );
+    }
     Ok(())
 }
 

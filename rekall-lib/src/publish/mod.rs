@@ -7,7 +7,7 @@
 
 mod distance;
 mod pages;
-mod report;
+pub mod report;
 mod s3;
 
 use std::collections::BTreeMap;
@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::config::PublishConfig;
 use crate::error::{Error, Result};
-use crate::metrics::RunSummary;
+use crate::metrics::{IndexBuildResult, RunSummary};
 
 /// Knobs controlling a single publish invocation (CLI flags map onto these).
 #[derive(Debug, Default, Clone)]
@@ -259,7 +259,67 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
             merge_pg_runtime(&mut base.pg_runtime, s.pg_runtime);
         }
     }
+
+    // Build info: the separate build-<name>.json files are authoritative (they
+    // survive search-only re-runs, where the query files carry no index_builds).
+    // Cross-check against the build info embedded in the query files and warn on
+    // any divergence; the embedded copy is only a fallback when no build file
+    // exists for an index.
+    base.index_builds = resolve_build_results(dir, &base.index_builds);
     Ok(base)
+}
+
+/// Resolve per-index build results for a results dir.
+///
+/// The separate `build-<name>.json` files are the source of truth: they are
+/// written once at build time and persist across search-only re-runs (which
+/// produce result files with empty `index_builds`). The build info embedded in
+/// query result files is used only as a cross-check — if it disagrees with the
+/// build file we warn and keep the build file's value; if a query file carries
+/// build info for an index that has no build file, we fall back to it so older
+/// runs still report.
+pub fn resolve_build_results(dir: &Path, embedded: &[IndexBuildResult]) -> Vec<IndexBuildResult> {
+    // 1. Authoritative: build-<name>.json files in the dir.
+    let mut by_name: BTreeMap<String, IndexBuildResult> = BTreeMap::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for entry in rd.flatten() {
+            let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if name.starts_with("build-") && name.ends_with(".json") {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(br) = serde_json::from_str::<IndexBuildResult>(&content) {
+                        by_name.insert(br.index_name.clone(), br);
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Cross-check against / fall back to the build info embedded in query files.
+    for q in embedded {
+        match by_name.get(&q.index_name) {
+            Some(file) => {
+                if file.build_time != q.build_time || file.index_size_bytes != q.index_size_bytes {
+                    tracing::warn!(
+                        "build info for '{}' differs between build-{}.json \
+                         ({:.0}s, {} bytes) and the query result file \
+                         ({:.0}s, {} bytes); using the build file",
+                        q.index_name,
+                        q.index_name,
+                        file.build_time.as_secs_f64(),
+                        file.index_size_bytes,
+                        q.build_time.as_secs_f64(),
+                        q.index_size_bytes,
+                    );
+                }
+            }
+            None => {
+                by_name.insert(q.index_name.clone(), q.clone());
+            }
+        }
+    }
+
+    by_name.into_values().collect()
 }
 
 /// Merge one per-index file's `pg_runtime` into the accumulator. Different
