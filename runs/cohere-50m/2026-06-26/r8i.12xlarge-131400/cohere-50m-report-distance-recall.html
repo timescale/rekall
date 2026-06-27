@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (ann-benchmarks distance method)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (ann-benchmarks distance method)</div><div class="meta">cohere-50m  |  2026-06-26  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB<br>PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (d5d6040), pgvector 0.8.3</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [3.002789763214787, 3.071459379220994],
+                y: [24.893810472666743, 20.652948757803607],
+                customdata: [0.9526999999999973, 0.9556999999999979],
+                name: "hnsw-m24-bq-rerank",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "hnsw-m24-bq-rerank",
+                hovertemplate: "<b>hnsw-m24-bq-rerank</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [0.8316324873415314, 1.3800560377071847, 1.9671066574174514, 2.545935753266669, 2.911254681703677, 3.250748510134083, 3.705408756065037, 4.112704993881162, 4.1913819459100745],
+                y: [730.6325743765696, 509.34080094859627, 344.36767723657334, 211.84470342694829, 152.73228901103397, 99.63667486510433, 53.816956905103, 28.584459818310325, 23.382640306948616],
+                customdata: [0.6966999999999987, 0.7989999999999977, 0.8772999999999977, 0.9272999999999975, 0.9483999999999972, 0.9626999999999976, 0.9759999999999974, 0.9838999999999978, 0.9850999999999979],
+                name: "hnsw-m24-halfvec",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "hnsw-m24-halfvec",
+                hovertemplate: "<b>hnsw-m24-halfvec</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [1.9331711232778659, 2.493714405308121, 2.9051411917520173, 3.27896230158637, 3.684277042512407, 3.987966027541122, 4.498799058824228, 4.954820514989731],
+                y: [346.842141042663, 190.77405236328025, 129.78581965325898, 102.13390408482508, 68.89697188163007, 52.54963470646928, 34.72131561009242, 26.723951416283892],
+                customdata: [0.873599999999998, 0.9236999999999977, 0.9480999999999974, 0.9636999999999977, 0.9754999999999981, 0.9817999999999986, 0.9889999999999988, 0.9929999999999991],
+                name: "mkt-n120000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "mkt-n120000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n120000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [2.2811046836037354, 2.5990435688044813, 2.838094508246759, 3.2818246853744335, 3.569429884575574, 3.9992195504581933, 4.299009981842674, 4.8077582340734315],
+                y: [310.456420611326, 215.130886707127, 170.35731595234415, 115.362873919915, 90.30594570734304, 59.98090687772267, 46.41380918503288, 30.435589284140335],
+                customdata: [0.9072999999999968, 0.930799999999998, 0.9446999999999979, 0.9637999999999974, 0.9725999999999977, 0.9819999999999981, 0.9865999999999987, 0.991899999999999],
+                name: "mkt-n240000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
+                legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
