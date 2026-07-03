@@ -1,0 +1,37 @@
+# A/B arm: index BUILT with the BRANCH .so (feature/build-memory-bounded).
+#
+# Identical params to mkt-ab-main — see that file for the methodology. Build this
+# arm with the BRANCH .so installed:
+#   (install branch meerkat.so)
+#   rekall run benchmarks/membound-ab.toml --phase index --index mkt-ab-branch --rebuild
+#
+# The branch's whole point is that this build is bounded by maintenance_work_mem
+# (no O(nlist) / O(N) resident allocations). At 32GB the sample still fits, so
+# this stays a clean same-quality A/B; to also exercise the memory bound, lower
+# maintenance_work_mem here (e.g. "4GB") — the branch still builds (subsampled +
+# refined), where the main arm would subsample/refine too but the unbounded main
+# build blows past the budget at larger nlist/scale.
+[[index]]
+type = "meerkat"
+name = "mkt-ab-branch"
+table_parallel_workers = 32
+[index.params]
+nlist = 40000
+centroid_compression = true
+centroid_fastscan = true
+fastscan = true
+soar_lambda = 1.0
+boundary_epsilon = 0.05
+[index.gucs]
+"maintenance_work_mem" = "32GB"
+"max_parallel_maintenance_workers" = 32
+"mkt.log_build_stats" = "on"
+"mkt.fastscan_bits" = 16
+# Query-side tuning (recall-neutral); identical to the main arm.
+"mkt.centroid_error_scale" = 0
+"mkt.centroid_beam_scale" = 0.25
+
+[[search.sweep]]
+index = "mkt-ab-branch"
+[search.sweep.params]
+"mkt.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5000]

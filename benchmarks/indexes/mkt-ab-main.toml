@@ -1,0 +1,38 @@
+# A/B arm: index BUILT with the MAIN .so (baseline).
+#
+# Identical params to mkt-ab-branch — the ONLY difference between the two arms
+# is which meerkat.so was installed when the index was built. Both arms are then
+# queried with the same .so, so the comparison isolates BUILD quality (recall +
+# build time) while holding the shared query path constant.
+#
+# Build this arm with the MAIN .so installed:
+#   (install main meerkat.so)
+#   rekall run benchmarks/membound-ab.toml --phase index --index mkt-ab-main --rebuild
+#
+# nlist=40000 over cohere-10M is ~250 vectors/centroid (a healthy ratio both
+# builds handle); maintenance_work_mem=32GB fits the full k-means sample, so the
+# build is NON-subsampled (no refine) — a clean apples-to-apples build A/B.
+[[index]]
+type = "meerkat"
+name = "mkt-ab-main"
+table_parallel_workers = 32
+[index.params]
+nlist = 40000
+centroid_compression = true
+centroid_fastscan = true
+fastscan = true
+soar_lambda = 1.0
+boundary_epsilon = 0.05
+[index.gucs]
+"maintenance_work_mem" = "32GB"
+"max_parallel_maintenance_workers" = 32
+"mkt.log_build_stats" = "on"
+"mkt.fastscan_bits" = 16
+# Query-side tuning (recall-neutral); applied to both arms identically.
+"mkt.centroid_error_scale" = 0
+"mkt.centroid_beam_scale" = 0.25
+
+[[search.sweep]]
+index = "mkt-ab-main"
+[search.sweep.params]
+"mkt.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1280, 2560, 5000]

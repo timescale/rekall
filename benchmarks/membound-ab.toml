@@ -1,0 +1,29 @@
+# Branch-vs-main A/B: bounded index build (feature/build-memory-bounded) vs main.
+#
+# Two meerkat arms with IDENTICAL params (indexes/mkt-ab-{main,branch}.toml);
+# the only variable is which meerkat.so built each. Both are queried with the
+# same installed .so afterward, so recall/QPS differences reflect BUILD quality
+# only. Dataset: cohere-10M (nlist=40000 ~= 250 vecs/list; a scale both builds
+# handle — 50M is where the unbounded main build OOMs, so use membound-50m.toml
+# for branch-only 50M validation).
+#
+# ---- How to run ----
+# 0. Load the data once (either .so):
+#      rekall run benchmarks/membound-ab.toml --phase load
+# 1. Install the MAIN meerkat.so, then build the main arm:
+#      rekall run benchmarks/membound-ab.toml --phase index --index mkt-ab-main --rebuild
+# 2. Install the BRANCH meerkat.so, then build the branch arm:
+#      rekall run benchmarks/membound-ab.toml --phase index --index mkt-ab-branch --rebuild
+# 3. Query BOTH arms with the (branch) .so now installed, and report:
+#      rekall run benchmarks/membound-ab.toml --phase search
+#      rekall run benchmarks/membound-ab.toml --phase report
+#
+# Compare, per nprobe: recall@10 and QPS for mkt-ab-main vs mkt-ab-branch, plus
+# the per-arm build time from step 1 vs step 2.
+indexes = [
+    "indexes/mkt-ab-main.toml",
+    "indexes/mkt-ab-branch.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-10m.toml"
