@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (per config)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (per config)</div><div class="meta">cohere-50m  |  2026-07-03  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB<br>PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (8e72dfd), pgvector 0.8.4</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [3.0184340016390756, 3.088119085229123],
+                y: [25.775930250745148, 22.093984806585286],
+                customdata: [0.9533999999999978, 0.9563999999999976],
+                name: "hnsw-m24-bq-rerank",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "hnsw-m24-bq-rerank",
+                hovertemplate: "<b>hnsw-m24-bq-rerank</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [0.8944128997623011, 1.4146605870070048, 2.008628091108619, 2.589765607021621, 2.8930137673589544, 3.245193133185507, 3.647277956384826, 4.004892423316904, 4.119037174812345],
+                y: [736.3379850258308, 525.0079669958994, 351.6310405817388, 213.32969250658127, 154.9611829984648, 102.3478808564225, 54.84136859925826, 29.309168822453735, 23.918180687504172],
+                customdata: [0.7097999999999984, 0.804499999999998, 0.8816999999999978, 0.9301999999999968, 0.9474999999999976, 0.9624999999999976, 0.9745999999999978, 0.982099999999998, 0.983999999999998],
+                name: "hnsw-m24-halfvec",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "hnsw-m24-halfvec",
+                hovertemplate: "<b>hnsw-m24-halfvec</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [1.9698965388827674, 2.5805611229336107, 2.9528921148774403, 3.204412762840583, 3.675941872343971, 3.949512469103663, 4.402376025447631, 4.712764160674478],
+                y: [366.4247896630106, 204.2587958943984, 138.3379579712684, 109.20848095589744, 72.29938655416497, 56.33889785115551, 37.07383625228001, 28.535210052246804],
+                customdata: [0.877599999999997, 0.9295999999999974, 0.9503999999999972, 0.9609999999999976, 0.9752999999999984, 0.9810999999999984, 0.9878999999999988, 0.9910999999999992],
+                name: "mkt-n120000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "mkt-n120000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n120000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [2.3002772728587777, 2.6645150224826875, 2.913299981705322, 3.3167800398494958, 3.5845472161815777, 3.982384702850978, 4.26919058162675, 4.807758234073459],
+                y: [328.26912553372443, 225.76798366162257, 181.96467992776735, 121.65917813872169, 94.80716507046168, 63.300385904472634, 48.81011673622755, 32.416692989021364],
+                customdata: [0.9088999999999972, 0.9348999999999964, 0.9484999999999972, 0.9649999999999974, 0.9729999999999974, 0.9816999999999978, 0.9861999999999984, 0.9918999999999992],
+                name: "mkt-n240000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
+                legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
