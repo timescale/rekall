@@ -33,4 +33,4 @@ mode = "rerank"
 # Fixed 80x oversampling: 800 candidates reranked for k=10.
 rerank_pool = [800]
 # Scan depth swept >= the 800-candidate pool; 800 is the guide's recipe.
-"hnsw.ef_search" = [800, 1200, 1600, 2400]
+"hnsw.ef_search" = [800, 1000]
