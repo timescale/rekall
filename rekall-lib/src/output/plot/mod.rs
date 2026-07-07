@@ -337,6 +337,15 @@ fn build_caption(summaries: &[RunSummary]) -> Option<String> {
     }
 
     let mut lines = Vec::new();
+    // The run comment (--comment) leads: it is the human description of
+    // why the run exists, so it is the first thing to read under the title.
+    if let Some(comment) = meta
+        .environment
+        .as_ref()
+        .and_then(|env| env.comment.as_deref())
+    {
+        lines.push(format!("\u{201c}{comment}\u{201d}"));
+    }
     if !line1.is_empty() {
         lines.push(line1.join("  |  "));
     }
@@ -486,6 +495,7 @@ mod tests {
                     note: String::new(),
                 },
                 timestamp: "2026-06-10T09:56:42+0000".into(),
+                comment: None,
             }),
             config: serde_json::Value::Null,
             pg_runtime: Some(PgRuntimeInfo {
@@ -511,6 +521,17 @@ mod tests {
         assert!(cap.contains("shared_buffers=16 GB"));
         assert!(cap.contains("meerkat 0.1.0 (65df24d)"));
         assert!(cap.contains("pgvector 0.8.2"));
+    }
+
+    #[test]
+    fn caption_leads_with_run_comment() {
+        let mut summary = summary_with_meta(Some("r8i.2xlarge"));
+        summary.environment.as_mut().unwrap().comment = Some("testing new feature X".into());
+        let cap = build_caption(&[summary]).unwrap();
+        // The comment is the first caption line, quoted.
+        assert!(cap.starts_with("\u{201c}testing new feature X\u{201d}\n"));
+        // The usual metadata lines still follow.
+        assert!(cap.contains("cohere-5m"));
     }
 
     #[test]

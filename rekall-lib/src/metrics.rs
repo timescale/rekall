@@ -38,6 +38,11 @@ pub struct RunEnvironment {
     pub host: HostInfo,
     pub rekall: RekallInfo,
     pub timestamp: String,
+    /// Free-form description of what this run was for
+    /// (`rekall run --comment`). Carried through results files and shown
+    /// on reports, plots, and published pages.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

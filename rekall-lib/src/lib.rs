@@ -87,6 +87,9 @@ pub struct Agent {
     /// When true, the search phase re-measures every sweep point instead of
     /// skipping ones already saved in the results dir (`search --rerun`).
     rerun: bool,
+    /// Free-form description of what this run is for (`run --comment`),
+    /// recorded in the run environment metadata.
+    comment: Option<String>,
 }
 
 impl Agent {
@@ -101,6 +104,7 @@ impl Agent {
             registry: backend::BackendRegistry::new(),
             cancel_registry,
             rerun: false,
+            comment: None,
         }
     }
 
@@ -108,6 +112,13 @@ impl Agent {
     /// (`search --rerun`). Default is to skip already-completed points.
     pub fn set_rerun(&mut self, rerun: bool) {
         self.rerun = rerun;
+    }
+
+    /// Attach a free-form comment describing the purpose of this run
+    /// (`run --comment`). Recorded in the run metadata and shown on
+    /// reports and published pages.
+    pub fn set_comment(&mut self, comment: Option<String>) {
+        self.comment = comment;
     }
 
     async fn capture_pg_runtime(&self) -> Option<PgRuntimeInfo> {
@@ -172,7 +183,7 @@ impl Agent {
     ) -> Result<()> {
         self.ensure_dataset(phases).await?;
 
-        let run_env = environment::collect();
+        let run_env = environment::collect(self.comment.clone());
 
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();

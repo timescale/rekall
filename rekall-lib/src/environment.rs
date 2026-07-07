@@ -183,13 +183,16 @@ fn non_empty(s: &str) -> Option<String> {
     (!s.is_empty()).then(|| s.to_string())
 }
 
-pub fn collect() -> RunEnvironment {
+pub fn collect(comment: Option<String>) -> RunEnvironment {
     RunEnvironment {
         host: collect_host_info(),
         rekall: collect_rekall_info(),
         timestamp: chrono::Local::now()
             .format("%Y-%m-%dT%H:%M:%S%z")
             .to_string(),
+        comment: comment
+            .map(|c| c.trim().to_string())
+            .filter(|c| !c.is_empty()),
     }
 }
 

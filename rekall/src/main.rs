@@ -94,6 +94,12 @@ enum Command {
         /// `<dir>-<timestamp>` before running, instead of resuming into it.
         #[arg(long)]
         clean_run: bool,
+
+        /// Short description of what this run is for (e.g. "testing new
+        /// feature X"). Recorded in the run metadata and shown on reports,
+        /// plots, and published pages.
+        #[arg(long)]
+        comment: Option<String>,
     },
 
     /// Archive a results directory to S3 and publish its reports.
@@ -530,6 +536,12 @@ enum InfraCommand {
         /// S3 path for the dataset (downloaded on instance if not present)
         #[arg(long)]
         s3_dataset: Option<String>,
+
+        /// Short description of what this run is for (e.g. "testing new
+        /// feature X"). Forwarded to `rekall run --comment` on the
+        /// instance and shown on reports, plots, and published pages.
+        #[arg(long)]
+        comment: Option<String>,
     },
 
     /// Attach to the tmux session on a benchmark instance.
@@ -943,6 +955,7 @@ async fn main() -> anyhow::Result<()> {
             reload,
             publish,
             clean_run,
+            comment,
             ..
         } => {
             let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
@@ -1000,6 +1013,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let outputs = build_outputs(&group.config);
                 let mut agent = Agent::new(group.config.clone(), outputs, cancel_registry.clone());
+                agent.set_comment(comment.clone());
                 agent
                     .run(&phases, index.as_deref(), rebuild, reload)
                     .await?;
@@ -2144,6 +2158,7 @@ iam_instance_profile = "rekall-profile"
             no_publish,
             clean_run,
             s3_dataset,
+            comment,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
             let (ip, ssh_priv): (String, String) = if let Some(ip) =
@@ -2329,6 +2344,23 @@ done"#
             // Publish is on by default for remote runs; --no-publish disables.
             let publish_flag = if no_publish { "" } else { " --publish" };
             let clean_run_flag = if clean_run { " --clean-run" } else { "" };
+            // Forward --comment double-quoted for the remote `sh -c`. The
+            // whole run command is wrapped in single quotes for tmux, so a
+            // literal single quote in the comment cannot survive — swap it
+            // for a typographic one — and escape the characters the remote
+            // shell expands inside double quotes.
+            let comment_flag = comment
+                .as_deref()
+                .map(|c| {
+                    let safe = c
+                        .replace('\\', "\\\\")
+                        .replace('\'', "\u{2019}")
+                        .replace('"', "\\\"")
+                        .replace('$', "\\$")
+                        .replace('`', "\\`");
+                    format!(" --comment \"{safe}\"")
+                })
+                .unwrap_or_default();
 
             // Pipe both stdout and stderr to a log file so it persists even
             // after the run ends.
@@ -2347,7 +2379,7 @@ done"#
             let log_path = format!("{remote_dir}/last-run.log");
             let run_cmd = format!(
                 "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
-                 rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag} 2>&1 | tee {log_path}; \
+                 rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag}{comment_flag} 2>&1 | tee {log_path}; \
                  code=$?; echo; \
                  echo \"=== rekall run exited (status $code) — session kept open; full log: {log_path} ===\"; \
                  exec bash"

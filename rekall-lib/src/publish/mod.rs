@@ -61,6 +61,10 @@ pub struct RunMeta {
     pub qps_at_peak: f64,
     pub num_indexes: usize,
     pub s3_url: String,
+    /// Free-form run description (`rekall run --comment`), shown in the
+    /// catalog and on the per-run page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
 }
 
 impl RunMeta {
@@ -120,6 +124,7 @@ impl RunMeta {
             qps_at_peak,
             num_indexes: s.index_builds.len(),
             s3_url: s3_url.to_string(),
+            comment: env.comment.clone(),
         })
     }
 }
@@ -600,6 +605,7 @@ mod tests {
                     note: String::new(),
                 },
                 timestamp: ts.to_string(),
+                comment: None,
             }),
             config: serde_json::Value::Null,
             pg_runtime: None,

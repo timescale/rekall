@@ -360,6 +360,12 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
         meta.peak_recall,
         meta.qps_at_peak
     ));
+    if let Some(comment) = &meta.comment {
+        b.push_str(&format!(
+            "<div class=\"sub\">\u{201c}{}\u{201d}</div>",
+            esc(comment)
+        ));
+    }
 
     // Plots — link only the report files that were actually generated for this
     // run (distance-recall, e.g., only exists if a ground-truth recompute ran).
@@ -584,7 +590,8 @@ fn render_catalog(metas: &[RunMeta]) -> String {
         runs.sort_by(|a, b| (&b.date, &b.time).cmp(&(&a.date, &a.time)));
         b.push_str(&format!("<h2>{}</h2>", esc(&pretty_dataset(&dataset))));
         b.push_str(
-            "<table><tr><th>Date</th><th>Instance</th><th>Peak recall@QPS</th>\
+            "<table><tr><th>Date</th><th>Comment</th><th>Instance</th>\
+             <th>Peak recall@QPS</th>\
              <th>Commit</th><th>Plots</th><th>Data</th></tr>",
         );
         for m in runs {
@@ -598,6 +605,7 @@ fn render_catalog(metas: &[RunMeta]) -> String {
             let commit = m.rekall_commit.as_deref().unwrap_or("—");
             b.push_str(&format!(
                 "<tr><td><a href=\"{rp}/index.html\">{date} · {time}</a></td>\
+                 <td>{comment}</td>\
                  <td>{inst}</td><td>{recall:.4} @ {qps:.0}</td><td>{commit}</td>\
                  <td><a href=\"{rp}/{pre}-report-pareto.html\">pareto</a> · \
                  <a href=\"{rp}/{pre}-report-per-config.html\">per-config</a></td>\
@@ -605,6 +613,7 @@ fn render_catalog(metas: &[RunMeta]) -> String {
                 rp = esc(&run_path),
                 date = esc(&m.date),
                 time = esc(&m.time),
+                comment = esc(m.comment.as_deref().unwrap_or("—")),
                 inst = esc(inst),
                 recall = m.peak_recall,
                 qps = m.qps_at_peak,
@@ -642,6 +651,7 @@ mod tests {
             qps_at_peak: 123.0,
             num_indexes: 2,
             s3_url: "s3://rekall/runs/x/".into(),
+            comment: None,
         }
     }
 
@@ -672,6 +682,26 @@ mod tests {
     }
 
     #[test]
+    fn catalog_shows_run_comment() {
+        let mut with = meta("cohere-5m", "2026-06-10", "09:56:42");
+        with.comment = Some("testing new feature X".into());
+        let without = meta("cohere-5m", "2026-06-11", "10:00:00");
+        let html = render_catalog(&[with, without]);
+        assert!(html.contains("<th>Comment</th>"));
+        assert!(html.contains("<td>testing new feature X</td>"));
+        // Runs without a comment render a placeholder.
+        assert!(html.contains("<td>—</td>"));
+    }
+
+    #[test]
+    fn run_page_shows_run_comment() {
+        let mut m = meta("cohere-5m", "2026-06-10", "09:56:42");
+        m.comment = Some("testing new feature X".into());
+        let html = render_run_page(&summary_for(&m), &m, &[]);
+        assert!(html.contains("\u{201c}testing new feature X\u{201d}"));
+    }
+
+    #[test]
     fn human_bytes_scales() {
         assert_eq!(human_bytes(512), "512.0 B");
         assert_eq!(human_bytes(2 * 1024 * 1024), "2.0 MB");
@@ -699,6 +729,7 @@ mod tests {
                     note: String::new(),
                 },
                 timestamp: meta.timestamp.clone(),
+                comment: meta.comment.clone(),
             }),
             config: serde_json::json!({"search": {"k": 10, "runs": 3, "num_queries": 10000}}),
             pg_runtime: None,
