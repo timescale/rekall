@@ -53,8 +53,10 @@ extensions = ["pgvector", "meerkat"]
 # values that deliberately differ from the defaults are listed here;
 # everything else is derived from the instance type (96 vCPU / 768 GiB):
 # shared_buffers = 192GB, effective_cache_size = 576GB,
-# maintenance_work_mem = RAM/2 = 384GB (plenty for a cohere-10M graph
-# ~35GB), and max_parallel_maintenance_workers = 32 (vCPU/2 capped at 32 —
+# maintenance_work_mem = 2·RAM/5 = 307GB (capped at 40% of RAM so the
+# parallel HNSW build's DSM graph area stays under the /dev/shm 50%
+# ceiling; fits a cohere-100M halfvec build graph ~260GB), and
+# max_parallel_maintenance_workers = 32 (vCPU/2 capped at 32 —
 # the sublinear-scaling knee for SMT hardware). Run
 # `rekall infra show -c infra/instances/r8i.24xlarge.toml` for the full
 # effective config. All values must be strings.

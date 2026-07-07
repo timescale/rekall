@@ -50,7 +50,7 @@ extensions = ["pgvector", "meerkat"]
 # values that deliberately differ from the defaults are listed here;
 # everything else is derived from the instance type (48 vCPU / 384 GiB):
 # shared_buffers = 96GB, effective_cache_size = 288GB,
-# maintenance_work_mem = RAM/2 = 192GB (≫ a cohere-10M graph ~45GB), and
+# maintenance_work_mem = 2·RAM/5 = 153GB (≫ a cohere-10M graph ~45GB), and
 # max_parallel_maintenance_workers = 24 (vCPU/2, below the 32 cap). Run
 # `rekall infra show -c infra/instances/r8i.12xlarge.toml` for the full
 # effective config. All values must be strings.

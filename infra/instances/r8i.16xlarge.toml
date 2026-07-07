@@ -7,9 +7,12 @@
 # at 32 workers (HNSW build scaling is sublinear past that), and a 64-vCPU
 # Intel box has 32 physical cores — so it gets the *same* 32 build workers
 # as the 24xlarge, building at essentially the same speed for ~2/3 the cost.
-# 512 GiB is ample: a cohere-10M HNSW graph is ~45 GiB and the auto
-# maintenance_work_mem is 256 GiB, so the whole graph stays in RAM (no
-# on-disk second pass).
+# 512 GiB is ample for ~50M: the auto maintenance_work_mem is 2·RAM/5 =
+# 204 GiB, so a cohere-10M HNSW graph (~45 GiB) stays fully in RAM (no
+# on-disk second pass). It is NOT enough for cohere-100M: the in-memory
+# halfvec build graph is ~2.6 KB/vector (~260 GB at 100M), which spills to
+# pgvector's on-disk insert pass and slows the build by orders of
+# magnitude — use the r8i.24xlarge (307 GiB) for 100M HNSW builds.
 #
 # This file is the canonical, committed config for this instance type.
 # Personal/machine-specific overrides go in `r8i.16xlarge.local.toml`
@@ -55,7 +58,8 @@ extensions = ["pgvector", "meerkat"]
 # values that deliberately differ from the defaults are listed here;
 # everything else is derived from the instance type (64 vCPU / 512 GiB):
 # shared_buffers = 128GB, effective_cache_size = 384GB,
-# maintenance_work_mem = RAM/2 = 256GB (≫ a cohere-10M graph ~45GB), and
+# maintenance_work_mem = 2·RAM/5 = 204GB (≫ a cohere-10M graph ~45GB,
+# but < a cohere-100M halfvec build graph ~260GB — see header), and
 # max_parallel_maintenance_workers = 32 (vCPU/2, at the sublinear-scaling
 # cap). Run `rekall infra show -c infra/instances/r8i.16xlarge.toml` for
 # the full effective config. All values must be strings.
