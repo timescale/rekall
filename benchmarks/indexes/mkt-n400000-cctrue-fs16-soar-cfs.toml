@@ -4,8 +4,24 @@
 # n240k = 208/list, and n480k = 104/list only tied it as per-centroid training
 # data thins out).
 #
-# The index.gucs below (mkt.centroid_error_scale=0, mkt.centroid_beam_scale=0.25)
-# are the recall-neutral query optimizations from the 50M tuning.
+# Query GUCs are the 100M-tuned settings (2026-07-08, measured on r8i.24xlarge
+# against the live 100M index; beats pgvector HNSW m24/halfvec at every recall,
+# +16%..+150% QPS at matched recall):
+#
+#   - mkt.centroid_beam_scale: the 50M-tuned 0.25 mis-routes at 100M — the
+#     narrow beam prunes neighbor-bearing clusters during the tree descent
+#     (measured: avg deepest contributing probe rank 130 at nprobe=320).
+#     1.0 at low nprobe (recall +1.5pp..+2.3pp), 0.5 at mid/high nprobe
+#     (same recall as 1.0 at ~half the centroid-scoring cost).
+#   - mkt.rerank_pool (GUC added 2026-07-08): caps exact-rerank heap fetches,
+#     a ~400us fixed per-query cost. 40 at low nprobe (-0.002 recall, up to
+#     +37% QPS); 0 (rerank all) at mid/high nprobe where full rerank
+#     preserves recall and the relative cost is small.
+#   - mkt.centroid_error_scale stays 0: >0 explodes the beam (5-10x centroid
+#     cost for <0.001 recall).
+#
+# The two sweep regimes below encode the adaptive config; the pareto report
+# takes the upper envelope.
 [[index]]
 type = "meerkat"
 name = "mkt-n400000-cctrue-fs16-soar-cfs"
@@ -20,9 +36,19 @@ boundary_epsilon = 0.05
 [index.gucs]
 "mkt.fastscan_bits" = 16
 "mkt.centroid_error_scale" = 0
-"mkt.centroid_beam_scale" = 0.25
 
+# Low-recall regime (~0.60-0.90): wide beam + capped rerank pool.
+[[search.sweep]]
+index = "mkt-n400000-cctrue-fs16-soar-cfs"
+[search.sweep.params]
+"mkt.nprobe" = [10, 20, 40, 80, 160]
+"mkt.centroid_beam_scale" = [1.0]
+"mkt.rerank_pool" = [40]
+
+# Mid/high-recall regime (~0.90-0.99): half beam + full rerank.
 [[search.sweep]]
 index = "mkt-n400000-cctrue-fs16-soar-cfs"
 [search.sweep.params]
 "mkt.nprobe" = [160, 240, 320, 480, 640, 960, 1280]
+"mkt.centroid_beam_scale" = [0.5]
+"mkt.rerank_pool" = [0]
