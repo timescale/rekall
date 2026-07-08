@@ -1097,18 +1097,29 @@ async fn main() -> anyhow::Result<()> {
             index,
             rerun,
         } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.set_rerun(rerun);
-            agent
-                .run(
-                    &[Phase::Search, Phase::Report],
-                    index.as_deref(),
-                    false,
-                    false,
-                )
-                .await?;
+            // Resolve suites/`extends` the same way `run` does, so
+            // `rekall search <suite.toml>` works — a plain config is a
+            // single group.
+            let groups = config::resolve_groups(&config)?;
+            let num_groups = groups.len();
+            for group in groups {
+                if num_groups > 1 {
+                    println!("\n{}", "=".repeat(60));
+                    println!("=== Group: {} ===", group.name);
+                    println!("{}\n", "=".repeat(60));
+                }
+                let outputs = build_outputs(&group.config);
+                let mut agent = Agent::new(group.config, outputs, cancel_registry.clone());
+                agent.set_rerun(rerun);
+                agent
+                    .run(
+                        &[Phase::Search, Phase::Report],
+                        index.as_deref(),
+                        false,
+                        false,
+                    )
+                    .await?;
+            }
         }
 
         Command::Report {
