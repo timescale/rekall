@@ -3,9 +3,10 @@
 # beam_scale 1.0 + rerank_pool 40 at low nprobe, beam_scale 0.5 + full rerank
 # at mid/high — see indexes/mkt-n400000-cctrue-fs16-soar-cfs.toml; requires
 # meerkat with mkt.rerank_pool, feature/build-memory-bounded >= 2026-07-08)
-# vs pgvector HNSW M=24: halfvec expression index (the default baseline) plus
-# binary quantization with 80x-oversampling rerank (its memory savings matter
-# most at 100M). Both are expression indexes on v -- no table rewrite.
+# vs pgvector HNSW M=24 halfvec (expression index on v -- no table rewrite).
+# The BQ+rerank arm was dropped: measured at 100M it sits an order of
+# magnitude below both other curves (0.95 recall at ~24 QPS), adding cost
+# without an interesting comparison.
 #
 # DISK: ~600 GB+ free required (heap ~380 GB + halfvec ~190 GB + meerkat ~30 GB)
 # plus the ~300 GB dataset load. Build on a >=2 TB volume; the 100M halfvec
@@ -16,7 +17,6 @@
 indexes = [
     "indexes/mkt-n400000-cctrue-fs16-soar-cfs.toml",
     "indexes/hnsw-m24-halfvec.toml",
-    "indexes/hnsw-m24-bq.toml",
 ]
 
 [[suite]]

@@ -18,7 +18,6 @@ indexes = [
     "indexes/mkt-n120000-cctrue-fs16-soar-cfs.toml",
     "indexes/mkt-n240000-cctrue-fs16-soar-cfs.toml",
     "indexes/hnsw-m24-halfvec.toml",
-    "indexes/hnsw-m24-bq.toml",
 ]
 
 [[suite]]
