@@ -415,10 +415,15 @@ impl PgConnection {
         Ok(plan_text)
     }
 
-    /// Prewarm a relation into shared buffers using pg_prewarm.
-    /// Limits prewarming to avoid evicting earlier pages when the relation
-    /// is larger than shared_buffers. Prioritizes low-numbered blocks
-    /// (centroids, metadata) which are accessed on every query.
+    /// Prewarm a relation using pg_prewarm. Shared buffers get at most 75%
+    /// of their capacity, prioritizing low-numbered blocks (centroids,
+    /// metadata) which are accessed on every query; when the relation is
+    /// larger than that budget, the remainder is prefetched into the OS page
+    /// cache (posix_fadvise; no shared-buffers eviction) so warm mode covers
+    /// the whole relation on hosts with enough RAM. Without the remainder
+    /// pass, a heap bigger than shared_buffers is only warm in its physical
+    /// prefix, while rerank fetches scatter over all of it — measured as a
+    /// 15-25% QPS deficit on a cold-page-cache 100M run.
     pub async fn prewarm(&self, relation: &str) -> Result<()> {
         let client = self.client();
         client
@@ -433,6 +438,10 @@ impl PgConnection {
             )
             .await?;
         let rel_blocks: i64 = rel_row.get(0);
+        if rel_blocks == 0 {
+            tracing::info!("Prewarm '{relation}': empty relation, skipped");
+            return Ok(());
+        }
 
         let buf_row = client
             .query_one(
@@ -454,8 +463,30 @@ impl PgConnection {
             )
             .await?;
         let blocks: i64 = row.get(0);
+
+        // Remainder past the shared-buffers budget: OS page cache only.
+        let mut prefetched: i64 = 0;
+        if rel_blocks > max_blocks {
+            let row = client
+                .query_one(
+                    &format!(
+                        "SELECT pg_prewarm('{relation}', 'prefetch', 'main', \
+                         {max_blocks}, {})",
+                        rel_blocks - 1
+                    ),
+                    &[],
+                )
+                .await?;
+            prefetched = row.get(0);
+        }
+
         let size_mb = blocks as f64 * 8192.0 / (1024.0 * 1024.0);
-        tracing::info!("Prewarmed '{relation}': {blocks}/{rel_blocks} blocks ({size_mb:.1} MB)");
+        let prefetch_mb = prefetched as f64 * 8192.0 / (1024.0 * 1024.0);
+        tracing::info!(
+            "Prewarmed '{relation}': {blocks}/{rel_blocks} blocks \
+             ({size_mb:.1} MB) in shared buffers, {prefetched} blocks \
+             ({prefetch_mb:.1} MB) prefetched to page cache"
+        );
         Ok(())
     }
 
