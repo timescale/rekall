@@ -10,6 +10,7 @@
 #
 # Environment variables (set by rekall before running):
 #   PG_VERSION         — PostgreSQL major version (e.g., 18)
+#   PG_PORT            — PostgreSQL port (default: 5432)
 #   MEERKAT_GIT_URL    — git URL for meerkat (empty to skip)
 #   MEERKAT_GIT_REF    — git ref for meerkat (default: main)
 #   REKALL_GIT_URL     — git URL for rekall (empty to skip)
@@ -25,6 +26,7 @@ REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
 VECTORCHORD="${VECTORCHORD:-}"
 VECTORCHORD_VERSION="${VECTORCHORD_VERSION:-1.1.1}"
+PG_PORT="${PG_PORT:-5432}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
 REPOS_DIR="$HOME/repos"
@@ -157,6 +159,26 @@ if [ "$VECTORCHORD" = "1" ]; then
     fi
 fi
 
+# --- Connection service file ---
+
+# Register the benchmark instance in ~/.pg_service.conf so any libpq client
+# connects with `psql service=rekall` (or PGSERVICE=rekall) instead of
+# spelling out host/port/user/password. Credentials match the CREATE USER in
+# cloud-init. Idempotent: written once; delete the [rekall] section to
+# regenerate.
+if ! grep -qE '^\[rekall\]' "$HOME/.pg_service.conf" 2>/dev/null; then
+    cat >> "$HOME/.pg_service.conf" <<SVCEOF
+[rekall]
+host=localhost
+port=$PG_PORT
+dbname=rekall
+user=rekall
+password=rekall
+SVCEOF
+    chmod 600 "$HOME/.pg_service.conf"
+    echo "=== Wrote ~/.pg_service.conf ([rekall] service) ==="
+fi
+
 # --- Rekall ---
 
 if [ -n "$REKALL_GIT_URL" ]; then
@@ -189,7 +211,6 @@ if [ -n "$REKALL_GIT_URL" ]; then
     fi
 
     # Generate global config with cloud-appropriate paths
-    PG_PORT="${PG_PORT:-5432}"
     BENCH_DIR="$HOME/benchmarks"
     rekall setup --force \
         --data-dir "$BENCH_DIR/data" \
@@ -198,6 +219,8 @@ if [ -n "$REKALL_GIT_URL" ]; then
 fi
 
 echo "=== Provisioning complete ==="
+echo ""
+echo "Connect to the benchmark database with: psql service=rekall"
 echo ""
 echo "Repos cloned to ~/repos/. To update later:"
 if [ -n "$MEERKAT_GIT_URL" ]; then
