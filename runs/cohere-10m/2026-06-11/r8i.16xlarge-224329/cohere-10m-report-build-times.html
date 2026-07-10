@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Index build time</title>
+<html><head><meta charset="utf-8"><title>Index build time (cache state not controlled; build order determined warmth)</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
@@ -9,11 +9,11 @@
   #header .meta{margin-top:4px;font-size:12px;color:#555}
   #plot{flex:1 1 auto;min-height:0;width:100%}
 </style></head><body>
-<div id="header"><div class="title">Index build time</div><div class="meta">cohere-10m  |  2026-06-11  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB<br>PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (65df24d), pgvector 0.8.2</div></div>
+<div id="header"><div class="title">Index build time (cache state not controlled; build order determined warmth)</div><div class="meta">cohere-10m  |  2026-06-11  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB<br>PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (65df24d), pgvector 0.8.2</div></div>
 <div id="plot"></div>
 <script>
-var trace = { type:"bar", x:["hnsw-m24", "mkt-n24000-ccfalse-fs16-soar", "hnsw-m24-bq", "hnsw-m24-bq", "mkt-n20000-ccfalse-fs16-soar", "mkt-n16000-ccfalse-fs16-soar", "mkt-n16000-cctrue-fs16-soar", "mkt-n12000-cctrue-fs16-soar", "mkt-n12000-ccfalse-fs16-soar", "mkt-n8000-cctrue-fs16-soar", "mkt-n8000-ccfalse-fs16-soar", "mkt-n24000-cctrue-fs16-soar-cfs"], y:[2742.309447434, 923.057567892, 892.663570662, 892.663570662, 828.016012116, 647.004370081, 646.837727959, 516.389626494, 511.643484949, 374.371671811, 371.937117764, 312.007681882], text:["39056 MB", "2479 MB", "4743 MB", "4743 MB", "2432 MB", "2388 MB", "2328 MB", "2299 MB", "2341 MB", "2269 MB", "2295 MB", "2391 MB"],
-  textposition:"outside", cliponaxis:false, hovertext:["2742.3s · 39056 MB · 32 workers", "923.1s · 2479 MB · 8 workers", "892.7s · 4743 MB · 32 workers", "892.7s · 4743 MB · 32 workers", "828.0s · 2432 MB · 8 workers", "647.0s · 2388 MB · 8 workers", "646.8s · 2328 MB · 8 workers", "516.4s · 2299 MB · 8 workers", "511.6s · 2341 MB · 8 workers", "374.4s · 2269 MB · 8 workers", "371.9s · 2295 MB · 8 workers", "312.0s · 2391 MB · 32 workers"],
+var trace = { type:"bar", x:["hnsw-m24", "mkt-n24000-ccfalse-fs16-soar", "hnsw-m24-bq", "mkt-n20000-ccfalse-fs16-soar", "mkt-n16000-ccfalse-fs16-soar", "mkt-n16000-cctrue-fs16-soar", "mkt-n12000-cctrue-fs16-soar", "mkt-n12000-ccfalse-fs16-soar", "mkt-n8000-cctrue-fs16-soar", "mkt-n8000-ccfalse-fs16-soar", "mkt-n24000-cctrue-fs16-soar-cfs"], y:[2742.309447434, 923.057567892, 892.663570662, 828.016012116, 647.004370081, 646.837727959, 516.389626494, 511.643484949, 374.371671811, 371.937117764, 312.007681882], text:["39056 MB", "2479 MB", "4743 MB", "2432 MB", "2388 MB", "2328 MB", "2299 MB", "2341 MB", "2269 MB", "2295 MB", "2391 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["2742.3s · 39056 MB · 32 workers", "923.1s · 2479 MB · 8 workers", "892.7s · 4743 MB · 32 workers", "828.0s · 2432 MB · 8 workers", "647.0s · 2388 MB · 8 workers", "646.8s · 2328 MB · 8 workers", "516.4s · 2299 MB · 8 workers", "511.6s · 2341 MB · 8 workers", "374.4s · 2269 MB · 8 workers", "371.9s · 2295 MB · 8 workers", "312.0s · 2391 MB · 32 workers"],
   hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
   marker:{color:"rgb(31,119,180)"} };
 var layout = { margin:{t:20},

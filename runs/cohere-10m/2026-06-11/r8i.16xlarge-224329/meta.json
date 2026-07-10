@@ -18,6 +18,6 @@
   },
   "peak_recall": 0.9980599999999998,
   "qps_at_peak": 30.206336342093863,
-  "num_indexes": 12,
+  "num_indexes": 11,
   "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-06-11/r8i.16xlarge-224329/"
 }
