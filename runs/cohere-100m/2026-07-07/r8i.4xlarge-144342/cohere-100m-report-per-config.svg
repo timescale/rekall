@@ -6,7 +6,7 @@
 >
 
 <title>Gnuplot</title>
-<desc>Produced by GNUPLOT 6.0 patchlevel 2 </desc>
+<desc>Produced by GNUPLOT 6.0 patchlevel 4 </desc>
 
 <g id="gnuplot_canvas">
 
@@ -251,13 +251,13 @@
 		<text><tspan font-family="sans" >Recall vs QPS (per config)</tspan></text>
 	</g>
 	<g transform="translate(628.59,48.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text><tspan font-family="sans"  font-size="9.0">“smallest-practical probe: 100M on 128GB/8 workers”</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text><tspan font-family="sans"  font-size="9.0">“smallest-practical probe: 100M on 128GB/8 workers”</tspan></text>
 	</g>
 	<g transform="translate(628.59,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-100m  |  2026-07-07  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-100m  |  2026-07-07  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB</tspan></text>
 	</g>
 	<g transform="translate(628.59,84.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (78c22ca), pgvector 0.8.4</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (78c22ca), pgvector 0.8.4</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
