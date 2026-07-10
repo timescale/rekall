@@ -190,6 +190,7 @@ mod tests {
             create_sql: None,
             build_gucs: serde_json::Value::Null,
             monitor: None,
+            cache: None,
         }
     }
 

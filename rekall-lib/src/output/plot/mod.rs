@@ -119,7 +119,22 @@ pub fn generate_build_plot(
     if builds.is_empty() {
         return Err("No index builds to plot".into());
     }
-    let title = title.unwrap_or("Index build time");
+    let base_title = title.unwrap_or("Index build time");
+    // State the cache conditions in the title, derived from what each build
+    // actually recorded — regenerated reports for old runs must not claim
+    // conditions that were not controlled at the time.
+    let labels: Vec<Option<&str>> = builds.iter().map(|b| b.cache.as_deref()).collect();
+    let suffix = if labels.iter().all(|l| *l == Some("prewarmed")) {
+        " (heap prewarmed before each build)"
+    } else if labels.iter().all(|l| *l == Some("cold")) {
+        " (caches evicted before each build)"
+    } else if labels.iter().all(|l| l.is_none()) {
+        " (cache state not controlled; build order determined warmth)"
+    } else {
+        " (mixed cache conditions across builds)"
+    };
+    let title = format!("{base_title}{suffix}");
+    let title = title.as_str();
     let caption = build_caption(summaries);
     let ext = output_path
         .extension()

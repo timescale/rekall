@@ -97,6 +97,12 @@ pub struct IndexBuildResult {
     pub build_gucs: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitor: Option<crate::backend::build_monitor::BuildMonitorResult>,
+    /// Cache state applied before this build ("prewarmed" or "cold"). Recorded
+    /// so build-time comparisons and their reports state the conditions;
+    /// absent on runs that predate per-build cache control (build order then
+    /// determined how warm the heap was).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

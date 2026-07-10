@@ -58,6 +58,33 @@ pub(crate) async fn normalize_table_parallel_workers(
     Ok(())
 }
 
+/// Apply the run's cache policy to the heap before a build, so every
+/// index arm builds under the same cache conditions regardless of its
+/// position in the run order (an earlier build's heap scans otherwise
+/// warm the page cache for later arms). Warm: prewarm the table (buffer
+/// pool prefix + OS page-cache prefetch of the remainder). Cold: evict
+/// the table's shared buffers. Returns the label recorded on the build
+/// result ("prewarmed" / "cold").
+pub async fn apply_build_cache_policy(config: &BenchmarkConfig) -> crate::Result<&'static str> {
+    let mut pg = PgConnection::new(
+        &config.connection,
+        &config.table_name(),
+        config.dataset.dimension,
+        config.dataset.metric,
+    );
+    pg.connect().await?;
+    match config.search.cache {
+        crate::config::CacheMode::Warm => {
+            pg.prewarm(&config.table_name()).await?;
+            Ok("prewarmed")
+        }
+        crate::config::CacheMode::Cold => {
+            pg.evict_relation_buffers(&config.table_name()).await?;
+            Ok("cold")
+        }
+    }
+}
+
 pub async fn run(
     config: &BenchmarkConfig,
     registry: &BackendRegistry,
@@ -118,6 +145,7 @@ pub async fn run(
             .await?;
 
         backend.drop_index().await?;
+        let cache_label = apply_build_cache_policy(config).await?;
         let result = match backend.build_index().await {
             Ok(r) => r,
             Err(e) => {
@@ -146,6 +174,8 @@ pub async fn run(
             }
         };
 
+        let mut result = result;
+        result.cache = Some(cache_label.to_string());
         save_build_result(config, &result);
         results.push(result);
     }

@@ -531,6 +531,12 @@ impl Agent {
                 )
                 .await?;
 
+                // Same cache conditions for every arm (see
+                // apply_build_cache_policy): otherwise build order decides
+                // how warm the heap is for each build.
+                let cache_label =
+                    crate::phase::index::apply_build_cache_policy(&self.config).await?;
+
                 let build_handle = tokio::spawn(async move { backend.build_index().await });
 
                 let outputs = &mut self.outputs;
@@ -539,7 +545,7 @@ impl Agent {
                         output.on_progress(&event);
                     }
                 }
-                let build_result = match build_handle.await.unwrap() {
+                let mut build_result = match build_handle.await.unwrap() {
                     Ok(r) => r,
                     Err(e) => {
                         if let Some(path) = diagnostics::report_if_crash(
@@ -561,6 +567,8 @@ impl Agent {
                         return Err(e);
                     }
                 };
+
+                build_result.cache = Some(cache_label.to_string());
 
                 // Persist the build result immediately so it survives the run
                 // and is recoverable on later reuse (symmetric with the
