@@ -20,7 +20,9 @@
 
 indexes = [
     "indexes/mkt-n24000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n24000-cctrue-fs16-soar-cfs-eps015.toml",
     "indexes/mkt-n40000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n40000-cctrue-fs16-soar-cfs-eps015.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 

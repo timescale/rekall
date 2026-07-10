@@ -1,8 +1,8 @@
 # Meerkat optimized (cohere tuning): centroid compression + FASTSCAN centroids,
 # fastscan-16, SOAR + boundary replication. nlist=24000 ~= 416 vecs/list at 10M
-# -- the best 10M config measured so far (the top of the original 10M sweep).
-# The suite pairs it with a finer arm (n40000) to test whether higher nlist is
-# better, since the 10M sweep never went above n24000.
+# -- top of the original 10M sweep. The finer n40000 arm tested equal or
+# slightly better at search but builds slower, so both arms stay in the suite
+# (cheaper build here vs. marginally better search there).
 [[index]]
 type = "meerkat"
 name = "mkt-n24000-cctrue-fs16-soar-cfs"
