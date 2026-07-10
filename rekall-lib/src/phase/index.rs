@@ -75,7 +75,9 @@ pub async fn apply_build_cache_policy(config: &BenchmarkConfig) -> crate::Result
     pg.connect().await?;
     match config.search.cache {
         crate::config::CacheMode::Warm => {
-            pg.prewarm(&config.table_name()).await?;
+            // OS page cache only: build scans stream the heap; loading a
+            // heap prefix into shared buffers would only churn them.
+            pg.prewarm_oscache(&config.table_name()).await?;
             Ok("prewarmed")
         }
         crate::config::CacheMode::Cold => {

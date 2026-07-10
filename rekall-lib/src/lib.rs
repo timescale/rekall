@@ -631,9 +631,13 @@ impl Agent {
                 }
             }
 
-            // Prewarm in warm mode, evict in cold mode
+            // Prewarm in warm mode, evict in cold mode. Heap pages go to
+            // the OS page cache only (rerank fetches are fine from there;
+            // a heap-prefix buffer warm would evict the index out of shared
+            // buffers); index pages are buffer-warmed — they are touched on
+            // every query.
             if self.config.search.cache == CacheMode::Warm {
-                pg_mgmt.prewarm(&self.config.table_name()).await?;
+                pg_mgmt.prewarm_oscache(&self.config.table_name()).await?;
                 pg_mgmt.prewarm(&active_idx).await?;
             }
 

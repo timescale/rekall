@@ -415,17 +415,39 @@ impl PgConnection {
         Ok(plan_text)
     }
 
-    /// Prewarm a relation using pg_prewarm, blocking until every page is
-    /// resident. Shared buffers get at most 75% of their capacity,
-    /// prioritizing low-numbered blocks (centroids, metadata) which are
-    /// accessed on every query; when the relation is larger than that
-    /// budget, the remainder is read synchronously into the OS page cache
-    /// ('read' mode — unlike 'prefetch' it returns only after the pages are
-    /// loaded, so measurement never overlaps warming I/O; no shared-buffers
-    /// eviction). Without the remainder pass, a heap bigger than
-    /// shared_buffers is only warm in its physical prefix, while rerank
-    /// fetches scatter over all of it — measured as a 15-25% QPS deficit on
-    /// a cold-page-cache 100M run.
+    /// Prewarm a relation into the OS page cache only, blocking until every
+    /// page is resident ('read' mode). Use for the heap: its pages are
+    /// fetched at most a few dozen times per query (rerank), which the OS
+    /// page cache serves fine — pushing a heap prefix into shared buffers
+    /// instead EVICTS the index pages every query depends on (measured: a
+    /// 144 GB heap-prefix buffer warm degraded warm-state queries ~5x by
+    /// flushing the index out of shared buffers). Without any heap pass, a
+    /// heap bigger than RAM-resident state costs 15-25% QPS on a cold page
+    /// cache.
+    pub async fn prewarm_oscache(&self, relation: &str) -> Result<()> {
+        let client = self.client();
+        client
+            .execute("CREATE EXTENSION IF NOT EXISTS pg_prewarm", &[])
+            .await?;
+        let start = std::time::Instant::now();
+        let row = client
+            .query_one(&format!("SELECT pg_prewarm('{relation}', 'read')"), &[])
+            .await?;
+        let blocks: i64 = row.get(0);
+        tracing::info!(
+            "Prewarmed '{relation}': {blocks} blocks ({:.1} MB) read into \
+             the OS page cache in {:.1}s (blocking; shared buffers untouched)",
+            blocks as f64 * 8192.0 / (1024.0 * 1024.0),
+            start.elapsed().as_secs_f64(),
+        );
+        Ok(())
+    }
+
+    /// Prewarm a relation into shared buffers (75% budget, low-numbered
+    /// blocks first — centroids/metadata that every query touches), reading
+    /// any remainder into the OS page cache, blocking until resident. Use
+    /// for indexes: their pages are hit on every query and deserve buffer
+    /// residency.
     pub async fn prewarm(&self, relation: &str) -> Result<()> {
         let client = self.client();
         client
