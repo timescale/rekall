@@ -17,4 +17,7 @@ encoding = "halfvec"
 [[search.sweep]]
 index = "hnsw-m24-halfvec"
 [search.sweep.params]
-"hnsw.ef_search" = [10, 20, 40, 80, 100, 120, 200, 400, 800, 1000, 1600, 2000]
+# ef_search is hard-capped at 1000 by pgvector (GUC max), which bounds the
+# recall this index can reach regardless of cost — 0.9854 measured on
+# cohere-100M. Recall targets above that are unreachable for HNSW here.
+"hnsw.ef_search" = [10, 20, 40, 80, 100, 120, 200, 400, 800, 1000]
