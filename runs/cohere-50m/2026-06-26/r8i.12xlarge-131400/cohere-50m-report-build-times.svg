@@ -6,7 +6,7 @@
 >
 
 <title>Gnuplot</title>
-<desc>Produced by GNUPLOT 6.0 patchlevel 2 </desc>
+<desc>Produced by GNUPLOT 6.0 patchlevel 4 </desc>
 
 <g id="gnuplot_canvas">
 
@@ -186,22 +186,22 @@
 	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '162.37,512.00 318.95,512.00 318.95,159.31 162.37,159.31 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '162.37,512.00 318.95,512.00 318.95,159.31 162.37,159.31 '/>
 	</g>
 	<path stroke='black'  d='M162.37,512.00 L162.37,159.32 L318.94,159.32 L318.94,512.00 L162.37,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '423.31,512.00 579.89,512.00 579.89,332.75 423.31,332.75 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '423.31,512.00 579.89,512.00 579.89,332.75 423.31,332.75 '/>
 	</g>
 	<path stroke='black'  d='M423.31,512.00 L423.31,332.76 L579.88,332.76 L579.88,512.00 L423.31,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '684.25,512.00 840.83,512.00 840.83,368.78 684.25,368.78 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '684.25,512.00 840.83,512.00 840.83,368.78 684.25,368.78 '/>
 	</g>
 	<path stroke='black'  d='M684.25,512.00 L684.25,368.79 L840.82,368.79 L840.82,512.00 L684.25,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '945.19,512.00 1101.77,512.00 1101.77,439.77 945.19,439.77 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '945.19,512.00 1101.77,512.00 1101.77,439.77 945.19,439.77 '/>
 	</g>
 	<path stroke='black'  d='M945.19,512.00 L945.19,439.78 L1101.76,439.78 L1101.76,512.00 L945.19,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -238,13 +238,13 @@
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g transform="translate(632.06,30.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text><tspan font-family="sans" >Index build time</tspan></text>
+		<text><tspan font-family="sans" >Index build time (cache state not controlled; build order determined warmth)</tspan></text>
 	</g>
 	<g transform="translate(632.06,48.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-50m  |  2026-06-26  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-50m  |  2026-06-26  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB</tspan></text>
 	</g>
 	<g transform="translate(632.06,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (d5d6040), pgvector 0.8.3</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (d5d6040), pgvector 0.8.3</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
