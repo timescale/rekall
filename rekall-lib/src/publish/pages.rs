@@ -435,69 +435,73 @@ fn render_run_tables(compact: &CompactSummary) -> String {
     };
 
     // Best competitor (or, in Configs mode, best overall) column of a row by
-    // a metric; `lower_is_better` picks min instead of max.
-    let best_col =
-        |cells: &[Cell], metric: &dyn Fn(&compare::OperatingCell) -> f64, lower: bool| {
-            let candidates = cells.iter().enumerate().filter_map(|(i, c)| {
-                if delta_col && Some(i) == model.meerkat_col {
-                    return None; // "best" means best competitor in Families mode
-                }
-                match c {
-                    Cell::Reached(op) => Some((i, metric(op))),
-                    Cell::Unreached { .. } => None,
-                }
-            });
-            if lower {
-                candidates
-                    .min_by(|a, b| a.1.total_cmp(&b.1))
-                    .map(|(i, _)| i)
-            } else {
-                candidates
-                    .max_by(|a, b| a.1.total_cmp(&b.1))
-                    .map(|(i, _)| i)
+    // a metric; `lower_is_better` picks min instead of max. Only interpolated
+    // cells compete — every value in a row is at the identical recall.
+    let best_col = |cells: &[Cell], metric: &dyn Fn(&compare::InterpCell) -> f64, lower: bool| {
+        let candidates = cells.iter().enumerate().filter_map(|(i, c)| {
+            if delta_col && Some(i) == model.meerkat_col {
+                return None; // "best" means best competitor in Families mode
             }
-        };
+            match c {
+                Cell::Interpolated(v) => Some((i, metric(v))),
+                _ => None,
+            }
+        });
+        if lower {
+            candidates
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(i, _)| i)
+        } else {
+            candidates
+                .max_by(|a, b| a.1.total_cmp(&b.1))
+                .map(|(i, _)| i)
+        }
+    };
 
     let delta_cell = |cells: &[Cell],
                       best: Option<usize>,
-                      metric: &dyn Fn(&compare::OperatingCell) -> f64,
+                      metric: &dyn Fn(&compare::InterpCell) -> f64,
                       lower: bool| {
         let (Some(mc), Some(bc)) = (model.meerkat_col, best) else {
             return "<td>—</td>".to_string();
         };
-        let (Cell::Reached(m), Cell::Reached(c)) = (&cells[mc], &cells[bc]) else {
+        let (Cell::Interpolated(m), Cell::Interpolated(c)) = (&cells[mc], &cells[bc]) else {
             return "<td>—</td>".to_string();
         };
         let pct = (metric(m) / metric(c) - 1.0) * 100.0;
         format!("<td>{}</td>", fmt_delta(pct, lower))
     };
 
+    // A non-interpolable cell, annotated with which side of the target the
+    // column's measurements sit on.
+    let dash_cell = |cell: &Cell| match cell {
+        Cell::Below { max_recall } => {
+            format!("<td>— <span class=\"faint\">(max r={max_recall:.3})</span></td>")
+        }
+        Cell::Above { min_recall } => {
+            format!("<td>— <span class=\"faint\">(min r={min_recall:.3})</span></td>")
+        }
+        Cell::Interpolated(_) => unreachable!("interpolated cells are rendered by the caller"),
+    };
+
     // --- QPS at recall -----------------------------------------------------
     b.push_str("<h2>QPS at recall</h2>");
-    header(&mut b, "Recall target");
+    header(&mut b, "Recall");
     for row in &model.rows {
-        let qps = |op: &compare::OperatingCell| op.qps;
+        let qps = |v: &compare::InterpCell| v.qps;
         let best = best_col(&row.cells, &qps, false);
-        b.push_str(&format!("<tr><td>\u{2265} {:.2}</td>", row.target));
+        b.push_str(&format!("<tr><td>{:.2}</td>", row.target));
         for (i, cell) in row.cells.iter().enumerate() {
             match cell {
-                Cell::Reached(op) => {
-                    let v = fmt_thousands(op.qps);
-                    let v = if best == Some(i) {
-                        format!("<b>{v}</b>")
+                Cell::Interpolated(v) => {
+                    let s = fmt_thousands(v.qps);
+                    if best == Some(i) {
+                        b.push_str(&format!("<td><b>{s}</b></td>"));
                     } else {
-                        v
-                    };
-                    b.push_str(&format!(
-                        "<td>{v} <span class=\"faint\">(r={:.3})</span></td>",
-                        op.recall
-                    ));
+                        b.push_str(&format!("<td>{s}</td>"));
+                    }
                 }
-                Cell::Unreached { max_recall } => {
-                    b.push_str(&format!(
-                        "<td>— <span class=\"faint\">(max r={max_recall:.3})</span></td>"
-                    ));
-                }
+                other => b.push_str(&dash_cell(other)),
             }
         }
         if delta_col {
@@ -510,26 +514,20 @@ fn render_run_tables(compact: &CompactSummary) -> String {
     // --- Latency at recall -------------------------------------------------
     b.push_str("<h2>Latency at recall</h2>");
     header(&mut b, "");
-    type LatencyMetric = fn(&compare::OperatingCell) -> f64;
+    type LatencyMetric = fn(&compare::InterpCell) -> f64;
     let percentiles: [(&str, LatencyMetric); 3] = [
-        ("p50", |op| op.p50_us),
-        ("p95", |op| op.p95_us),
-        ("p99", |op| op.p99_us),
+        ("p50", |v| v.p50_us),
+        ("p95", |v| v.p95_us),
+        ("p99", |v| v.p99_us),
     ];
     for row in &model.rows {
-        // Section header: the target once, plus each column's achieved
-        // recall (all percentile rows below come from that operating point).
+        // Section header: one group of percentile rows per recall target.
         b.push_str(&format!(
-            "<tr class=\"sect\"><td>@ recall \u{2265} {:.2}</td>",
+            "<tr class=\"sect\"><td>@ recall {:.2}</td>",
             row.target
         ));
-        for cell in &row.cells {
-            match cell {
-                Cell::Reached(op) => b.push_str(&format!("<td>r={:.3}</td>", op.recall)),
-                Cell::Unreached { max_recall } => {
-                    b.push_str(&format!("<td>— (max r={max_recall:.3})</td>"))
-                }
-            }
+        for _ in &row.cells {
+            b.push_str("<td></td>");
         }
         if delta_col {
             b.push_str("<td></td>");
@@ -537,20 +535,20 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         b.push_str("</tr>");
 
         for (name, metric) in &percentiles {
-            let m = |op: &compare::OperatingCell| metric(op);
+            let m = |v: &compare::InterpCell| metric(v);
             let best = best_col(&row.cells, &m, true);
             b.push_str(&format!("<tr><td>{name}</td>"));
             for (i, cell) in row.cells.iter().enumerate() {
                 match cell {
-                    Cell::Reached(op) => {
-                        let v = fmt_ms(metric(op));
+                    Cell::Interpolated(v) => {
+                        let s = fmt_ms(metric(v));
                         if best == Some(i) {
-                            b.push_str(&format!("<td><b>{v}</b></td>"));
+                            b.push_str(&format!("<td><b>{s}</b></td>"));
                         } else {
-                            b.push_str(&format!("<td>{v}</td>"));
+                            b.push_str(&format!("<td>{s}</td>"));
                         }
                     }
-                    Cell::Unreached { .. } => b.push_str("<td>—</td>"),
+                    _ => b.push_str("<td>—</td>"),
                 }
             }
             if delta_col {
@@ -563,26 +561,34 @@ fn render_run_tables(compact: &CompactSummary) -> String {
 
     // Shared caption for the two search tables.
     b.push_str(&format!(
-        "<p class=\"sub\">Each cell is the highest-QPS configuration reaching \
-         the recall target; the achieved recall is shown as (r=…). Recall is \
-         {}. Insert/update/delete workloads are not measured.</p>",
+        "<p class=\"sub\">All values are taken at exactly the stated recall, \
+         log-interpolated between the two surrounding measured sweep points \
+         on each column's Pareto frontier (measured values are used verbatim \
+         on an exact hit). \u{201c}—\u{201d} means the sweep does not span \
+         that recall; nothing is extrapolated. Recall is {}. \
+         Insert/update/delete workloads are not measured.</p>",
         esc(compact.recall_basis.describe())
     ));
     if model.mode == ColumnMode::Families {
         let mut notes = Vec::new();
         for row in &model.rows {
             for (i, cell) in row.cells.iter().enumerate() {
-                if let Cell::Reached(op) = cell {
+                if let Cell::Interpolated(v) = cell {
+                    let configs = if v.lo_config == v.hi_config {
+                        v.lo_config.clone()
+                    } else {
+                        format!("{}\u{2013}{}", v.lo_config, v.hi_config)
+                    };
                     notes.push(format!(
-                        "{} @\u{2265}{:.2}: {}",
-                        model.columns[i], row.target, op.index_name
+                        "{} @{:.2}: {}",
+                        model.columns[i], row.target, configs
                     ));
                 }
             }
         }
         if !notes.is_empty() {
             b.push_str(&format!(
-                "<p class=\"sub\">Operating-point configs — {}</p>",
+                "<p class=\"sub\">Interpolated between configs — {}</p>",
                 esc(&notes.join(" · "))
             ));
         }
@@ -1026,7 +1032,7 @@ mod tests {
     fn versus_compact() -> CompactSummary {
         compact(
             vec![
-                sweep("mkt-n16000", "meerkat", 0.91, 3000.0),
+                sweep("mkt-n16000", "meerkat", 0.90, 3000.0),
                 sweep("mkt-n16000", "meerkat", 0.96, 1500.0),
                 sweep("hnsw-m24", "pgvector-hnsw", 0.90, 2000.0),
                 sweep("hnsw-m24", "pgvector-hnsw", 0.94, 1200.0),
@@ -1180,30 +1186,55 @@ mod tests {
         assert!(html.contains("<h2>Build comparison</h2>"));
         // Δ column against the best competitor.
         assert!(html.contains("\u{394} vs best competitor"));
-        // Meerkat reaches 0.95, the competitor doesn't: its max recall shows.
-        assert!(html.contains("(max r=0.940)"));
-        // QPS cell carries the achieved recall.
-        assert!(html.contains("(r=0.910)"));
+        // Both frontiers hit 0.90 exactly: measured values, comparable Δ.
         assert!(html.contains("3,000"));
-        // The competitor's best value is bolded somewhere.
         assert!(html.contains("<b>2,000</b>"));
-        // 0.99 reached by nobody -> no such row in either table.
+        assert!(html.contains("class=\"pos\">+50%"));
+        // At 0.95 the competitor's sweep tops out at 0.94; no Δ there.
+        assert!(html.contains("(max r=0.940)"));
+        // 0.99 spanned by nobody -> no such row in either table.
         assert!(!html.contains("0.99"));
-        // Caption: rule + basis + workload note; build footnote names configs.
-        assert!(html.contains("highest-QPS configuration"));
+        // Caption: method + basis + workload note; footnotes name configs.
+        assert!(html.contains("log-interpolated"));
         assert!(html.contains("distance-based"));
         assert!(html.contains("Insert/update/delete workloads are not measured"));
+        assert!(html.contains("Interpolated between configs"));
         assert!(html.contains("Meerkat = mkt-n16000, prewarmed"));
         // Build cells with meerkat faster + smaller: green negative deltas.
         assert!(html.contains("class=\"pos\">-39%"));
     }
 
     #[test]
+    fn run_tables_delta_only_between_interpolated_cells() {
+        // Meerkat's sweep starts above 0.90 — no value there, so no Δ,
+        // even though the competitor hits 0.90 exactly.
+        let html = render_run_tables(&compact(
+            vec![
+                sweep("mkt", "meerkat", 0.93, 3000.0),
+                sweep("mkt", "meerkat", 0.96, 1500.0),
+                sweep("hnsw", "pgvector-hnsw", 0.90, 2000.0),
+                sweep("hnsw", "pgvector-hnsw", 0.96, 800.0),
+            ],
+            vec![],
+        ));
+        assert!(html.contains("(min r=0.930)")); // meerkat's 0.90 cell
+        let qps_table = &html[..html.find("Latency at recall").unwrap()];
+        let row_090 = &qps_table[qps_table.find("<td>0.90</td>").unwrap()..];
+        let row_090 = &row_090[..row_090.find("</tr>").unwrap()];
+        assert!(row_090.contains("—")); // no Δ at 0.90
+        assert!(!row_090.contains("class=\"pos\""));
+        // At 0.95 both interpolate -> Δ present.
+        let row_095 = &qps_table[qps_table.find("<td>0.95</td>").unwrap()..];
+        let row_095 = &row_095[..row_095.find("</tr>").unwrap()];
+        assert!(row_095.contains("class=\"pos\"") || row_095.contains("class=\"neg\""));
+    }
+
+    #[test]
     fn run_tables_single_family_without_delta() {
         let html = render_run_tables(&compact(
             vec![
-                sweep("mkt-serial", "meerkat", 0.91, 2000.0),
-                sweep("mkt-parallel", "meerkat", 0.92, 2100.0),
+                sweep("mkt-serial", "meerkat", 0.90, 2000.0),
+                sweep("mkt-parallel", "meerkat", 0.90, 2100.0),
             ],
             vec![],
         ));

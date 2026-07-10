@@ -58,14 +58,6 @@ pub fn operating_point<'a>(points: &[&'a SweepPoint], target: f64) -> Option<&'a
         .copied()
 }
 
-pub fn max_recall(points: &[&SweepPoint]) -> Option<f64> {
-    points
-        .iter()
-        .map(|p| p.recall)
-        .max_by(f64::total_cmp)
-        .filter(|r| r.is_finite())
-}
-
 /// (recall, qps) Pareto frontier, recall-ascending, QPS strictly descending —
 /// the points no other point beats on both axes.
 pub fn pareto_frontier(points: &[&SweepPoint]) -> Vec<(f64, f64)> {
@@ -201,13 +193,17 @@ pub enum ColumnMode {
     Configs,
 }
 
-/// One column's operating point at one recall target.
+/// One column's numbers at exactly one recall target, log-interpolated
+/// between the two Pareto-frontier points surrounding the target (taken
+/// verbatim when a measured point lands exactly on it). Interpolating both
+/// QPS and the latency percentiles at the same recall makes every column —
+/// and therefore every Δ — comparable at the identical recall.
 #[derive(Debug, Clone)]
-pub struct OperatingCell {
-    /// The config that produced the point (footnote material; equals the
-    /// column name in `Configs` mode).
-    pub index_name: String,
-    pub recall: f64,
+pub struct InterpCell {
+    /// The configs of the two bracketing points (equal on an exact hit) —
+    /// footnote material.
+    pub lo_config: String,
+    pub hi_config: String,
     pub qps: f64,
     pub p50_us: f64,
     pub p95_us: f64,
@@ -216,11 +212,86 @@ pub struct OperatingCell {
 
 #[derive(Debug, Clone)]
 pub enum Cell {
-    Reached(OperatingCell),
-    /// Column never reaches the target; its best recall for "— (max r=…)".
-    Unreached {
-        max_recall: f64,
-    },
+    /// The column's frontier spans the target.
+    Interpolated(InterpCell),
+    /// Every measured point sits below the target ("— (max r=…)").
+    Below { max_recall: f64 },
+    /// The frontier starts above the target — nothing was measured that low,
+    /// and we never extrapolate ("— (min r=…)").
+    Above { min_recall: f64 },
+}
+
+fn log_interp(v0: f64, v1: f64, t: f64) -> f64 {
+    if v0 <= 0.0 || v1 <= 0.0 {
+        // Degenerate recorded value; fall back to linear rather than NaN.
+        return v0 + t * (v1 - v0);
+    }
+    (v0.ln() + t * (v1.ln() - v0.ln())).exp()
+}
+
+/// Pareto frontier as full sweep points, recall-ascending / QPS-descending.
+pub fn frontier_points<'a>(points: &[&'a SweepPoint]) -> Vec<&'a SweepPoint> {
+    let mut pts: Vec<&SweepPoint> = points.to_vec();
+    pts.sort_by(|a, b| b.recall.total_cmp(&a.recall).then(b.qps.total_cmp(&a.qps)));
+    let mut frontier: Vec<&SweepPoint> = Vec::new();
+    let mut best_qps = f64::NEG_INFINITY;
+    for p in pts {
+        if p.qps > best_qps {
+            frontier.push(p);
+            best_qps = p.qps;
+        }
+    }
+    frontier.reverse();
+    frontier
+}
+
+fn exact_cell(p: &SweepPoint) -> InterpCell {
+    InterpCell {
+        lo_config: p.index_name.clone(),
+        hi_config: p.index_name.clone(),
+        qps: p.qps,
+        p50_us: p.p50_latency_us,
+        p95_us: p.p95_latency_us,
+        p99_us: p.p99_latency_us,
+    }
+}
+
+/// A column's cell at exactly `target`, from its Pareto frontier.
+pub fn cell_at(frontier: &[&SweepPoint], target: f64) -> Cell {
+    let (Some(first), Some(last)) = (frontier.first(), frontier.last()) else {
+        return Cell::Below { max_recall: 0.0 };
+    };
+    if target > last.recall {
+        return Cell::Below {
+            max_recall: last.recall,
+        };
+    }
+    if target < first.recall {
+        return Cell::Above {
+            min_recall: first.recall,
+        };
+    }
+    if let Some(p) = frontier.iter().find(|p| p.recall == target) {
+        return Cell::Interpolated(exact_cell(p));
+    }
+    for w in frontier.windows(2) {
+        let (a, b) = (w[0], w[1]);
+        if target > a.recall && target < b.recall {
+            let t = (target - a.recall) / (b.recall - a.recall);
+            return Cell::Interpolated(InterpCell {
+                lo_config: a.index_name.clone(),
+                hi_config: b.index_name.clone(),
+                qps: log_interp(a.qps, b.qps, t),
+                p50_us: log_interp(a.p50_latency_us, b.p50_latency_us, t),
+                p95_us: log_interp(a.p95_latency_us, b.p95_latency_us, t),
+                p99_us: log_interp(a.p99_latency_us, b.p99_latency_us, t),
+            });
+        }
+    }
+    // Unreachable given the range checks above; be safe.
+    Cell::Below {
+        max_recall: last.recall,
+    }
 }
 
 /// One recall target's row: cells parallel to `RunTableModel::columns`.
@@ -247,7 +318,7 @@ pub struct RunTableModel {
     /// `Families` mode with at least one competitor, i.e. when the tables
     /// carry a Δ column.
     pub meerkat_col: Option<usize>,
-    /// Targets at which at least one column has a reached cell.
+    /// Targets at which at least one column has an interpolated cell.
     pub rows: Vec<TargetRow>,
     /// Per column: the build backing its operating point at the highest
     /// target it reaches (its best config's build in `Families` mode).
@@ -294,25 +365,15 @@ pub fn build_table_model(cs: &CompactSummary, targets: &[f64]) -> Option<RunTabl
         None
     };
 
+    let frontiers: Vec<Vec<&SweepPoint>> = columns
+        .iter()
+        .map(|c| frontier_points(&groups[c]))
+        .collect();
+
     let mut rows = Vec::new();
     for &target in targets {
-        let cells: Vec<Cell> = columns
-            .iter()
-            .map(|c| match operating_point(&groups[c], target) {
-                Some(p) => Cell::Reached(OperatingCell {
-                    index_name: p.index_name.clone(),
-                    recall: p.recall,
-                    qps: p.qps,
-                    p50_us: p.p50_latency_us,
-                    p95_us: p.p95_latency_us,
-                    p99_us: p.p99_latency_us,
-                }),
-                None => Cell::Unreached {
-                    max_recall: max_recall(&groups[c]).unwrap_or(0.0),
-                },
-            })
-            .collect();
-        if cells.iter().any(|c| matches!(c, Cell::Reached(_))) {
+        let cells: Vec<Cell> = frontiers.iter().map(|f| cell_at(f, target)).collect();
+        if cells.iter().any(|c| matches!(c, Cell::Interpolated(_))) {
             rows.push(TargetRow { target, cells });
         }
     }
@@ -412,7 +473,6 @@ mod tests {
         assert!(operating_point(&refs(&pts2), 0.95).is_some());
         // Unreached.
         assert!(operating_point(&refs(&pts), 0.99).is_none());
-        assert_eq!(max_recall(&refs(&pts)), Some(0.97));
     }
 
     #[test]
@@ -537,12 +597,47 @@ mod tests {
     }
 
     #[test]
+    fn cell_at_interpolates_all_metrics_between_surrounding_points() {
+        let pts = vec![
+            point("a", "meerkat", 0.90, 400.0),
+            point("b", "meerkat", 0.94, 100.0),
+        ];
+        let f = frontier_points(&refs(&pts));
+        // Midpoint: geometric mean of the surrounding values, for QPS and
+        // for every latency percentile alike.
+        let Cell::Interpolated(c) = cell_at(&f, 0.92) else {
+            panic!("expected interpolated");
+        };
+        assert!((c.qps - 200.0).abs() < 1e-9);
+        let (p50_a, p50_b) = (pts[0].p50_latency_us, pts[1].p50_latency_us);
+        assert!((c.p50_us - (p50_a * p50_b).sqrt()).abs() < 1e-9);
+        assert_eq!(c.lo_config, "a");
+        assert_eq!(c.hi_config, "b");
+        // Exact hit: measured values verbatim, bracketing configs equal.
+        let Cell::Interpolated(c) = cell_at(&f, 0.94) else {
+            panic!("expected exact hit");
+        };
+        assert_eq!(c.qps, 100.0);
+        assert_eq!(c.lo_config, "b");
+        assert_eq!(c.hi_config, "b");
+        // Outside the frontier: no extrapolation, direction annotated.
+        match cell_at(&f, 0.89) {
+            Cell::Above { min_recall } => assert_eq!(min_recall, 0.90),
+            _ => panic!("expected above"),
+        }
+        match cell_at(&f, 0.95) {
+            Cell::Below { max_recall } => assert_eq!(max_recall, 0.94),
+            _ => panic!("expected below"),
+        }
+    }
+
+    #[test]
     fn table_model_families_mode_with_delta() {
         let cs = summary(
             vec![
-                point("mkt-a", "meerkat", 0.91, 3000.0),
+                point("mkt-a", "meerkat", 0.90, 3000.0),
                 point("mkt-b", "meerkat", 0.96, 1500.0),
-                point("hnsw", "pgvector-hnsw", 0.91, 2000.0),
+                point("hnsw", "pgvector-hnsw", 0.90, 2000.0),
                 point("hnsw", "pgvector-hnsw", 0.94, 1200.0),
             ],
             vec![
@@ -554,14 +649,28 @@ mod tests {
         assert_eq!(m.mode, ColumnMode::Families);
         assert_eq!(m.columns[0], "Meerkat"); // meerkat first
         assert_eq!(m.meerkat_col, Some(0));
-        // 0.99 reached by nobody -> row dropped; 0.90 and 0.95 remain.
+        // 0.99 spanned by nobody -> row dropped; 0.90 and 0.95 remain.
         assert_eq!(m.rows.len(), 2);
         assert_eq!(m.rows[0].target, 0.90);
         assert_eq!(m.rows[1].target, 0.95);
-        // At 0.95 the competitor is unreached with its max recall noted.
+        // Exact hits at 0.90 keep the measured values.
+        match &m.rows[0].cells[0] {
+            Cell::Interpolated(c) => assert_eq!(c.qps, 3000.0),
+            _ => panic!("expected interpolated"),
+        }
+        // At 0.95 meerkat interpolates between its 0.90 and 0.96 points; the
+        // competitor's frontier tops out below the target.
+        match &m.rows[1].cells[0] {
+            Cell::Interpolated(c) => {
+                assert!(c.qps < 3000.0 && c.qps > 1500.0);
+                assert_eq!(c.lo_config, "mkt-a");
+                assert_eq!(c.hi_config, "mkt-b");
+            }
+            _ => panic!("expected interpolated"),
+        }
         match &m.rows[1].cells[1] {
-            Cell::Unreached { max_recall } => assert_eq!(*max_recall, 0.94),
-            _ => panic!("expected unreached"),
+            Cell::Below { max_recall } => assert_eq!(*max_recall, 0.94),
+            _ => panic!("expected below"),
         }
         // Build cells: meerkat column backed by mkt-b (highest reached
         // target 0.95), competitor by hnsw.
@@ -591,12 +700,27 @@ mod tests {
 
     #[test]
     fn table_model_single_config_still_renders() {
-        let cs = summary(vec![point("mkt", "meerkat", 0.91, 2000.0)], vec![]);
+        let cs = summary(
+            vec![
+                point("mkt", "meerkat", 0.88, 2500.0),
+                point("mkt", "meerkat", 0.92, 1800.0),
+            ],
+            vec![],
+        );
         let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
         assert_eq!(m.mode, ColumnMode::Configs);
         assert_eq!(m.columns, vec!["mkt".to_string()]);
-        assert_eq!(m.rows.len(), 1); // only the 0.90 target is reached
+        assert_eq!(m.rows.len(), 1); // only 0.90 is spanned by the sweep
         assert!(m.meerkat_col.is_none());
+    }
+
+    #[test]
+    fn table_model_empty_rows_when_no_target_spanned() {
+        // A single measured point spans no target: model still built (build
+        // table can render), but no QPS/latency rows.
+        let cs = summary(vec![point("mkt", "meerkat", 0.91, 2000.0)], vec![]);
+        let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
+        assert!(m.rows.is_empty());
     }
 
     #[test]
