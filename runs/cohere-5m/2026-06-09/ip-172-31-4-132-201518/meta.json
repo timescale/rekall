@@ -11,7 +11,11 @@
   "memory_gb": 61.8,
   "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg24.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, 64-bit",
   "rekall_commit": null,
-  "extensions": {},
+  "extensions": {
+    "meerkat": "0.1.0 (65df24d)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.2"
+  },
   "peak_recall": 0.9996499999999996,
   "qps_at_peak": 13.644924015129572,
   "num_indexes": 17,
