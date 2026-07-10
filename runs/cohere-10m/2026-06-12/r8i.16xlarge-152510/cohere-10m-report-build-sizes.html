@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index size</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index size</div><div class="meta">cohere-10m  |  2026-06-12  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB<br>PG 18.4  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (8e85a2b), pgvector 0.8.2</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["mkt-n24000-cctrue-fs16-soar", "mkt-n24000-cctrue-fs16-soar-cfs", "mkt-n20000-cctrue-fs16-soar-cfs", "mkt-n20000-cctrue-fs16-soar", "mkt-n16000-cctrue-fs16-soar", "mkt-n16000-cctrue-fs16-soar-cfs", "mkt-n12000-cctrue-fs16-soar", "mkt-n12000-cctrue-fs16-soar-cfs"], y:[2388.84375, 2386.578125, 2357.8125, 2353.921875, 2328.7421875, 2326.25, 2296.4140625, 2295.640625], text:["314s", "311s", "277s", "295s", "215s", "214s", "614s", "171s"],
+  textposition:"outside", cliponaxis:false, hovertext:["314.2s · 2389 MB · 32 workers", "311.3s · 2387 MB · 32 workers", "276.5s · 2358 MB · 32 workers", "295.0s · 2354 MB · 32 workers", "215.2s · 2329 MB · 32 workers", "213.8s · 2326 MB · 32 workers", "613.7s · 2296 MB · 32 workers", "171.0s · 2296 MB · 32 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Index size (MB)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>
