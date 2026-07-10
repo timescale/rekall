@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Index build time</title>
+<html><head><meta charset="utf-8"><title>Index build time (cache state not controlled; build order determined warmth)</title>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <style>
   html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
@@ -9,7 +9,7 @@
   #header .meta{margin-top:4px;font-size:12px;color:#555}
   #plot{flex:1 1 auto;min-height:0;width:100%}
 </style></head><body>
-<div id="header"><div class="title">Index build time</div><div class="meta">cohere-10m  |  2026-07-03  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (8e72dfd), pgvector 0.8.4</div></div>
+<div id="header"><div class="title">Index build time (cache state not controlled; build order determined warmth)</div><div class="meta">cohere-10m  |  2026-07-03  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (8e72dfd), pgvector 0.8.4</div></div>
 <div id="plot"></div>
 <script>
 var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n40000-cctrue-fs16-soar-cfs", "mkt-n24000-cctrue-fs16-soar-cfs"], y:[4988.452440255, 1830.391978227, 1667.634621179], text:["19529 MB", "2471 MB", "2350 MB"],
