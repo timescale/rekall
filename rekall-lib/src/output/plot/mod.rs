@@ -448,6 +448,7 @@ mod tests {
             wall_time_secs: 0.0,
             qps_wall: 0.0,
             query_results: Vec::new(),
+            cache: None,
         }
     }
 
