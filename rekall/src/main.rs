@@ -721,7 +721,8 @@ fn cmd_report(
     }
 
     // Single report generator, shared with publish / post-benchmark.
-    let written = rekall_lib::publish::report::generate_into_dir(&summary, out, dataset);
+    let finals = rekall_lib::publish::summary::compute_final_results(&summary, out, dataset);
+    let written = rekall_lib::publish::report::generate_into_dir(&summary, out, &finals);
     for p in &written {
         println!("Plot: {}", p.display());
     }

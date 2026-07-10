@@ -4,6 +4,22 @@ use std::time::Duration;
 use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 
+/// Display label for an index family: the readable index-type name plus the
+/// data-type variant, e.g. "Meerkat", "pgvector HNSW (bit)". Single source of
+/// truth for plot series grouping and the published comparison tables — the
+/// two must agree so a table column is findable in the plots.
+pub fn family_label(index_type: &str, data_type: Option<&str>) -> String {
+    let family = match index_type {
+        "meerkat" => "Meerkat",
+        "pgvector-hnsw" => "pgvector HNSW",
+        other => other,
+    };
+    match data_type {
+        Some(dt) => format!("{family} ({dt})"),
+        None => family.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HostInfo {
     pub hostname: String,
@@ -260,6 +276,22 @@ pub fn compute_pareto(results: &[SearchResult]) -> Vec<ParetoPoint> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn family_label_maps_known_types() {
+        assert_eq!(family_label("meerkat", None), "Meerkat");
+        assert_eq!(family_label("pgvector-hnsw", None), "pgvector HNSW");
+        assert_eq!(family_label("vchordrq", None), "vchordrq");
+    }
+
+    #[test]
+    fn family_label_appends_data_type() {
+        assert_eq!(
+            family_label("pgvector-hnsw", Some("bit")),
+            "pgvector HNSW (bit)"
+        );
+        assert_eq!(family_label("custom", Some("halfvec")), "custom (halfvec)");
+    }
 
     #[test]
     fn recall_perfect() {

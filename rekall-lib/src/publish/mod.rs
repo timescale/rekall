@@ -5,10 +5,12 @@
 //! run-start date/time, instance), so re-publishing a run maps to the same
 //! S3 prefix / Pages entry rather than creating a duplicate.
 
+mod compare;
 mod distance;
 mod pages;
 pub mod report;
 mod s3;
+pub mod summary;
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -372,10 +374,22 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
     let meta = RunMeta::from_summary(&summary, &rid, &s3_url)?;
     let do_pages = config.pages && !opts.s3_only && !opts.no_pages;
 
-    // Step 1: generate the report HTML/SVG into the results dir so they are
-    // archived to S3 *and* available for the Pages copy. (Skipped on dry-run.)
+    // Final recall values, computed once and shared by report generation,
+    // summary.json, and the run-page tables — one basis for the whole run.
+    // Dry-run skips the ground-truth load (it can pull in a multi-GB HDF5).
+    let finals = if opts.dry_run {
+        summary::FinalResults::id_basis(&summary)
+    } else {
+        summary::compute_final_results(&summary, dir, opts.dataset.as_deref())
+    };
+    let compact = summary::CompactSummary::build(&summary, &finals);
+
+    // Step 1: generate the report HTML/SVG + summary.json into the results
+    // dir so they are archived to S3 *and* available for the Pages copy.
+    // (Skipped on dry-run.)
     if !opts.dry_run {
-        report::generate_into_dir(&summary, dir, opts.dataset.as_deref());
+        report::generate_into_dir(&summary, dir, &finals);
+        summary::write_summary_json(dir, &compact)?;
     }
 
     let mut files =
@@ -391,9 +405,12 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
             }
             println!("  {s3_url}{rel}");
         }
+        println!("  {s3_url}summary.json  (compact table/catalog data)");
         println!("  {s3_url}meta.json  (completion marker, written last)");
         if do_pages {
-            pages::publish(&summary, &meta, dir, &rid, config, true, opts.force)?;
+            pages::publish(
+                &summary, &meta, &compact, dir, &rid, config, true, opts.force,
+            )?;
         }
         return Ok(());
     }
@@ -423,7 +440,9 @@ pub async fn publish(dir: &Path, config: &PublishConfig, opts: &PublishOptions) 
     // GitHub Pages publish. Non-fatal: a Pages misconfig must not mask a
     // successful S3 archive — log and continue.
     if do_pages {
-        match pages::publish(&summary, &meta, dir, &rid, config, false, opts.force) {
+        match pages::publish(
+            &summary, &meta, &compact, dir, &rid, config, false, opts.force,
+        ) {
             Ok(Some(url)) => tracing::info!("published run page: {url}"),
             Ok(None) => {}
             Err(e) => eprintln!("GitHub Pages publish failed (S3 archive succeeded): {e}"),

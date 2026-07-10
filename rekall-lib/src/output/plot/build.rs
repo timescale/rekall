@@ -1,6 +1,7 @@
-//! Index build-time bar chart (one bar per index, tallest first). HTML uses
-//! Plotly; SVG/PNG go through gnuplot. Bars are build time in seconds; each
-//! bar is labelled with the index size and the worker count shows in the
+//! Index build bar charts (one bar per index, tallest first). HTML uses
+//! Plotly; SVG/PNG go through gnuplot. The metric picks the bar height:
+//! build time in seconds (bars labelled with the index size) or index size
+//! in MB (bars labelled with the build time). Worker count shows in the
 //! hover / label.
 
 use std::io::Write;
@@ -12,17 +13,48 @@ use super::gnuplot::title_string;
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
+/// Which build property a chart's bars measure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BuildMetric {
+    TimeSecs,
+    SizeMb,
+}
+
+impl BuildMetric {
+    fn value(self, b: &IndexBuildResult) -> f64 {
+        match self {
+            BuildMetric::TimeSecs => b.build_time.as_secs_f64(),
+            BuildMetric::SizeMb => mb(b.index_size_bytes),
+        }
+    }
+
+    fn y_label(self) -> &'static str {
+        match self {
+            BuildMetric::TimeSecs => "Build time (seconds)",
+            BuildMetric::SizeMb => "Index size (MB)",
+        }
+    }
+
+    /// The complementary property, printed as the bar label.
+    fn bar_label(self, b: &IndexBuildResult) -> String {
+        match self {
+            BuildMetric::TimeSecs => format!("{:.0} MB", mb(b.index_size_bytes)),
+            BuildMetric::SizeMb => format!("{:.0}s", b.build_time.as_secs_f64()),
+        }
+    }
+}
+
 fn mb(bytes: u64) -> f64 {
     bytes as f64 / (1024.0 * 1024.0)
 }
 
-/// Builds sorted by descending build time (tallest bar first).
-fn sorted(builds: &[IndexBuildResult]) -> Vec<&IndexBuildResult> {
+/// Builds sorted by descending metric (tallest bar first).
+fn sorted(builds: &[IndexBuildResult], metric: BuildMetric) -> Vec<&IndexBuildResult> {
     let mut v: Vec<&IndexBuildResult> = builds.iter().collect();
     v.sort_by(|a, b| {
-        b.build_time
-            .as_secs_f64()
-            .partial_cmp(&a.build_time.as_secs_f64())
+        metric
+            .value(b)
+            .partial_cmp(&metric.value(a))
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     v
@@ -37,16 +69,14 @@ fn esc_html(s: &str) -> String {
 pub fn render_html(
     path: &Path,
     builds: &[IndexBuildResult],
+    metric: BuildMetric,
     title: &str,
     caption: Option<&str>,
 ) -> R {
-    let bars = sorted(builds);
+    let bars = sorted(builds, metric);
     let names: Vec<String> = bars.iter().map(|b| b.index_name.clone()).collect();
-    let secs: Vec<f64> = bars.iter().map(|b| b.build_time.as_secs_f64()).collect();
-    let labels: Vec<String> = bars
-        .iter()
-        .map(|b| format!("{:.0} MB", mb(b.index_size_bytes)))
-        .collect();
+    let values: Vec<f64> = bars.iter().map(|b| metric.value(b)).collect();
+    let labels: Vec<String> = bars.iter().map(|b| metric.bar_label(b)).collect();
     let hover: Vec<String> = bars
         .iter()
         .map(|b| {
@@ -80,12 +110,12 @@ pub fn render_html(
             "</style></head><body>\n",
             "<div id=\"header\"><div class=\"title\">{title_h}</div>{caption_html}</div>\n",
             "<div id=\"plot\"></div>\n<script>\n",
-            "var trace = {{ type:\"bar\", x:{names:?}, y:{secs:?}, text:{labels:?},\n",
+            "var trace = {{ type:\"bar\", x:{names:?}, y:{values:?}, text:{labels:?},\n",
             "  textposition:\"outside\", cliponaxis:false, hovertext:{hover:?},\n",
             "  hovertemplate:\"<b>%{{x}}</b><br>%{{hovertext}}<extra></extra>\",\n",
             "  marker:{{color:\"rgb(31,119,180)\"}} }};\n",
             "var layout = {{ margin:{{t:20}},\n",
-            "  yaxis:{{ title:\"Build time (seconds)\", gridcolor:\"#eeeeee\", rangemode:\"tozero\" }},\n",
+            "  yaxis:{{ title:{y_label:?}, gridcolor:\"#eeeeee\", rangemode:\"tozero\" }},\n",
             "  xaxis:{{ automargin:true, tickangle:-40 }},\n",
             "  plot_bgcolor:\"white\", paper_bgcolor:\"white\" }};\n",
             "Plotly.newPlot(\"plot\",[trace],layout,{{responsive:true}});\n",
@@ -95,9 +125,10 @@ pub fn render_html(
         title_h = esc_html(title),
         caption_html = caption_html,
         names = names,
-        secs = secs,
+        values = values,
         labels = labels,
         hover = hover,
+        y_label = metric.y_label(),
     );
     std::fs::File::create(path)?.write_all(html.as_bytes())?;
     Ok(())
@@ -107,10 +138,11 @@ pub fn render_gnuplot(
     gp_path: &Path,
     output_path: Option<&Path>,
     builds: &[IndexBuildResult],
+    metric: BuildMetric,
     title: &str,
     caption: Option<&str>,
 ) -> R {
-    let bars = sorted(builds);
+    let bars = sorted(builds, metric);
     let mut f = std::fs::File::create(gp_path)?;
 
     if let Some(out) = output_path {
@@ -128,7 +160,7 @@ pub fn render_gnuplot(
 
     writeln!(f)?;
     writeln!(f, "set title \"{}\"", title_string(title, caption))?;
-    writeln!(f, "set ylabel 'Build time (seconds)'")?;
+    writeln!(f, "set ylabel '{}'", metric.y_label())?;
     writeln!(f, "set grid ytics")?;
     writeln!(f, "set yrange [0:*]")?;
     // A little x padding off the frame and ~8% headroom so the tallest bar's
@@ -146,13 +178,13 @@ pub fn render_gnuplot(
 
     writeln!(f, "$builds << EOD")?;
     for b in &bars {
-        // "name" seconds size_mb  — name quoted so xtic(1) keeps it whole.
+        // "name" value "label"  — quoted so xtic(1)/labels keep them whole.
         writeln!(
             f,
-            "\"{}\" {} {:.1}",
+            "\"{}\" {} \"{}\"",
             b.index_name.replace('"', "'"),
-            b.build_time.as_secs_f64(),
-            mb(b.index_size_bytes)
+            metric.value(b),
+            metric.bar_label(b).replace('"', "'")
         )?;
     }
     writeln!(f, "EOD")?;
@@ -165,7 +197,7 @@ pub fn render_gnuplot(
     )?;
     writeln!(
         f,
-        "  $builds using 0:2:(sprintf('%.0f MB', $3)) with labels offset 0,0.8 font ',8' notitle"
+        "  $builds using 0:2:3 with labels offset 0,0.8 font ',8' notitle"
     )?;
 
     if output_path.is_none() {
@@ -195,16 +227,20 @@ mod tests {
     }
 
     #[test]
-    fn sorted_is_descending_by_build_time() {
+    fn sorted_is_descending_by_metric() {
         let bs = vec![
-            build("a", 100, 0, 1),
-            build("b", 300, 0, 1),
-            build("c", 200, 0, 1),
+            build("a", 100, 900, 1),
+            build("b", 300, 100, 1),
+            build("c", 200, 500, 1),
         ];
-        let s = sorted(&bs);
-        assert_eq!(s[0].index_name, "b");
-        assert_eq!(s[1].index_name, "c");
-        assert_eq!(s[2].index_name, "a");
+        let by_time = sorted(&bs, BuildMetric::TimeSecs);
+        assert_eq!(by_time[0].index_name, "b");
+        assert_eq!(by_time[1].index_name, "c");
+        assert_eq!(by_time[2].index_name, "a");
+        let by_size = sorted(&bs, BuildMetric::SizeMb);
+        assert_eq!(by_size[0].index_name, "a");
+        assert_eq!(by_size[1].index_name, "c");
+        assert_eq!(by_size[2].index_name, "b");
     }
 
     #[test]
@@ -214,6 +250,7 @@ mod tests {
         render_html(
             &p,
             &[build("mkt-n16000", 600, 2_300_000_000, 8)],
+            BuildMetric::TimeSecs,
             "Index build time",
             Some("cohere-5m | r8i"),
         )
@@ -222,6 +259,25 @@ mod tests {
         assert!(html.contains("type:\"bar\""));
         assert!(html.contains("mkt-n16000"));
         assert!(html.contains("Build time (seconds)"));
+        assert!(html.contains("2193 MB")); // size as bar label
         assert!(html.contains("cohere-5m | r8i")); // caption
+    }
+
+    #[test]
+    fn html_size_metric_swaps_axis_and_labels() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path().join("s.html");
+        render_html(
+            &p,
+            &[build("mkt-n16000", 600, 2_300_000_000, 8)],
+            BuildMetric::SizeMb,
+            "Index size",
+            None,
+        )
+        .unwrap();
+        let html = std::fs::read_to_string(&p).unwrap();
+        assert!(html.contains("Index size (MB)"));
+        assert!(html.contains("600s")); // build time as bar label
+        assert!(!html.contains("Build time (seconds)"));
     }
 }

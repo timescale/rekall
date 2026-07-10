@@ -19,7 +19,9 @@ use crate::config::PublishConfig;
 use crate::error::{Error, Result};
 use crate::metrics::RunSummary;
 
+use super::compare::{self, Cell, ColumnMode};
 use super::report;
+use super::summary::{read_summary_json, write_summary_json, CompactSummary, RecallBasis};
 use super::RunMeta;
 
 fn esc(s: &str) -> String {
@@ -190,9 +192,11 @@ fn commit_push(work: &Path, branch: &str, ssh: Option<&str>, msg: &str, force: b
 
 /// Publish a run's reports + metadata to GitHub Pages. Returns the public URL
 /// of the run's page when `public_base_url` is configured.
+#[allow(clippy::too_many_arguments)]
 pub fn publish(
     summary: &RunSummary,
     meta: &RunMeta,
+    compact: &CompactSummary,
     results_dir: &Path,
     run_id: &str,
     config: &PublishConfig,
@@ -203,8 +207,9 @@ pub fn publish(
 
     if dry_run {
         println!("[dry-run] gh-pages would update runs/{run_id}/:");
-        println!("  runs/{run_id}/index.html  (run metadata + plots)");
+        println!("  runs/{run_id}/index.html  (run metadata + tables + plots)");
         println!("  runs/{run_id}/meta.json");
+        println!("  runs/{run_id}/summary.json");
         for f in &report_files {
             println!(
                 "  runs/{run_id}/{}",
@@ -239,15 +244,18 @@ pub fn publish(
         .map_err(|e| Error::Config(format!("serialize meta.json: {e}")))?;
     std::fs::write(run_dir.join("meta.json"), meta_json)
         .map_err(|e| Error::Config(format!("write meta.json: {e}")))?;
+    // summary.json feeds the catalog's comparison column (recomputed from it
+    // on every catalog regeneration, so the method can evolve).
+    write_summary_json(&run_dir, compact)?;
     std::fs::write(
         run_dir.join("index.html"),
-        render_run_page(summary, meta, &report_files),
+        render_run_page(summary, meta, compact, &report_files),
     )
     .map_err(|e| Error::Config(format!("write run index.html: {e}")))?;
 
-    // Regenerate the catalog from every run's meta.json.
-    let metas = load_all_meta(&work);
-    std::fs::write(work.join("index.html"), render_catalog(&metas))
+    // Regenerate the catalog from every run's meta.json + summary.json.
+    let entries = load_all_meta(&work);
+    std::fs::write(work.join("index.html"), render_catalog(&entries))
         .map_err(|e| Error::Config(format!("write catalog index.html: {e}")))?;
 
     commit_push(
@@ -290,7 +298,13 @@ fn pages_workdir(url: &str) -> PathBuf {
 fn collect_report_files(summary: &RunSummary, dir: &Path) -> Vec<PathBuf> {
     let prefix = report::report_prefix(summary);
     let mut out = Vec::new();
-    for kind in ["pareto", "per-config", "distance-recall", "build-times"] {
+    for kind in [
+        "pareto",
+        "per-config",
+        "distance-recall",
+        "build-times",
+        "build-sizes",
+    ] {
         for ext in ["html", "svg"] {
             let p = dir.join(format!("{prefix}-report-{kind}.{ext}"));
             if p.exists() {
@@ -301,7 +315,15 @@ fn collect_report_files(summary: &RunSummary, dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn load_all_meta(work: &Path) -> Vec<RunMeta> {
+/// One published run as the catalog sees it: identity from meta.json plus,
+/// for runs published since summaries exist, the compact numbers behind the
+/// comparison column. `summary: None` (old, un-backfilled runs) renders "—".
+struct CatalogEntry {
+    meta: RunMeta,
+    summary: Option<CompactSummary>,
+}
+
+fn load_all_meta(work: &Path) -> Vec<CatalogEntry> {
     let mut out = Vec::new();
     let runs = work.join("runs");
     let mut stack = vec![runs];
@@ -316,7 +338,10 @@ fn load_all_meta(work: &Path) -> Vec<RunMeta> {
             } else if p.file_name().is_some_and(|n| n == "meta.json") {
                 if let Ok(s) = std::fs::read_to_string(&p) {
                     if let Ok(m) = serde_json::from_str::<RunMeta>(&s) {
-                        out.push(m);
+                        out.push(CatalogEntry {
+                            meta: m,
+                            summary: p.parent().and_then(read_summary_json),
+                        });
                     }
                 }
             }
@@ -337,7 +362,10 @@ a.svg{font-size:11px;color:#888;border:1px solid #ddd;border-radius:3px;padding:
 .kv td:first-child{color:#555;width:230px}\
 details{margin:8px 0}summary{cursor:pointer;color:#555;font-size:13px}\
 pre{background:#f6f8fa;padding:10px;border-radius:6px;overflow:auto;font-size:12px}\
-.thumbs img{max-width:520px;border:1px solid #eee;border-radius:6px;margin:8px 8px 0 0}";
+.thumbs img{max-width:520px;border:1px solid #eee;border-radius:6px;margin:8px 8px 0 0}\
+.pos{color:#188038}.neg{color:#c5221f}\
+.faint{color:#999;font-size:11px}\
+tr.sect td{background:#f6f8fa;color:#555;font-weight:600;font-size:12px}";
 
 fn page(title: &str, body: &str) -> String {
     format!(
@@ -347,8 +375,317 @@ fn page(title: &str, body: &str) -> String {
     )
 }
 
+fn fmt_thousands(v: f64) -> String {
+    let s = format!("{:.0}", v);
+    let mut out = String::new();
+    let digits: Vec<char> = s.chars().collect();
+    for (i, c) in digits.iter().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) && c.is_ascii_digit() {
+            out.push(',');
+        }
+        out.push(*c);
+    }
+    out
+}
+
+fn fmt_ms(us: f64) -> String {
+    format!("{:.2} ms", us / 1000.0)
+}
+
+fn fmt_secs(s: f64) -> String {
+    if s >= 100.0 {
+        format!("{s:.0} s")
+    } else {
+        format!("{s:.1} s")
+    }
+}
+
+/// A signed percentage delta, coloured by whether it's an improvement
+/// (`lower_is_better` flips the goodness of the sign).
+fn fmt_delta(pct: f64, lower_is_better: bool) -> String {
+    let good = if lower_is_better {
+        pct <= 0.0
+    } else {
+        pct >= 0.0
+    };
+    let class = if good { "pos" } else { "neg" };
+    format!("<span class=\"{class}\">{pct:+.0}%</span>")
+}
+
+/// The three run-page summary tables (QPS at recall, latency at recall,
+/// index build), rendered from the compact summary. Empty string when the
+/// run recorded no search points.
+fn render_run_tables(compact: &CompactSummary) -> String {
+    let Some(model) = compare::build_table_model(compact, compare::RECALL_TARGETS) else {
+        return String::new();
+    };
+    let mut b = String::new();
+    let delta_col = model.meerkat_col.is_some();
+
+    let header = |b: &mut String, first: &str| {
+        b.push_str("<table><tr>");
+        b.push_str(&format!("<th>{}</th>", esc(first)));
+        for c in &model.columns {
+            b.push_str(&format!("<th>{}</th>", esc(c)));
+        }
+        if delta_col {
+            b.push_str("<th>\u{394} vs best competitor</th>");
+        }
+        b.push_str("</tr>");
+    };
+
+    // Best competitor (or, in Configs mode, best overall) column of a row by
+    // a metric; `lower_is_better` picks min instead of max.
+    let best_col =
+        |cells: &[Cell], metric: &dyn Fn(&compare::OperatingCell) -> f64, lower: bool| {
+            let candidates = cells.iter().enumerate().filter_map(|(i, c)| {
+                if delta_col && Some(i) == model.meerkat_col {
+                    return None; // "best" means best competitor in Families mode
+                }
+                match c {
+                    Cell::Reached(op) => Some((i, metric(op))),
+                    Cell::Unreached { .. } => None,
+                }
+            });
+            if lower {
+                candidates
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| i)
+            } else {
+                candidates
+                    .max_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| i)
+            }
+        };
+
+    let delta_cell = |cells: &[Cell],
+                      best: Option<usize>,
+                      metric: &dyn Fn(&compare::OperatingCell) -> f64,
+                      lower: bool| {
+        let (Some(mc), Some(bc)) = (model.meerkat_col, best) else {
+            return "<td>—</td>".to_string();
+        };
+        let (Cell::Reached(m), Cell::Reached(c)) = (&cells[mc], &cells[bc]) else {
+            return "<td>—</td>".to_string();
+        };
+        let pct = (metric(m) / metric(c) - 1.0) * 100.0;
+        format!("<td>{}</td>", fmt_delta(pct, lower))
+    };
+
+    // --- QPS at recall -----------------------------------------------------
+    b.push_str("<h2>QPS at recall</h2>");
+    header(&mut b, "Recall target");
+    for row in &model.rows {
+        let qps = |op: &compare::OperatingCell| op.qps;
+        let best = best_col(&row.cells, &qps, false);
+        b.push_str(&format!("<tr><td>\u{2265} {:.2}</td>", row.target));
+        for (i, cell) in row.cells.iter().enumerate() {
+            match cell {
+                Cell::Reached(op) => {
+                    let v = fmt_thousands(op.qps);
+                    let v = if best == Some(i) {
+                        format!("<b>{v}</b>")
+                    } else {
+                        v
+                    };
+                    b.push_str(&format!(
+                        "<td>{v} <span class=\"faint\">(r={:.3})</span></td>",
+                        op.recall
+                    ));
+                }
+                Cell::Unreached { max_recall } => {
+                    b.push_str(&format!(
+                        "<td>— <span class=\"faint\">(max r={max_recall:.3})</span></td>"
+                    ));
+                }
+            }
+        }
+        if delta_col {
+            b.push_str(&delta_cell(&row.cells, best, &qps, false));
+        }
+        b.push_str("</tr>");
+    }
+    b.push_str("</table>");
+
+    // --- Latency at recall -------------------------------------------------
+    b.push_str("<h2>Latency at recall</h2>");
+    header(&mut b, "");
+    type LatencyMetric = fn(&compare::OperatingCell) -> f64;
+    let percentiles: [(&str, LatencyMetric); 3] = [
+        ("p50", |op| op.p50_us),
+        ("p95", |op| op.p95_us),
+        ("p99", |op| op.p99_us),
+    ];
+    for row in &model.rows {
+        // Section header: the target once, plus each column's achieved
+        // recall (all percentile rows below come from that operating point).
+        b.push_str(&format!(
+            "<tr class=\"sect\"><td>@ recall \u{2265} {:.2}</td>",
+            row.target
+        ));
+        for cell in &row.cells {
+            match cell {
+                Cell::Reached(op) => b.push_str(&format!("<td>r={:.3}</td>", op.recall)),
+                Cell::Unreached { max_recall } => {
+                    b.push_str(&format!("<td>— (max r={max_recall:.3})</td>"))
+                }
+            }
+        }
+        if delta_col {
+            b.push_str("<td></td>");
+        }
+        b.push_str("</tr>");
+
+        for (name, metric) in &percentiles {
+            let m = |op: &compare::OperatingCell| metric(op);
+            let best = best_col(&row.cells, &m, true);
+            b.push_str(&format!("<tr><td>{name}</td>"));
+            for (i, cell) in row.cells.iter().enumerate() {
+                match cell {
+                    Cell::Reached(op) => {
+                        let v = fmt_ms(metric(op));
+                        if best == Some(i) {
+                            b.push_str(&format!("<td><b>{v}</b></td>"));
+                        } else {
+                            b.push_str(&format!("<td>{v}</td>"));
+                        }
+                    }
+                    Cell::Unreached { .. } => b.push_str("<td>—</td>"),
+                }
+            }
+            if delta_col {
+                b.push_str(&delta_cell(&row.cells, best, &m, true));
+            }
+            b.push_str("</tr>");
+        }
+    }
+    b.push_str("</table>");
+
+    // Shared caption for the two search tables.
+    b.push_str(&format!(
+        "<p class=\"sub\">Each cell is the highest-QPS configuration reaching \
+         the recall target; the achieved recall is shown as (r=…). Recall is \
+         {}. Insert/update/delete workloads are not measured.</p>",
+        esc(compact.recall_basis.describe())
+    ));
+    if model.mode == ColumnMode::Families {
+        let mut notes = Vec::new();
+        for row in &model.rows {
+            for (i, cell) in row.cells.iter().enumerate() {
+                if let Cell::Reached(op) = cell {
+                    notes.push(format!(
+                        "{} @\u{2265}{:.2}: {}",
+                        model.columns[i], row.target, op.index_name
+                    ));
+                }
+            }
+        }
+        if !notes.is_empty() {
+            b.push_str(&format!(
+                "<p class=\"sub\">Operating-point configs — {}</p>",
+                esc(&notes.join(" · "))
+            ));
+        }
+    }
+
+    // --- Index build ---------------------------------------------------------
+    if model.build_cells.iter().any(Option::is_some) {
+        b.push_str("<h2>Build comparison</h2>");
+        header(&mut b, "");
+        type BuildMetric = (
+            &'static str,
+            fn(&compare::BuildCell) -> f64,
+            fn(&compare::BuildCell) -> String,
+        );
+        let rows: [BuildMetric; 2] = [
+            (
+                "Build time",
+                |c| c.build_time_secs,
+                |c| fmt_secs(c.build_time_secs),
+            ),
+            (
+                "Index size",
+                |c| c.size_bytes as f64,
+                |c| human_bytes(c.size_bytes),
+            ),
+        ];
+        for (name, metric, fmt) in &rows {
+            let best = {
+                let candidates = model.build_cells.iter().enumerate().filter_map(|(i, c)| {
+                    if delta_col && Some(i) == model.meerkat_col {
+                        return None;
+                    }
+                    c.as_ref().map(|c| (i, metric(c)))
+                });
+                candidates
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| i)
+            };
+            b.push_str(&format!("<tr><td>{name}</td>"));
+            for (i, cell) in model.build_cells.iter().enumerate() {
+                match cell {
+                    Some(c) => {
+                        let v = fmt(c);
+                        if best == Some(i) {
+                            b.push_str(&format!("<td><b>{v}</b></td>"));
+                        } else {
+                            b.push_str(&format!("<td>{v}</td>"));
+                        }
+                    }
+                    None => b.push_str("<td>—</td>"),
+                }
+            }
+            if delta_col {
+                let cell = match (
+                    model
+                        .meerkat_col
+                        .and_then(|i| model.build_cells[i].as_ref()),
+                    best.and_then(|i| model.build_cells[i].as_ref()),
+                ) {
+                    (Some(m), Some(c)) => {
+                        let pct = (metric(m) / metric(c) - 1.0) * 100.0;
+                        format!("<td>{}</td>", fmt_delta(pct, true))
+                    }
+                    _ => "<td>—</td>".to_string(),
+                };
+                b.push_str(&cell);
+            }
+            b.push_str("</tr>");
+        }
+        b.push_str("</table>");
+
+        // Which build each family's numbers refer to (+ cache state). In
+        // Configs mode the column name IS the config, so no note is needed.
+        if model.mode == ColumnMode::Families {
+            let mut notes = Vec::new();
+            for (i, cell) in model.build_cells.iter().enumerate() {
+                if let Some(c) = cell {
+                    let cache = c
+                        .cache
+                        .as_deref()
+                        .map(|s| format!(", {s}"))
+                        .unwrap_or_default();
+                    notes.push(format!("{} = {}{}", model.columns[i], c.index_name, cache));
+                }
+            }
+            b.push_str(&format!(
+                "<p class=\"sub\">Build stats are for the configuration backing \
+                 each column's best operating point: {}.</p>",
+                esc(&notes.join(" · "))
+            ));
+        }
+    }
+
+    b
+}
+
 /// Full per-run metadata page.
-fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf]) -> String {
+fn render_run_page(
+    summary: &RunSummary,
+    meta: &RunMeta,
+    compact: &CompactSummary,
+    report_files: &[PathBuf],
+) -> String {
     let ds = pretty_dataset(&meta.dataset);
     let mut b = String::new();
 
@@ -366,6 +703,9 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
             esc(comment)
         ));
     }
+
+    // Comparison summary tables (QPS / latency at recall targets, builds).
+    b.push_str(&render_run_tables(compact));
 
     // Plots — link only the report files that were actually generated for this
     // run (distance-recall, e.g., only exists if a ground-truth recompute ran).
@@ -386,6 +726,7 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
         ("distance-recall", "Distance-recall"),
         ("per-config", "Per-config"),
         ("build-times", "Build times"),
+        ("build-sizes", "Index sizes"),
     ]
     .iter()
     .filter(|(kind, _)| has(kind, "html"))
@@ -412,7 +753,7 @@ fn render_run_page(summary: &RunSummary, meta: &RunMeta, report_files: &[PathBuf
         } else {
             "per-config"
         };
-        for kind in ["pareto", recall_thumb, "build-times"] {
+        for kind in ["pareto", recall_thumb, "build-times", "build-sizes"] {
             if has(kind, "svg") {
                 let svg = format!("{prefix}-report-{kind}.svg");
                 // The SVG is just the preview image; clicking opens the
@@ -569,57 +910,81 @@ fn human_bytes(n: u64) -> String {
     format!("{v:.1} {}", U[i])
 }
 
+/// The catalog's Meerkat-vs-competition cell: Meerkat's QPS gain/loss at the
+/// low / middle / high recall of each competitor's common frontier range.
+/// "—" when there is nothing to compare: no summary.json (old run), a
+/// single-family run, no frontier overlap — or an ID-based run, so the
+/// column never mixes recall bases (distance-based runs are the norm; the
+/// ID fallback only happens when ground truth was unavailable at publish).
+fn comparison_cell(summary: Option<&CompactSummary>) -> String {
+    let Some(cs) = summary else {
+        return "—".to_string();
+    };
+    if cs.recall_basis != RecallBasis::Distance {
+        return "—".to_string();
+    }
+    let deltas = compare::meerkat_comparison(cs);
+    let mut lines = Vec::new();
+    for d in &deltas {
+        if d.samples.is_empty() {
+            continue;
+        }
+        let samples: Vec<String> = d
+            .samples
+            .iter()
+            .map(|s| format!("{} @{:.2}", fmt_delta(s.pct, false), s.recall))
+            .collect();
+        lines.push(format!(
+            "vs {}: {}",
+            esc(&d.competitor),
+            samples.join(" · ")
+        ));
+    }
+    if lines.is_empty() {
+        "—".to_string()
+    } else {
+        lines.join("<br>")
+    }
+}
+
 /// Top-level catalog grouped by dataset, newest run first.
-fn render_catalog(metas: &[RunMeta]) -> String {
+fn render_catalog(entries: &[CatalogEntry]) -> String {
     use std::collections::BTreeMap;
-    let mut by_ds: BTreeMap<String, Vec<&RunMeta>> = BTreeMap::new();
-    for m in metas {
-        by_ds.entry(m.dataset.clone()).or_default().push(m);
+    let mut by_ds: BTreeMap<String, Vec<&CatalogEntry>> = BTreeMap::new();
+    for e in entries {
+        by_ds.entry(e.meta.dataset.clone()).or_default().push(e);
     }
 
     let mut b = String::new();
     b.push_str("<h1>Rekall benchmark runs</h1>");
     b.push_str(&format!(
         "<div class=\"sub\">{} runs across {} datasets</div>",
-        metas.len(),
+        entries.len(),
         by_ds.len()
     ));
 
     for (dataset, mut runs) in by_ds {
         // newest first by (date, time)
-        runs.sort_by(|a, b| (&b.date, &b.time).cmp(&(&a.date, &a.time)));
+        runs.sort_by(|a, b| (&b.meta.date, &b.meta.time).cmp(&(&a.meta.date, &a.meta.time)));
         b.push_str(&format!("<h2>{}</h2>", esc(&pretty_dataset(&dataset))));
         b.push_str(
             "<table><tr><th>Date</th><th>Comment</th><th>Instance</th>\
-             <th>Peak recall@QPS</th>\
-             <th>Commit</th><th>Plots</th><th>Data</th></tr>",
+             <th>Meerkat vs competition</th></tr>",
         );
-        for m in runs {
+        for e in runs {
+            let m = &e.meta;
             let run_path = format!("runs/{}", m.run_id);
-            let prefix = if m.dataset.is_empty() {
-                "report".to_string()
-            } else {
-                m.dataset.clone()
-            };
             let inst = m.instance_type.as_deref().unwrap_or(&m.hostname);
-            let commit = m.rekall_commit.as_deref().unwrap_or("—");
             b.push_str(&format!(
                 "<tr><td><a href=\"{rp}/index.html\">{date} · {time}</a></td>\
                  <td>{comment}</td>\
-                 <td>{inst}</td><td>{recall:.4} @ {qps:.0}</td><td>{commit}</td>\
-                 <td><a href=\"{rp}/{pre}-report-pareto.html\">pareto</a> · \
-                 <a href=\"{rp}/{pre}-report-per-config.html\">per-config</a></td>\
-                 <td><a href=\"{s3}\">S3</a></td></tr>",
+                 <td>{inst}</td><td>{cmp}</td></tr>",
                 rp = esc(&run_path),
                 date = esc(&m.date),
                 time = esc(&m.time),
                 comment = esc(m.comment.as_deref().unwrap_or("—")),
                 inst = esc(inst),
-                recall = m.peak_recall,
-                qps = m.qps_at_peak,
-                commit = esc(commit),
-                pre = esc(&prefix),
-                s3 = esc(&s3_console_url(&m.s3_url).unwrap_or_else(|| m.s3_url.clone())),
+                cmp = comparison_cell(e.summary.as_ref()),
             ));
         }
         b.push_str("</table>");
@@ -630,7 +995,67 @@ fn render_catalog(metas: &[RunMeta]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::publish::summary::{BuildInfo, SweepPoint};
     use std::collections::BTreeMap;
+
+    fn sweep(name: &str, index_type: &str, recall: f64, qps: f64) -> SweepPoint {
+        SweepPoint {
+            index_name: name.into(),
+            index_type: index_type.into(),
+            data_type: None,
+            recall,
+            qps,
+            p50_latency_us: 1e6 / qps * 0.9,
+            p95_latency_us: 1e6 / qps * 1.5,
+            p99_latency_us: 1e6 / qps * 2.0,
+        }
+    }
+
+    fn compact(points: Vec<SweepPoint>, builds: Vec<BuildInfo>) -> CompactSummary {
+        CompactSummary {
+            recall_basis: RecallBasis::Distance,
+            points,
+            builds,
+        }
+    }
+
+    fn empty_compact() -> CompactSummary {
+        compact(Vec::new(), Vec::new())
+    }
+
+    fn versus_compact() -> CompactSummary {
+        compact(
+            vec![
+                sweep("mkt-n16000", "meerkat", 0.91, 3000.0),
+                sweep("mkt-n16000", "meerkat", 0.96, 1500.0),
+                sweep("hnsw-m24", "pgvector-hnsw", 0.90, 2000.0),
+                sweep("hnsw-m24", "pgvector-hnsw", 0.94, 1200.0),
+            ],
+            vec![
+                BuildInfo {
+                    index_name: "mkt-n16000".into(),
+                    index_type: "meerkat".into(),
+                    build_time_secs: 312.0,
+                    size_bytes: 3_100_000_000,
+                    cache: Some("prewarmed".into()),
+                },
+                BuildInfo {
+                    index_name: "hnsw-m24".into(),
+                    index_type: "pgvector-hnsw".into(),
+                    build_time_secs: 508.0,
+                    size_bytes: 5_400_000_000,
+                    cache: None,
+                },
+            ],
+        )
+    }
+
+    fn entry(meta: RunMeta) -> CatalogEntry {
+        CatalogEntry {
+            meta,
+            summary: None,
+        }
+    }
 
     fn meta(dataset: &str, date: &str, time: &str) -> RunMeta {
         RunMeta {
@@ -664,21 +1089,66 @@ mod tests {
 
     #[test]
     fn catalog_groups_by_dataset_and_links_runs() {
-        let metas = vec![
-            meta("cohere-5m", "2026-06-10", "09:56:42"),
-            meta("cohere-5m", "2026-06-11", "10:00:00"),
-            meta("cohere-10m", "2026-06-09", "08:00:00"),
+        let entries = vec![
+            entry(meta("cohere-5m", "2026-06-10", "09:56:42")),
+            entry(meta("cohere-5m", "2026-06-11", "10:00:00")),
+            entry(meta("cohere-10m", "2026-06-09", "08:00:00")),
         ];
-        let html = render_catalog(&metas);
+        let html = render_catalog(&entries);
         assert!(html.contains("<h2>Cohere-5M</h2>"));
         assert!(html.contains("<h2>Cohere-10M</h2>"));
         // newest cohere-5m run (06-11) appears before the older (06-10)
         let p11 = html.find("2026-06-11").unwrap();
         let p10 = html.find("2026-06-10").unwrap();
         assert!(p11 < p10);
-        // deep link to a run page + plot
+        // deep link to a run page
         assert!(html.contains("runs/cohere-5m/2026-06-10/i-095642/index.html"));
-        assert!(html.contains("cohere-5m-report-pareto.html"));
+        // The dropped columns are gone: everything they carried is one click
+        // away on the run page.
+        assert!(!html.contains("Peak recall"));
+        assert!(!html.contains("<th>Commit</th>"));
+        assert!(!html.contains("<th>Plots</th>"));
+        assert!(!html.contains("report-pareto.html"));
+        assert!(!html.contains("s3.console.aws.amazon.com"));
+        // The comparison column exists; runs without summary.json show "—".
+        assert!(html.contains("<th>Meerkat vs competition</th>"));
+        assert!(html.contains("<td>—</td>"));
+    }
+
+    #[test]
+    fn catalog_comparison_column_from_summary() {
+        let mut with = entry(meta("cohere-5m", "2026-06-10", "09:56:42"));
+        with.summary = Some(versus_compact());
+        let html = render_catalog(&[with]);
+        assert!(html.contains("vs pgvector HNSW:"));
+        assert!(html.contains("class=\"pos\"")); // meerkat wins -> green
+    }
+
+    #[test]
+    fn catalog_comparison_never_mixes_recall_bases() {
+        // An ID-based run must not slip an incomparable number into an
+        // otherwise distance-based column.
+        let mut id_run = entry(meta("cohere-5m", "2026-06-10", "09:56:42"));
+        let mut cs = versus_compact();
+        cs.recall_basis = RecallBasis::Id;
+        id_run.summary = Some(cs);
+        let html = render_catalog(&[id_run]);
+        assert!(!html.contains("vs pgvector HNSW:"));
+        assert!(html.contains("<td>—</td>"));
+    }
+
+    #[test]
+    fn catalog_comparison_dash_for_single_family() {
+        let mut e = entry(meta("cohere-5m", "2026-06-10", "09:56:42"));
+        e.summary = Some(compact(
+            vec![sweep("mkt-a", "meerkat", 0.9, 1000.0)],
+            vec![],
+        ));
+        let html = render_catalog(&[e]);
+        // Nothing to compare against: the cell is a dash, no delta spans.
+        assert!(html.contains("<td>—</td>"));
+        assert!(!html.contains("class=\"pos\""));
+        assert!(!html.contains("class=\"neg\""));
     }
 
     #[test]
@@ -686,7 +1156,7 @@ mod tests {
         let mut with = meta("cohere-5m", "2026-06-10", "09:56:42");
         with.comment = Some("testing new feature X".into());
         let without = meta("cohere-5m", "2026-06-11", "10:00:00");
-        let html = render_catalog(&[with, without]);
+        let html = render_catalog(&[entry(with), entry(without)]);
         assert!(html.contains("<th>Comment</th>"));
         assert!(html.contains("<td>testing new feature X</td>"));
         // Runs without a comment render a placeholder.
@@ -697,8 +1167,89 @@ mod tests {
     fn run_page_shows_run_comment() {
         let mut m = meta("cohere-5m", "2026-06-10", "09:56:42");
         m.comment = Some("testing new feature X".into());
-        let html = render_run_page(&summary_for(&m), &m, &[]);
+        let html = render_run_page(&summary_for(&m), &m, &empty_compact(), &[]);
         assert!(html.contains("\u{201c}testing new feature X\u{201d}"));
+    }
+
+    #[test]
+    fn run_tables_multi_family_with_delta() {
+        let html = render_run_tables(&versus_compact());
+        // Three tables.
+        assert!(html.contains("<h2>QPS at recall</h2>"));
+        assert!(html.contains("<h2>Latency at recall</h2>"));
+        assert!(html.contains("<h2>Build comparison</h2>"));
+        // Δ column against the best competitor.
+        assert!(html.contains("\u{394} vs best competitor"));
+        // Meerkat reaches 0.95, the competitor doesn't: its max recall shows.
+        assert!(html.contains("(max r=0.940)"));
+        // QPS cell carries the achieved recall.
+        assert!(html.contains("(r=0.910)"));
+        assert!(html.contains("3,000"));
+        // The competitor's best value is bolded somewhere.
+        assert!(html.contains("<b>2,000</b>"));
+        // 0.99 reached by nobody -> no such row in either table.
+        assert!(!html.contains("0.99"));
+        // Caption: rule + basis + workload note; build footnote names configs.
+        assert!(html.contains("highest-QPS configuration"));
+        assert!(html.contains("distance-based"));
+        assert!(html.contains("Insert/update/delete workloads are not measured"));
+        assert!(html.contains("Meerkat = mkt-n16000, prewarmed"));
+        // Build cells with meerkat faster + smaller: green negative deltas.
+        assert!(html.contains("class=\"pos\">-39%"));
+    }
+
+    #[test]
+    fn run_tables_single_family_without_delta() {
+        let html = render_run_tables(&compact(
+            vec![
+                sweep("mkt-serial", "meerkat", 0.91, 2000.0),
+                sweep("mkt-parallel", "meerkat", 0.92, 2100.0),
+            ],
+            vec![],
+        ));
+        // Columns are the config names, no Δ column.
+        assert!(html.contains("<th>mkt-serial</th>"));
+        assert!(html.contains("<th>mkt-parallel</th>"));
+        assert!(!html.contains("\u{394} vs best competitor"));
+        // Best value per row still bolded.
+        assert!(html.contains("<b>2,100</b>"));
+        // No builds recorded -> no build table.
+        assert!(!html.contains("Build comparison"));
+    }
+
+    #[test]
+    fn run_tables_empty_run_renders_nothing() {
+        assert_eq!(render_run_tables(&empty_compact()), "");
+    }
+
+    #[test]
+    fn fmt_thousands_groups_digits() {
+        assert_eq!(fmt_thousands(999.0), "999");
+        assert_eq!(fmt_thousands(1234.0), "1,234");
+        assert_eq!(fmt_thousands(1234567.0), "1,234,567");
+    }
+
+    // Writes a sample run page + catalog with realistic multi-family data to
+    // the temp dir for eyeballing layout changes; prints the paths. Run with
+    // `cargo test -p rekall-lib sample_pages -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "writes sample HTML for visual inspection; run on demand"]
+    fn sample_pages_to_tmp() {
+        let mut m = meta("cohere-5m", "2026-06-10", "09:56:42");
+        m.comment = Some("sample page for layout review".into());
+        let run = std::env::temp_dir().join("rekall-sample-run-page.html");
+        std::fs::write(
+            &run,
+            render_run_page(&summary_for(&m), &m, &versus_compact(), &[]),
+        )
+        .unwrap();
+        let mut with = entry(m);
+        with.summary = Some(versus_compact());
+        let old = entry(meta("cohere-5m", "2026-06-09", "08:00:00"));
+        let catalog = std::env::temp_dir().join("rekall-sample-catalog.html");
+        std::fs::write(&catalog, render_catalog(&[with, old])).unwrap();
+        println!("run page: {}", run.display());
+        println!("catalog:  {}", catalog.display());
     }
 
     #[test]
@@ -748,7 +1299,7 @@ mod tests {
             PathBuf::from("cohere-5m-report-pareto.svg"),
             PathBuf::from("cohere-5m-report-per-config.html"),
         ];
-        let html = render_run_page(&summary_for(&m), &m, &files);
+        let html = render_run_page(&summary_for(&m), &m, &empty_compact(), &files);
         assert!(html.contains("Cohere-5M"));
         assert!(html.contains("r8i.2xlarge")); // instance
         assert!(html.contains("Xeon")); // cpu
@@ -797,6 +1348,7 @@ mod tests {
         let url = publish(
             &summary_for(&m),
             &m,
+            &versus_compact(),
             &results,
             &m.run_id,
             &cfg,
@@ -829,6 +1381,12 @@ mod tests {
         assert!(verify
             .join("runs/cohere-5m/2026-06-10/i-095642/meta.json")
             .exists());
+        // summary.json feeds the catalog's comparison column.
+        assert!(verify
+            .join("runs/cohere-5m/2026-06-10/i-095642/summary.json")
+            .exists());
+        let catalog = std::fs::read_to_string(verify.join("index.html")).unwrap();
+        assert!(catalog.contains("vs pgvector HNSW:"));
 
         // Commit count on the bare origin's gh-pages branch.
         let count = |bare: &Path| -> usize {
@@ -855,6 +1413,7 @@ mod tests {
         publish(
             &summary_for(&m),
             &m,
+            &versus_compact(),
             &results,
             &m.run_id,
             &cfg,
@@ -865,7 +1424,17 @@ mod tests {
         assert_eq!(count(&origin), n1, "unchanged re-publish must not commit");
 
         // WITH --force it republishes even when byte-identical (empty commit).
-        publish(&summary_for(&m), &m, &results, &m.run_id, &cfg, false, true).unwrap();
+        publish(
+            &summary_for(&m),
+            &m,
+            &versus_compact(),
+            &results,
+            &m.run_id,
+            &cfg,
+            false,
+            true,
+        )
+        .unwrap();
         assert_eq!(
             count(&origin),
             n1 + 1,

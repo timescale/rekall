@@ -116,9 +116,6 @@ pub fn generate_build_plot(
     output_path: &Path,
     title: Option<&str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    if builds.is_empty() {
-        return Err("No index builds to plot".into());
-    }
     let base_title = title.unwrap_or("Index build time");
     // State the cache conditions in the title, derived from what each build
     // actually recorded — regenerated reports for old runs must not claim
@@ -146,7 +143,43 @@ pub fn generate_build_plot(
         None => " (mixed cache conditions across builds)".into(),
     };
     let title = format!("{base_title}{suffix}");
-    let title = title.as_str();
+    generate_build_metric_plot(
+        builds,
+        summaries,
+        output_path,
+        build::BuildMetric::TimeSecs,
+        &title,
+    )
+}
+
+/// Render an index-size bar chart (one bar per index, largest first). Unlike
+/// build time, the size doesn't depend on cache conditions, so the title
+/// carries no cache suffix.
+pub fn generate_index_size_plot(
+    builds: &[IndexBuildResult],
+    summaries: &[RunSummary],
+    output_path: &Path,
+    title: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    generate_build_metric_plot(
+        builds,
+        summaries,
+        output_path,
+        build::BuildMetric::SizeMb,
+        title.unwrap_or("Index size"),
+    )
+}
+
+fn generate_build_metric_plot(
+    builds: &[IndexBuildResult],
+    summaries: &[RunSummary],
+    output_path: &Path,
+    metric: build::BuildMetric,
+    title: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if builds.is_empty() {
+        return Err("No index builds to plot".into());
+    }
     let caption = build_caption(summaries);
     let ext = output_path
         .extension()
@@ -154,9 +187,11 @@ pub fn generate_build_plot(
         .unwrap_or("html");
 
     match ext {
-        "html" | "htm" => build::render_html(output_path, builds, title, caption.as_deref()),
+        "html" | "htm" => {
+            build::render_html(output_path, builds, metric, title, caption.as_deref())
+        }
         "gnuplot" | "gp" => {
-            build::render_gnuplot(output_path, None, builds, title, caption.as_deref())
+            build::render_gnuplot(output_path, None, builds, metric, title, caption.as_deref())
         }
         "svg" | "png" => {
             let gp_path = output_path.with_extension("gnuplot");
@@ -164,6 +199,7 @@ pub fn generate_build_plot(
                 &gp_path,
                 Some(output_path),
                 builds,
+                metric,
                 title,
                 caption.as_deref(),
             )?;
@@ -211,18 +247,10 @@ fn group_label(r: &SearchResult, per_config: bool) -> String {
     if per_config {
         return r.index_name.clone();
     }
-    // Group by algo family — use index_type, with a readable name —
-    // then split by data type so e.g. pgvector's bit/halfvec frontiers
-    // are separate from the full-precision vector one.
-    let family = match r.index_type.as_str() {
-        "meerkat" => "Meerkat",
-        "pgvector-hnsw" => "pgvector HNSW",
-        other => other,
-    };
-    match &r.data_type {
-        Some(dt) => format!("{family} ({dt})"),
-        None => family.to_string(),
-    }
+    // Group by algo family — index_type with a readable name — then split by
+    // data type so e.g. pgvector's bit/halfvec frontiers are separate from
+    // the full-precision vector one.
+    crate::metrics::family_label(&r.index_type, r.data_type.as_deref())
 }
 
 fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) -> PlotData {
