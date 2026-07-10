@@ -6,7 +6,7 @@
 >
 
 <title>Gnuplot</title>
-<desc>Produced by GNUPLOT 6.0 patchlevel 2 </desc>
+<desc>Produced by GNUPLOT 6.0 patchlevel 4 </desc>
 
 <g id="gnuplot_canvas">
 
@@ -212,22 +212,22 @@
 	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '154.55,512.00 312.33,512.00 312.33,144.04 154.55,144.04 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '154.55,512.00 312.33,512.00 312.33,144.04 154.55,144.04 '/>
 	</g>
 	<path stroke='black'  d='M154.55,512.00 L154.55,144.05 L312.32,144.05 L312.32,512.00 L154.55,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '417.50,512.00 575.29,512.00 575.29,186.24 417.50,186.24 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '417.50,512.00 575.29,512.00 575.29,186.24 417.50,186.24 '/>
 	</g>
 	<path stroke='black'  d='M417.50,512.00 L417.50,186.25 L575.28,186.25 L575.28,512.00 L417.50,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '680.46,512.00 838.25,512.00 838.25,255.43 680.46,255.43 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '680.46,512.00 838.25,512.00 838.25,255.43 680.46,255.43 '/>
 	</g>
 	<path stroke='black'  d='M680.46,512.00 L680.46,255.44 L838.24,255.44 L838.24,512.00 L680.46,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '943.42,512.00 1101.20,512.00 1101.20,378.59 943.42,378.59 '/>
+		<polygon fill = 'rgb(109, 166, 206)' points = '943.42,512.00 1101.20,512.00 1101.20,378.59 943.42,378.59 '/>
 	</g>
 	<path stroke='black'  d='M943.42,512.00 L943.42,378.60 L1101.19,378.60 L1101.19,512.00 L943.42,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -236,7 +236,7 @@
 	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g transform="translate(233.43,132.25)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
-		<text><tspan font-family="sans" >5982 MB</tspan></text>
+		<text><tspan font-family="sans" >5981 MB</tspan></text>
 	</g>
 	<g transform="translate(496.39,174.45)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >9687 MB</tspan></text>
@@ -264,13 +264,13 @@
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g transform="translate(627.87,30.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text><tspan font-family="sans" >Index build time</tspan></text>
+		<text><tspan font-family="sans" >Index build time (cache state not controlled; build order determined warmth)</tspan></text>
 	</g>
 	<g transform="translate(627.87,48.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-10m  |  2026-06-16  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-10m  |  2026-06-16  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB</tspan></text>
 	</g>
 	<g transform="translate(627.87,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">

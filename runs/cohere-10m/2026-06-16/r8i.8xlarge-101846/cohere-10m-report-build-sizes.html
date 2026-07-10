@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index size</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index size</div><div class="meta">cohere-10m  |  2026-06-16  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB<br>PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["vchordrq-n16000", "vchordrq-rabitq8-n16000", "vchordrq-rabitq4-rerank-n16000", "mkt-n24000-cctrue-fs16-soar"], y:[40987.6015625, 9687.359375, 5981.4609375, 2389.765625], text:["1216s", "1544s", "1744s", "632s"],
+  textposition:"outside", cliponaxis:false, hovertext:["1216.0s · 40988 MB · 16 workers", "1543.9s · 9687 MB · 16 workers", "1743.9s · 5981 MB · 16 workers", "632.3s · 2390 MB · 16 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Index size (MB)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>

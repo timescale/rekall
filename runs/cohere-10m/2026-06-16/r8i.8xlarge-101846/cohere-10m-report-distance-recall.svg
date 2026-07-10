@@ -6,7 +6,7 @@
 >
 
 <title>Gnuplot</title>
-<desc>Produced by GNUPLOT 6.0 patchlevel 2 </desc>
+<desc>Produced by GNUPLOT 6.0 patchlevel 4 </desc>
 
 <g id="gnuplot_canvas">
 
@@ -426,10 +426,10 @@
 		<text><tspan font-family="sans" >Recall vs QPS (ann-benchmarks distance method)</tspan></text>
 	</g>
 	<g transform="translate(622.66,48.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-10m  |  2026-06-16  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-10m  |  2026-06-16  |  r8i.8xlarge, Intel(R) Xeon(R) 6975P-C, 32 vCPU, 248 GB</tspan></text>
 	</g>
 	<g transform="translate(622.66,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=64 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=16  |  meerkat 0.1.0 (cd8e895), vchord 1.1.1, pgvector 0.8.2</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
