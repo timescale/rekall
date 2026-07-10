@@ -49,6 +49,6 @@ index = "mkt-n400000-cctrue-fs16-soar-cfs"
 [[search.sweep]]
 index = "mkt-n400000-cctrue-fs16-soar-cfs"
 [search.sweep.params]
-"mkt.nprobe" = [140, 160, 240, 320, 480, 640, 960, 1280]
+"mkt.nprobe" = [140, 160, 240, 280, 320, 480, 640, 960, 1280, 1920]
 "mkt.centroid_beam_scale" = [0.5]
 "mkt.rerank_pool" = [0]
