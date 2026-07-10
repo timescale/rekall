@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (ann-benchmarks distance method)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (ann-benchmarks distance method)</div><div class="meta">“smallest-practical probe: 100M on 128GB/8 workers”<br>cohere-100m  |  2026-07-07  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (78c22ca), pgvector 0.8.4</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.925855712906335, 2.253709162755674, 2.502830350121712, 2.8599355992159263, 3.141437334506366, 3.546783927068841, 3.8831827352623662, 4.367828877732648],
+                y: [266.8494478644761, 176.2724673141049, 137.64533592495653, 92.36837691027044, 73.2375751062319, 48.12744208266614, 37.80569686484919, 27.491745108679737],
+                customdata: [0.8727899999999758, 0.9049699999999732, 0.924339999999972, 0.9458299999999729, 0.9585699999999737, 0.9719899999999778, 0.9798299999999838, 0.9874799999999874],
+                name: "mkt-n240000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [2.1991148950273254, 2.5595128097004314, 2.8419293856292374, 3.2619456975196988, 3.561206526580939, 4.050239666701063, 4.394044296366274],
+                y: [255.02557217919937, 192.10140495283488, 149.084700445006, 101.24720765263665, 77.63078543816636, 53.20130670070248, 39.81922073785014],
+                customdata: [0.9001699999999748, 0.9282099999999731, 0.9448999999999753, 0.9630999999999773, 0.9723799999999801, 0.9828799999999839, 0.9877999999999875],
+                name: "mkt-n400000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "mkt-n400000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n400000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
