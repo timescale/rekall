@@ -481,6 +481,8 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         Cell::Above { min_recall } => {
             format!("<td>— <span class=\"faint\">(min r={min_recall:.3})</span></td>")
         }
+        // Sweeps surround the target but none spans it.
+        Cell::Gap => "<td>—</td>".to_string(),
         Cell::Interpolated(_) => unreachable!("interpolated cells are rendered by the caller"),
     };
 
@@ -561,12 +563,14 @@ fn render_run_tables(compact: &CompactSummary) -> String {
 
     // Shared caption for the two search tables.
     b.push_str(&format!(
-        "<p class=\"sub\">All values are taken at exactly the stated recall, \
-         log-interpolated between the two surrounding measured sweep points \
-         on each column's Pareto frontier (measured values are used verbatim \
-         on an exact hit). \u{201c}—\u{201d} means the sweep does not span \
-         that recall; nothing is extrapolated. Recall is {}. \
-         Insert/update/delete workloads are not measured.</p>",
+        "<p class=\"sub\">All values are taken at exactly the stated recall: \
+         each configuration's own sweep is log-interpolated between its two \
+         surrounding measured points (measured values are used verbatim on \
+         an exact hit) and the best configuration at that recall is shown — \
+         values are never interpolated across different configurations. \
+         \u{201c}—\u{201d} means no single sweep spans that recall; nothing \
+         is extrapolated. Recall is {}. Insert/update/delete workloads are \
+         not measured.</p>",
         esc(compact.recall_basis.describe())
     ));
     if model.mode == ColumnMode::Families {
@@ -574,21 +578,16 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         for row in &model.rows {
             for (i, cell) in row.cells.iter().enumerate() {
                 if let Cell::Interpolated(v) = cell {
-                    let configs = if v.lo_config == v.hi_config {
-                        v.lo_config.clone()
-                    } else {
-                        format!("{}\u{2013}{}", v.lo_config, v.hi_config)
-                    };
                     notes.push(format!(
                         "{} @{:.2}: {}",
-                        model.columns[i], row.target, configs
+                        model.columns[i], row.target, v.config
                     ));
                 }
             }
         }
         if !notes.is_empty() {
             b.push_str(&format!(
-                "<p class=\"sub\">Interpolated between configs — {}</p>",
+                "<p class=\"sub\">Interpolated on config — {}</p>",
                 esc(&notes.join(" · "))
             ));
         }
@@ -1198,7 +1197,8 @@ mod tests {
         assert!(html.contains("log-interpolated"));
         assert!(html.contains("distance-based"));
         assert!(html.contains("Insert/update/delete workloads are not measured"));
-        assert!(html.contains("Interpolated between configs"));
+        assert!(html.contains("Interpolated on config"));
+        assert!(html.contains("never interpolated across different configurations"));
         assert!(html.contains("Meerkat = mkt-n16000, prewarmed"));
         // Build cells with meerkat faster + smaller: green negative deltas.
         assert!(html.contains("class=\"pos\">-39%"));
