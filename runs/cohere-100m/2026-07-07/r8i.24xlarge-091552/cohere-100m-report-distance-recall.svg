@@ -6,7 +6,7 @@
 >
 
 <title>Gnuplot</title>
-<desc>Produced by GNUPLOT 6.0 patchlevel 2 </desc>
+<desc>Produced by GNUPLOT 6.0 patchlevel 4 </desc>
 
 <g id="gnuplot_canvas">
 
@@ -255,7 +255,26 @@
 <g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<use xlink:href='#gpPt6' transform='translate(101.35,241.42) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(213.42,262.12) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(326.76,310.80) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(445.16,353.25) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(538.89,394.24) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(569.52,399.30) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(572.69,391.72) scale(2.25)' color='rgb( 44, 160,  44)'/>
 	<use xlink:href='#gpPt6' transform='translate(590.18,378.80) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(627.30,421.90) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(658.53,417.19) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(692.86,445.84) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(722.54,441.64) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(793.52,479.15) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(816.96,469.83) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(868.37,504.81) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(889.71,494.39) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(978.93,535.20) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(994.42,523.97) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(1066.41,557.66) scale(2.25)' color='rgb( 44, 160,  44)'/>
+	<use xlink:href='#gpPt6' transform='translate(1081.15,550.49) scale(2.25)' color='rgb( 44, 160,  44)'/>
 </g>
 	</g>
 	<g id="gnuplot_plot_4" ><title>mkt-n400000-cctrue-fs16-soar-cfs</title>
@@ -347,10 +366,10 @@
 		<text><tspan font-family="sans" >Recall vs QPS (ann-benchmarks distance method)</tspan></text>
 	</g>
 	<g transform="translate(628.59,48.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-100m  |  2026-07-07  |  r8i.24xlarge, Intel(R) Xeon(R) 6975P-C, 96 vCPU, 744 GB</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">cohere-100m  |  2026-07-07  |  r8i.24xlarge, Intel(R) Xeon(R) 6975P-C, 96 vCPU, 744 GB</tspan></text>
 	</g>
 	<g transform="translate(628.59,66.91)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="middle">
-		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=192 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (4a39b1c), pgvector 0.8.4</tspan><tspan font-size="12.0" dy="0.00"></tspan></text>
+		<text xml:space="preserve"><tspan font-family="sans"  font-size="9.0" xml:space="preserve">PG 18.4  |  shared_buffers=192 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (4a39b1c), pgvector 0.8.4</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
