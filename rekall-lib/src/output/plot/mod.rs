@@ -127,7 +127,7 @@ pub fn generate_build_plot(
     let suffix = if labels.iter().all(|l| *l == Some("prewarmed")) {
         " (heap prewarmed before each build)"
     } else if labels.iter().all(|l| *l == Some("cold")) {
-        " (caches evicted before each build)"
+        " (shared buffers evicted before each build; OS page cache untouched)"
     } else if labels.iter().all(|l| l.is_none()) {
         " (cache state not controlled; build order determined warmth)"
     } else {
