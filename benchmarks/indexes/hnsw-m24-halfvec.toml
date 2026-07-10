@@ -17,7 +17,11 @@ encoding = "halfvec"
 [[search.sweep]]
 index = "hnsw-m24-halfvec"
 [search.sweep.params]
-# ef_search is hard-capped at 1000 by pgvector (GUC max), which bounds the
-# recall this index can reach regardless of cost — 0.9854 measured on
-# cohere-100M. Recall targets above that are unreachable for HNSW here.
+# ef_search is hard-capped at 1000 by pgvector (GUC max). For unfiltered
+# top-k queries that bounds the candidate exploration and thus the top-k
+# recall this index reaches (0.9854 at k=10 on cohere-100M). pgvector's
+# iterative index scans (hnsw.iterative_scan, 0.8+) resume traversal when
+# a query consumes more tuples than one scan yields — filtered or
+# large-result workloads — and do not lift unfiltered top-k recall past
+# the ef cap.
 "hnsw.ef_search" = [10, 20, 40, 80, 100, 120, 200, 400, 800, 1000]
