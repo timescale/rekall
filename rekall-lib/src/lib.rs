@@ -8,6 +8,7 @@ pub mod environment;
 pub mod error;
 pub mod infra;
 pub mod metrics;
+pub mod oscache;
 pub mod output;
 pub mod phase;
 pub mod progress;

@@ -133,11 +133,21 @@ pub struct IndexConfig {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[serde(rename_all = "kebab-case")]
 pub enum CacheMode {
+    /// Prewarm shared buffers (75% budget, low blocks first) and block
+    /// until the rest of the relation is resident in the OS page cache.
     #[default]
     Warm,
+    /// Evict the relation's shared buffers. The OS page cache is NOT
+    /// touched (PostgreSQL cannot reach it), so first reads still come
+    /// from memory when the data was recently touched.
     Cold,
+    /// Cold, plus drop the host's OS page caches via a local privileged
+    /// helper (see SearchConfig::cache_drop_command) so first reads
+    /// genuinely hit disk. Fails the run loudly when the helper is
+    /// unavailable rather than silently measuring lukewarm as cold.
+    DiskCold,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,8 +162,19 @@ pub struct SearchConfig {
     pub num_queries: Option<usize>,
     #[serde(default)]
     pub cache: CacheMode,
+    /// Host command that drops the OS page caches, required by
+    /// CacheMode::DiskCold. Must run without prompting: the default works
+    /// wherever the benchmark user has passwordless sudo (infra-provisioned
+    /// EC2 instances do); on restricted hosts point this at a fixed,
+    /// root-owned helper whitelisted in sudoers.
+    #[serde(default = "default_cache_drop_command")]
+    pub cache_drop_command: String,
     #[serde(default)]
     pub sweep: Vec<SweepConfig>,
+}
+
+fn default_cache_drop_command() -> String {
+    "sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'".to_string()
 }
 
 fn default_k() -> usize {
@@ -176,6 +197,7 @@ impl Default for SearchConfig {
             warmup: default_warmup(),
             num_queries: None,
             cache: CacheMode::default(),
+            cache_drop_command: default_cache_drop_command(),
             sweep: Vec::new(),
         }
     }

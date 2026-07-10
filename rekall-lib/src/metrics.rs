@@ -77,6 +77,12 @@ pub struct SearchResult {
     pub qps_wall: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub query_results: Vec<QueryResult>,
+    /// Cache state actually applied before this point ("warm", "cold",
+    /// "disk-cold", or "cold (OS cache drop failed)" when disk-cold was
+    /// requested but the host command was denied). May differ from the
+    /// configured mode — reports must trust this, not the config.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

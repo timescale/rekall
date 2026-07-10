@@ -389,6 +389,11 @@ pub async fn run(
             backend.set_search_params(&idx_config.gucs).await?;
             backend.set_search_params(params).await?;
 
+            let mut effective_cache = match config.search.cache {
+                CacheMode::Warm => "warm",
+                CacheMode::Cold => "cold",
+                CacheMode::DiskCold => "disk-cold",
+            };
             match config.search.cache {
                 CacheMode::Warm => {
                     // Warmup queries to fill shared buffers
@@ -405,7 +410,7 @@ pub async fn run(
                         }
                     }
                 }
-                CacheMode::Cold => {
+                CacheMode::Cold | CacheMode::DiskCold => {
                     // Evict shared buffers before measurement.
                     // Skip warmup to measure cold-cache performance.
                     let mut pg_evict = crate::backend::postgres::PgConnection::new(
@@ -421,9 +426,38 @@ pub async fn run(
                         .await?;
                     pg_evict.evict_relation_buffers(&idx_sql).await?;
 
-                    let _ = progress.send(ProgressEvent::Message {
-                        text: "Evicted shared buffers (cold mode)".to_string(),
-                    });
+                    if config.search.cache == CacheMode::DiskCold {
+                        // Shared buffers alone leave the OS page cache warm;
+                        // drop it so first reads genuinely hit disk. A denied
+                        // command degrades this point to cold — logged and
+                        // recorded so reports say what actually happened.
+                        match crate::oscache::drop_os_caches(&config.search.cache_drop_command) {
+                            Ok(()) => {
+                                let _ = progress.send(ProgressEvent::Message {
+                                    text: "Evicted shared buffers + dropped \
+                                           OS page caches (disk-cold mode)"
+                                        .to_string(),
+                                });
+                            }
+                            Err(msg) => {
+                                effective_cache = "cold (OS cache drop failed)";
+                                tracing::warn!(
+                                    "disk-cold requested but OS cache drop failed: {msg}"
+                                );
+                                let _ = progress.send(ProgressEvent::Message {
+                                    text: format!(
+                                        "WARNING: OS cache drop failed ({msg}) — \
+                                         this point measured with shared buffers \
+                                         evicted ONLY"
+                                    ),
+                                });
+                            }
+                        }
+                    } else {
+                        let _ = progress.send(ProgressEvent::Message {
+                            text: "Evicted shared buffers (cold mode)".to_string(),
+                        });
+                    }
                 }
             }
 
@@ -511,6 +545,7 @@ pub async fn run(
                 wall_time_secs: best_wall_secs,
                 qps_wall,
                 query_results,
+                cache: Some(effective_cache.to_string()),
             };
 
             let _ = progress.send(ProgressEvent::SearchEnd {

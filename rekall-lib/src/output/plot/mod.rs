@@ -124,14 +124,26 @@ pub fn generate_build_plot(
     // actually recorded — regenerated reports for old runs must not claim
     // conditions that were not controlled at the time.
     let labels: Vec<Option<&str>> = builds.iter().map(|b| b.cache.as_deref()).collect();
-    let suffix = if labels.iter().all(|l| *l == Some("prewarmed")) {
-        " (heap prewarmed before each build)"
-    } else if labels.iter().all(|l| *l == Some("cold")) {
-        " (shared buffers evicted before each build; OS page cache untouched)"
-    } else if labels.iter().all(|l| l.is_none()) {
-        " (cache state not controlled; build order determined warmth)"
-    } else {
-        " (mixed cache conditions across builds)"
+    let uniform = labels
+        .first()
+        .copied()
+        .flatten()
+        .filter(|l| labels.iter().all(|x| x.as_deref() == Some(*l)));
+    let suffix: String = match uniform {
+        Some("prewarmed") => " (heap prewarmed before each build)".into(),
+        Some("cold") => {
+            " (shared buffers evicted before each build; OS page cache untouched)".into()
+        }
+        Some("disk-cold") => {
+            " (shared buffers and OS page caches dropped before each build)".into()
+        }
+        // Uniform but unrecognized (e.g. "cold (OS cache drop failed)"):
+        // print it verbatim rather than guessing.
+        Some(l) => format!(" (cache before each build: {l})"),
+        None if labels.iter().all(|l| l.is_none()) => {
+            " (cache state not controlled; build order determined warmth)".into()
+        }
+        None => " (mixed cache conditions across builds)".into(),
     };
     let title = format!("{base_title}{suffix}");
     let title = title.as_str();

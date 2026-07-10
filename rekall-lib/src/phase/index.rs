@@ -82,6 +82,20 @@ pub async fn apply_build_cache_policy(config: &BenchmarkConfig) -> crate::Result
             pg.evict_relation_buffers(&config.table_name()).await?;
             Ok("cold")
         }
+        crate::config::CacheMode::DiskCold => {
+            pg.evict_relation_buffers(&config.table_name()).await?;
+            match crate::oscache::drop_os_caches(&config.search.cache_drop_command) {
+                Ok(()) => Ok("disk-cold"),
+                Err(msg) => {
+                    tracing::warn!(
+                        "disk-cold requested but OS cache drop failed \
+                         before build: {msg} — building with shared \
+                         buffers evicted only"
+                    );
+                    Ok("cold (OS cache drop failed)")
+                }
+            }
+        }
     }
 }
 
