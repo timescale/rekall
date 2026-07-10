@@ -16,8 +16,8 @@
     "pg_prewarm": "1.2",
     "vector": "0.8.4"
   },
-  "peak_recall": 0.986049999999986,
-  "qps_at_peak": 43.100669025824885,
+  "peak_recall": 0.987239999999987,
+  "qps_at_peak": 59.30883054634413,
   "num_indexes": 3,
   "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-07-07/r8i.24xlarge-091552/"
 }
