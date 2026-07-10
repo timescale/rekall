@@ -631,13 +631,14 @@ impl Agent {
                 }
             }
 
-            // Prewarm in warm mode, evict in cold mode. Heap pages go to
-            // the OS page cache only (rerank fetches are fine from there;
-            // a heap-prefix buffer warm would evict the index out of shared
-            // buffers); index pages are buffer-warmed — they are touched on
-            // every query.
+            // Prewarm in warm mode, evict in cold mode. Order matters and
+            // is measured: the heap goes first (buffer-warm prefix up to the
+            // budget + blocking OS-cache read of the remainder — a shared-
+            // buffers-resident heap slice serves rerank fetches buffer-fast,
+            // worth ~20% QPS at low nprobe on 100M), the index last so LRU
+            // keeps it fully resident on top of whatever heap slice fits.
             if self.config.search.cache == CacheMode::Warm {
-                pg_mgmt.prewarm_oscache(&self.config.table_name()).await?;
+                pg_mgmt.prewarm(&self.config.table_name()).await?;
                 pg_mgmt.prewarm(&active_idx).await?;
             }
 
