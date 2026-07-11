@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index size</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index size</div><div class="meta">“Higher boundary_replication”<br>cohere-50m  |  2026-07-10  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB<br>PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (ca8d3c9), pgvector 0.8.4</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n240000-cctrue-fs16-soar-cfs-eps015", "mkt-n240000-cctrue-fs16-soar-cfs", "mkt-n120000-cctrue-fs16-soar-cfs"], y:[97633.78125, 13197.359375, 11236.1796875, 10433.5], text:["13384s", "2187s", "2287s", "5431s"],
+  textposition:"outside", cliponaxis:false, hovertext:["13384.0s · 97634 MB · 24 workers", "2187.3s · 13197 MB · 24 workers", "2287.3s · 11236 MB · 24 workers", "5431.1s · 10434 MB · 24 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Index size (MB)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>

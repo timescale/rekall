@@ -1,0 +1,477 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.6822999999999976,
+      "qps": 704.0200955496074,
+      "p50_latency_us": 1371.0,
+      "p95_latency_us": 2051.0,
+      "p99_latency_us": 2327.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.7896999999999974,
+      "qps": 516.1673951509167,
+      "p50_latency_us": 1882.0,
+      "p95_latency_us": 2765.0,
+      "p99_latency_us": 3355.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.8747999999999976,
+      "qps": 350.2485889359974,
+      "p50_latency_us": 2847.0,
+      "p95_latency_us": 3951.0,
+      "p99_latency_us": 4955.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9293999999999973,
+      "qps": 214.84063229316817,
+      "p50_latency_us": 4771.0,
+      "p95_latency_us": 6063.0,
+      "p99_latency_us": 6859.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9396999999999978,
+      "qps": 183.86293826948935,
+      "p50_latency_us": 5611.0,
+      "p95_latency_us": 6931.0,
+      "p99_latency_us": 8127.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9480999999999977,
+      "qps": 153.59142836956548,
+      "p50_latency_us": 6751.0,
+      "p95_latency_us": 8279.0,
+      "p99_latency_us": 9263.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9623999999999977,
+      "qps": 102.39876269527063,
+      "p50_latency_us": 10119.0,
+      "p95_latency_us": 12431.0,
+      "p99_latency_us": 12967.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9756999999999976,
+      "qps": 55.0825312582348,
+      "p50_latency_us": 18847.0,
+      "p95_latency_us": 23247.0,
+      "p99_latency_us": 24175.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9836999999999978,
+      "qps": 29.187430117995422,
+      "p50_latency_us": 35359.0,
+      "p95_latency_us": 43903.0,
+      "p99_latency_us": 46079.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9855999999999979,
+      "qps": 23.54704822680367,
+      "p50_latency_us": 43711.0,
+      "p95_latency_us": 54399.0,
+      "p99_latency_us": 57247.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.6815999999999992,
+      "qps": 2171.788467803237,
+      "p50_latency_us": 454.0,
+      "p95_latency_us": 575.0,
+      "p99_latency_us": 630.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.773199999999998,
+      "qps": 1451.8761143149177,
+      "p50_latency_us": 674.0,
+      "p95_latency_us": 891.0,
+      "p99_latency_us": 1005.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.8403999999999967,
+      "qps": 904.7587596481204,
+      "p50_latency_us": 1067.0,
+      "p95_latency_us": 1514.0,
+      "p99_latency_us": 1676.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.8953999999999972,
+      "qps": 516.334500077192,
+      "p50_latency_us": 1885.0,
+      "p95_latency_us": 2601.0,
+      "p99_latency_us": 2907.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.929999999999997,
+      "qps": 279.4890269813116,
+      "p50_latency_us": 3475.0,
+      "p95_latency_us": 4615.0,
+      "p99_latency_us": 5347.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9369999999999967,
+      "qps": 287.73252384583293,
+      "p50_latency_us": 3379.0,
+      "p95_latency_us": 4575.0,
+      "p99_latency_us": 5199.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.954599999999997,
+      "qps": 203.70457133428528,
+      "p50_latency_us": 4767.0,
+      "p95_latency_us": 6367.0,
+      "p99_latency_us": 7527.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9646999999999976,
+      "qps": 160.16824072005224,
+      "p50_latency_us": 6043.0,
+      "p95_latency_us": 8127.0,
+      "p99_latency_us": 9591.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9750999999999981,
+      "qps": 113.30289262284865,
+      "p50_latency_us": 8535.0,
+      "p95_latency_us": 11391.0,
+      "p99_latency_us": 13759.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9819999999999981,
+      "qps": 87.85351375399468,
+      "p50_latency_us": 11039.0,
+      "p95_latency_us": 14543.0,
+      "p99_latency_us": 17903.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9883999999999987,
+      "qps": 60.47572625299653,
+      "p50_latency_us": 16031.0,
+      "p95_latency_us": 21199.0,
+      "p99_latency_us": 26031.0
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9917999999999989,
+      "qps": 46.025665383839375,
+      "p50_latency_us": 21135.0,
+      "p95_latency_us": 27695.0,
+      "p99_latency_us": 33599.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.6569999999999995,
+      "qps": 2541.0635875752146,
+      "p50_latency_us": 394.0,
+      "p95_latency_us": 454.0,
+      "p99_latency_us": 482.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.7382999999999991,
+      "qps": 1857.48967700112,
+      "p50_latency_us": 535.0,
+      "p95_latency_us": 625.0,
+      "p99_latency_us": 668.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.8110999999999969,
+      "qps": 1213.3816582801771,
+      "p50_latency_us": 818.0,
+      "p95_latency_us": 978.0,
+      "p99_latency_us": 1052.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.8702999999999967,
+      "qps": 709.9832159967742,
+      "p50_latency_us": 1391.0,
+      "p95_latency_us": 1733.0,
+      "p99_latency_us": 1894.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.912499999999997,
+      "qps": 380.6609034605883,
+      "p50_latency_us": 2601.0,
+      "p95_latency_us": 3091.0,
+      "p99_latency_us": 3317.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9182999999999969,
+      "qps": 392.5586580774832,
+      "p50_latency_us": 2541.0,
+      "p95_latency_us": 3079.0,
+      "p99_latency_us": 3335.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9384999999999973,
+      "qps": 284.1850453871937,
+      "p50_latency_us": 3481.0,
+      "p95_latency_us": 4211.0,
+      "p99_latency_us": 4487.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9530999999999975,
+      "qps": 228.54400329103356,
+      "p50_latency_us": 4351.0,
+      "p95_latency_us": 5215.0,
+      "p99_latency_us": 5571.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9664999999999973,
+      "qps": 164.288778271429,
+      "p50_latency_us": 6043.0,
+      "p95_latency_us": 7291.0,
+      "p99_latency_us": 7659.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9747999999999974,
+      "qps": 128.68055335726277,
+      "p50_latency_us": 7707.0,
+      "p95_latency_us": 9159.0,
+      "p99_latency_us": 9767.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9833999999999983,
+      "qps": 89.2209653565698,
+      "p50_latency_us": 11167.0,
+      "p95_latency_us": 13151.0,
+      "p99_latency_us": 13919.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.9873999999999987,
+      "qps": 68.55594041337035,
+      "p50_latency_us": 14599.0,
+      "p95_latency_us": 16895.0,
+      "p99_latency_us": 17791.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "recall": 0.991999999999999,
+      "qps": 46.900135541391705,
+      "p50_latency_us": 21391.0,
+      "p95_latency_us": 24335.0,
+      "p99_latency_us": 25439.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.6844999999999994,
+      "qps": 1974.0101819445188,
+      "p50_latency_us": 480.0,
+      "p95_latency_us": 708.0,
+      "p99_latency_us": 880.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.7662999999999979,
+      "qps": 1444.8570313967434,
+      "p50_latency_us": 674.0,
+      "p95_latency_us": 943.0,
+      "p99_latency_us": 1024.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.8361999999999977,
+      "qps": 1017.7267647890972,
+      "p50_latency_us": 969.0,
+      "p95_latency_us": 1212.0,
+      "p99_latency_us": 1341.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.8890999999999978,
+      "qps": 624.0494946135167,
+      "p50_latency_us": 1586.0,
+      "p95_latency_us": 1940.0,
+      "p99_latency_us": 2129.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9283999999999971,
+      "qps": 346.3427761382296,
+      "p50_latency_us": 2855.0,
+      "p95_latency_us": 3447.0,
+      "p99_latency_us": 3725.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9328999999999972,
+      "qps": 363.2721667767988,
+      "p50_latency_us": 2721.0,
+      "p95_latency_us": 3367.0,
+      "p99_latency_us": 3635.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9505999999999972,
+      "qps": 259.64523632779577,
+      "p50_latency_us": 3811.0,
+      "p95_latency_us": 4683.0,
+      "p99_latency_us": 5059.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.961099999999998,
+      "qps": 206.96160903544697,
+      "p50_latency_us": 4771.0,
+      "p95_latency_us": 5815.0,
+      "p99_latency_us": 6287.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9733999999999984,
+      "qps": 148.2129007176619,
+      "p50_latency_us": 6667.0,
+      "p95_latency_us": 8131.0,
+      "p99_latency_us": 8855.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9816999999999982,
+      "qps": 116.01326449260895,
+      "p50_latency_us": 8519.0,
+      "p95_latency_us": 10447.0,
+      "p99_latency_us": 11175.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9875999999999986,
+      "qps": 80.14975822023938,
+      "p50_latency_us": 12271.0,
+      "p95_latency_us": 15103.0,
+      "p99_latency_us": 16087.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9911999999999987,
+      "qps": 61.543445610733734,
+      "p50_latency_us": 15999.0,
+      "p95_latency_us": 19519.0,
+      "p99_latency_us": 20735.0
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "recall": 0.9947999999999992,
+      "qps": 42.32489640135111,
+      "p50_latency_us": 23279.0,
+      "p95_latency_us": 27999.0,
+      "p99_latency_us": 29455.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "build_time_secs": 13383.966643529,
+      "size_bytes": 102376439808,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "mkt-n120000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "build_time_secs": 5431.075233196,
+      "size_bytes": 10940317696,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs",
+      "index_type": "meerkat",
+      "build_time_secs": 2287.261344269,
+      "size_bytes": 11781988352,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+      "index_type": "meerkat",
+      "build_time_secs": 2187.286599376,
+      "size_bytes": 13838434304,
+      "cache": "prewarmed"
+    }
+  ]
+}
