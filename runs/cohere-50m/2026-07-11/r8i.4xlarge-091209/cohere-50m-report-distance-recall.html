@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (ann-benchmarks distance method)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (ann-benchmarks distance method)</div><div class="meta">“50M resized from 12xlarge to 4xlarge”<br>cohere-50m  |  2026-07-11  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (ca8d3c9), pgvector 0.8.4</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [0.7643619025458964, 1.3231180437948655, 1.9440828301365924, 2.577509072151641, 2.74622857165584, 2.9051411917520245, 3.242426114264557, 3.692678811767299, 4.100155864705858, 4.226022386197154],
+                y: [868.3638548755576, 632.610301932245, 428.6040024756169, 263.25280430049804, 218.25269078286144, 188.6459652872558, 50.75829594857938, 8.504228064075068, 1.393890912892836, 0.9016847915408636],
+                customdata: [0.6822999999999976, 0.7896999999999974, 0.8747999999999976, 0.9293999999999973, 0.9396999999999978, 0.9480999999999977, 0.9623999999999977, 0.9756999999999976, 0.9836999999999978, 0.9855999999999979],
+                name: "hnsw-m24-halfvec",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "hnsw-m24-halfvec",
+                hovertemplate: "<b>hnsw-m24-halfvec</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                x: [0.7611345215448744, 1.2264691754805674, 1.6612072839551124, 2.1471269941760127, 2.699548555846834, 3.045780299524425, 3.307934208237185, 3.6676722263703323, 3.9992195504581933, 4.445082376002024, 4.795387319784691],
+                y: [2224.0311008509143, 1536.0770742032762, 927.126039076508, 529.6447460830123, 300.0302730545512, 211.9126707883683, 166.7624995163887, 117.74624271739488, 91.2822027636964, 62.42538605731502, 47.436232895205954],
+                customdata: [0.6815999999999992, 0.773199999999998, 0.8403999999999967, 0.8953999999999972, 0.9369999999999967, 0.954599999999997, 0.9646999999999976, 0.9750999999999981, 0.9819999999999981, 0.9883999999999987, 0.9917999999999989],
+                name: "mkt-n120000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "mkt-n120000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n120000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                    x: [2.5866893440978975],
+                    y: [290.5695366316658],
+                    customdata: [0.929999999999997],
+                    type: "scatter",
+                    mode: "markers",
+                    marker: { color: "rgb(255,127,14)", size: 5, opacity: 0.4 },
+                    legendgroup: "mkt-n120000-cctrue-fs16-soar-cfs",
+                    showlegend: false,
+                    hovertemplate: "<b>mkt-n120000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+                },{
+                x: [0.6499535713186683, 1.0371514365290149, 1.4571735765688152, 1.903613888473041, 2.419470132753478, 2.7252456812140453, 3.0117021544912905, 3.36213585981728, 3.6553883272335694, 4.081613259615236, 4.361378411867228, 4.82028156560491],
+                y: [2260.9037736744876, 1588.3857235891169, 1086.4463643158872, 684.9103965973649, 415.4017682822469, 307.416106144633, 241.62217395685073, 169.29806651450136, 133.94419027790198, 92.22058499943654, 70.63324113340919, 47.84131380667787],
+                customdata: [0.6569999999999995, 0.7382999999999991, 0.8110999999999969, 0.8702999999999967, 0.9182999999999969, 0.9384999999999973, 0.9530999999999975, 0.9664999999999973, 0.9747999999999974, 0.9833999999999983, 0.9873999999999987, 0.991999999999999],
+                name: "mkt-n240000-cctrue-fs16-soar-cfs",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
+                hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                    x: [2.34454929209304],
+                    y: [386.7885411573948],
+                    customdata: [0.912499999999997],
+                    type: "scatter",
+                    mode: "markers",
+                    marker: { color: "rgb(44,160,44)", size: 5, opacity: 0.4 },
+                    legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs",
+                    showlegend: false,
+                    hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+                },{
+                x: [0.7745299627472331, 1.1875354964315346, 1.630221647503479, 2.0815808207707494, 2.632113969989234, 2.957142939985973, 3.2070842112047835, 3.599883881611638, 3.9823847028510024, 4.377581284859918, 4.724164608830629, 5.253883086341721],
+                y: [2232.6262605966012, 1539.2193079669987, 1027.4767841620626, 625.7383712781079, 369.060342842296, 263.01033209788625, 209.0850376028984, 150.15547097464707, 117.31174046513632, 80.23652443619402, 62.372588395055985, 42.58607881524849],
+                customdata: [0.6844999999999994, 0.7662999999999979, 0.8361999999999977, 0.8890999999999978, 0.9328999999999972, 0.9505999999999972, 0.961099999999998, 0.9733999999999984, 0.9816999999999982, 0.9875999999999986, 0.9911999999999987, 0.9947999999999992],
+                name: "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
+                legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+                hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs-eps015</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+            },{
+                    x: [2.562367600433639],
+                    y: [349.4412957842353],
+                    customdata: [0.9283999999999971],
+                    type: "scatter",
+                    mode: "markers",
+                    marker: { color: "rgb(214,39,40)", size: 5, opacity: 0.4 },
+                    legendgroup: "mkt-n240000-cctrue-fs16-soar-cfs-eps015",
+                    showlegend: false,
+                    hovertemplate: "<b>mkt-n240000-cctrue-fs16-soar-cfs-eps015</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}<extra></extra>"
+                }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
