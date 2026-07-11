@@ -519,6 +519,20 @@ impl PgConnection {
         Ok(())
     }
 
+    /// Force an immediate checkpoint, blocking until it completes. CHECKPOINT
+    /// is synchronous: when it returns, every shared buffer dirty at its
+    /// start has been written and fsynced, and files written directly by
+    /// backends since the last checkpoint (bulk-write ring buffers during
+    /// index builds) have been fsynced too. Run it in untimed setup regions
+    /// so a timed phase doesn't compete with the previous phase's background
+    /// writeback. Needs superuser or the pg_checkpoint predefined role.
+    /// Returns the elapsed seconds.
+    pub async fn checkpoint(&self) -> Result<f64> {
+        let start = std::time::Instant::now();
+        self.client().execute("CHECKPOINT", &[]).await?;
+        Ok(start.elapsed().as_secs_f64())
+    }
+
     /// Evict all shared buffers for a relation using pg_buffercache.
     pub async fn evict_relation_buffers(&self, relation: &str) -> Result<()> {
         let client = self.client();

@@ -285,6 +285,45 @@ pub async fn run(
     let captured_runtime = capture_runtime_info(config).await;
     let pg_runtime = captured_runtime.as_ref().or(pg_runtime);
 
+    // Flush the index phase's write debt (dirty index pages, un-checkpointed
+    // WAL) before any timed queries. CHECKPOINT is synchronous, so once it
+    // returns the first search arm is no longer competing with the last
+    // build's background writeback for disk bandwidth. In the interleaved
+    // build+search path this runs once per arm; after the first there is
+    // nothing left to flush and it returns immediately. Without superuser or
+    // the pg_checkpoint role it is denied: warn and continue, at the cost of
+    // the first arm racing the checkpointer for a while.
+    {
+        let mut pg = crate::backend::postgres::PgConnection::new(
+            &config.connection,
+            &config.table_name(),
+            config.dataset.dimension,
+            config.dataset.metric,
+        );
+        pg.connect().await?;
+        match pg.checkpoint().await {
+            Ok(secs) => {
+                info!("Checkpoint before queries: {secs:.1}s");
+                let _ = progress.send(ProgressEvent::Message {
+                    text: format!("Checkpoint before queries: {secs:.1}s"),
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "CHECKPOINT before queries failed ({e}); the first \
+                     search arm will compete with leftover build writeback \
+                     — grant the pg_checkpoint role to avoid this"
+                );
+                let _ = progress.send(ProgressEvent::Message {
+                    text: "CHECKPOINT before queries denied — grant the \
+                           pg_checkpoint role so query runs don't compete \
+                           with leftover build writeback"
+                        .to_string(),
+                });
+            }
+        }
+    }
+
     for query in &config.effective_queries() {
         // `filter_index` is a physical-index filter (used by the interleaved
         // build+search path); match it against the index this query targets.

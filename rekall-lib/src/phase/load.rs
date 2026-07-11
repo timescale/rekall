@@ -27,14 +27,14 @@ use crate::progress::{ProgressEvent, ProgressTx};
 async fn settle_after_load(pg: &PgConnection, progress: &ProgressTx) -> Result<()> {
     let client = pg.open_connection().await?;
 
-    let _ = progress.send(ProgressEvent::Message {
-        text: format!(
-            "Settling '{}' after load: VACUUM (FREEZE, ANALYZE) so no \
-             index build pays the first-scan hint-bit/WAL cost (this can \
-             take a while on large tables)",
-            pg.table_name,
-        ),
-    });
+    let settling = format!(
+        "Settling '{}' after load: VACUUM (FREEZE, ANALYZE) so no \
+         index build pays the first-scan hint-bit/WAL cost (this can \
+         take a while on large tables)",
+        pg.table_name,
+    );
+    tracing::info!("{settling}");
+    let _ = progress.send(ProgressEvent::Message { text: settling });
     let start = std::time::Instant::now();
     client
         .execute(&format!("VACUUM (FREEZE, ANALYZE) {}", pg.table_name), &[])
@@ -45,14 +45,13 @@ async fn settle_after_load(pg: &PgConnection, progress: &ProgressTx) -> Result<(
     let checkpoint = client.execute("CHECKPOINT", &[]).await;
     match &checkpoint {
         Ok(_) => {
-            let _ = progress.send(ProgressEvent::Message {
-                text: format!(
-                    "Settled '{}': vacuum {vacuum_secs:.1}s, checkpoint \
-                     {:.1}s",
-                    pg.table_name,
-                    start.elapsed().as_secs_f64(),
-                ),
-            });
+            let settled = format!(
+                "Settled '{}': vacuum {vacuum_secs:.1}s, checkpoint {:.1}s",
+                pg.table_name,
+                start.elapsed().as_secs_f64(),
+            );
+            tracing::info!("{settled}");
+            let _ = progress.send(ProgressEvent::Message { text: settled });
         }
         Err(e) => {
             tracing::warn!(
@@ -60,14 +59,14 @@ async fn settle_after_load(pg: &PgConnection, progress: &ProgressTx) -> Result<(
                  pages and WAL debt will be flushed during the first \
                  index build instead"
             );
-            let _ = progress.send(ProgressEvent::Message {
-                text: format!(
-                    "Settled '{}': vacuum {vacuum_secs:.1}s; CHECKPOINT \
-                     denied — grant the pg_checkpoint role for fully \
-                     order-independent builds",
-                    pg.table_name,
-                ),
-            });
+            let settled = format!(
+                "Settled '{}': vacuum {vacuum_secs:.1}s; CHECKPOINT \
+                 denied — grant the pg_checkpoint role for fully \
+                 order-independent builds",
+                pg.table_name,
+            );
+            tracing::info!("{settled}");
+            let _ = progress.send(ProgressEvent::Message { text: settled });
         }
     }
     Ok(())
