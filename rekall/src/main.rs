@@ -1194,6 +1194,7 @@ async fn main() -> anyhow::Result<()> {
                 per_config,
                 min_recall: min_recall.unwrap_or(0.0),
                 use_wall_qps: use_wall,
+                ..Default::default()
             };
             rekall_lib::output::plot::generate_plot(&summaries, &output, title.as_deref(), &opts)
                 .map_err(|e| anyhow::anyhow!("Plot failed: {e}"))?;

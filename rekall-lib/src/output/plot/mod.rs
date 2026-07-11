@@ -7,6 +7,28 @@ mod build;
 mod gnuplot;
 mod html;
 
+/// What the y axis of a recall plot measures.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum YMetric {
+    /// Queries per second (the classic recall-QPS tradeoff).
+    #[default]
+    Qps,
+    /// Bytes read from the data-dir block device per query — actual
+    /// disk traffic after the OS page cache. Results without recorded
+    /// I/O stats are skipped; the line connects all points by recall
+    /// (a Pareto frontier is meaningless for a cost metric).
+    DiskReadPerQuery,
+}
+
+impl YMetric {
+    pub(crate) fn axis_title(self) -> &'static str {
+        match self {
+            YMetric::Qps => "Queries per second",
+            YMetric::DiskReadPerQuery => "Disk read per query (bytes)",
+        }
+    }
+}
+
 pub struct PlotOptions {
     pub log_x: bool,
     pub log_y: bool,
@@ -14,6 +36,7 @@ pub struct PlotOptions {
     pub per_config: bool,
     pub min_recall: f64,
     pub use_wall_qps: bool,
+    pub y_metric: YMetric,
 }
 
 impl Default for PlotOptions {
@@ -25,6 +48,7 @@ impl Default for PlotOptions {
             per_config: false,
             min_recall: 0.0,
             use_wall_qps: false,
+            y_metric: YMetric::default(),
         }
     }
 }
@@ -38,12 +62,37 @@ pub struct PlotData {
     pub series: Vec<PlotSeries>,
 }
 
+/// One plotted point: recall on x, the selected metric on y, plus
+/// pre-rendered extra hover lines (may be empty; HTML `<br>`-prefixed).
+#[derive(Debug, Clone)]
+pub struct PlotPoint {
+    pub recall: f64,
+    pub y: f64,
+    pub hover: String,
+}
+
 pub struct PlotSeries {
     pub name: String,
     /// Pareto frontier points for this series (always shown as the main line)
-    pub pareto_points: Vec<(f64, f64)>,
+    pub pareto_points: Vec<PlotPoint>,
     /// Non-Pareto points (only shown with --per-config)
-    pub other_points: Vec<(f64, f64)>,
+    pub other_points: Vec<PlotPoint>,
+}
+
+/// "1.4 MB"-style humanized byte count for captions and hover text.
+pub fn fmt_bytes(bytes: f64) -> String {
+    const UNITS: &[&str] = &["B", "kB", "MB", "GB", "TB"];
+    let mut v = bytes;
+    let mut unit = 0;
+    while v >= 1024.0 && unit < UNITS.len() - 1 {
+        v /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{v:.0} {}", UNITS[unit])
+    } else {
+        format!("{v:.1} {}", UNITS[unit])
+    }
 }
 
 const COLORS: &[(u8, u8, u8)] = &[
@@ -253,47 +302,98 @@ fn group_label(r: &SearchResult, per_config: bool) -> String {
     crate::metrics::family_label(&r.index_type, r.data_type.as_deref())
 }
 
+/// Extra hover lines shared by both y metrics: the recorded I/O stats,
+/// when present. `<br>`-prefixed HTML fragments (empty when absent).
+fn io_hover(r: &SearchResult) -> String {
+    let Some(io) = &r.io else {
+        return String::new();
+    };
+    let mut s = format!(
+        "<br>Disk read/query: {}<br>Blks read/query: {:.1} (idx {:.1}, heap {:.1})",
+        fmt_bytes(io.disk_read_bytes_per_query()),
+        io.blks_read_per_query(),
+        io.idx_blks_read as f64 / io.queries.max(1) as f64,
+        io.heap_blks_read as f64 / io.queries.max(1) as f64,
+    );
+    if let Some(hit) = io.shared_hit_ratio() {
+        s.push_str(&format!("<br>Buffer hit: {:.1}%", hit * 100.0));
+    }
+    if let Some(busy) = io.disk_busy_ratio() {
+        s.push_str(&format!("<br>Disk busy: {:.0}%", busy * 100.0));
+    }
+    s
+}
+
 fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) -> PlotData {
-    let mut by_group: BTreeMap<String, Vec<(f64, f64)>> = BTreeMap::new();
+    let mut by_group: BTreeMap<String, Vec<PlotPoint>> = BTreeMap::new();
     for summary in summaries {
         for r in &summary.search_results {
-            let qps = if opts.use_wall_qps && r.qps_wall > 0.0 {
-                r.qps_wall
-            } else {
-                r.qps
+            let point = match opts.y_metric {
+                YMetric::Qps => {
+                    let qps = if opts.use_wall_qps && r.qps_wall > 0.0 {
+                        r.qps_wall
+                    } else {
+                        r.qps
+                    };
+                    PlotPoint {
+                        recall: r.avg_recall,
+                        y: qps,
+                        hover: io_hover(r),
+                    }
+                }
+                YMetric::DiskReadPerQuery => {
+                    let Some(io) = &r.io else { continue };
+                    PlotPoint {
+                        recall: r.avg_recall,
+                        // Fully-cached points read 0 bytes; floor at 1 B
+                        // so they survive the log axis. The hover shows
+                        // the exact value.
+                        y: io.disk_read_bytes_per_query().max(1.0),
+                        hover: format!("<br>QPS: {:.0}{}", r.qps, io_hover(r)),
+                    }
+                }
             };
             let label = group_label(r, opts.per_config);
-            by_group.entry(label).or_default().push((r.avg_recall, qps));
+            by_group.entry(label).or_default().push(point);
         }
     }
 
     let mut series = Vec::new();
 
     for (name, mut points) in by_group {
-        points.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+        points.sort_by(|a, b| a.recall.partial_cmp(&b.recall).unwrap());
         if opts.min_recall > 0.0 {
-            points.retain(|&(r, _)| r >= opts.min_recall);
+            points.retain(|p| p.recall >= opts.min_recall);
         }
         if points.is_empty() {
+            continue;
+        }
+
+        // A cost metric has no meaningful frontier: connect every point
+        // in recall order instead of Pareto-filtering.
+        if opts.y_metric == YMetric::DiskReadPerQuery {
+            series.push(PlotSeries {
+                name,
+                pareto_points: points,
+                other_points: Vec::new(),
+            });
             continue;
         }
 
         let pareto_points = compute_pareto_for_points(&points);
         let pareto_set: std::collections::HashSet<(u64, u64)> = pareto_points
             .iter()
-            .map(|(r, q)| (r.to_bits(), q.to_bits()))
+            .map(|p| (p.recall.to_bits(), p.y.to_bits()))
             .collect();
 
         // In per-algo mode (default), only show the Pareto frontier.
         // In per-config mode, also show non-Pareto points.
         let other_points = if opts.per_config {
-            let mut others = Vec::new();
-            for &(recall, qps) in &points {
-                if !pareto_set.contains(&(recall.to_bits(), qps.to_bits())) {
-                    others.push((recall, qps));
-                }
-            }
-            others
+            points
+                .iter()
+                .filter(|p| !pareto_set.contains(&(p.recall.to_bits(), p.y.to_bits())))
+                .cloned()
+                .collect()
         } else {
             Vec::new()
         };
@@ -419,21 +519,21 @@ fn build_caption(summaries: &[RunSummary]) -> Option<String> {
 /// Then remove staircase artifacts by keeping only points where QPS
 /// drops by at least 5% from the previous point, avoiding dense
 /// clusters from different configs at similar recall values.
-fn compute_pareto_for_points(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+fn compute_pareto_for_points(points: &[PlotPoint]) -> Vec<PlotPoint> {
     let mut sorted = points.to_vec();
-    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    sorted.sort_by(|a, b| b.y.partial_cmp(&a.y).unwrap());
 
-    let mut frontier = Vec::new();
+    let mut frontier: Vec<PlotPoint> = Vec::new();
     let mut best_recall = f64::NEG_INFINITY;
 
-    for (recall, qps) in sorted {
-        if recall > best_recall {
-            best_recall = recall;
-            frontier.push((recall, qps));
+    for p in sorted {
+        if p.recall > best_recall {
+            best_recall = p.recall;
+            frontier.push(p);
         }
     }
 
-    frontier.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+    frontier.sort_by(|a, b| a.recall.partial_cmp(&b.recall).unwrap());
     frontier
 }
 
@@ -477,6 +577,7 @@ mod tests {
             qps_wall: 0.0,
             query_results: Vec::new(),
             cache: None,
+            io: None,
         }
     }
 
@@ -596,6 +697,108 @@ mod tests {
         // Hardware descriptor still shown; no stray instance-type prefix.
         assert!(cap.contains("Intel Xeon 6975P-C, 8 vCPU, 62 GB"));
         assert!(!cap.contains("r8i"));
+    }
+
+    fn result_with_io(name: &str, recall: f64, disk_read_bytes: u64) -> SearchResult {
+        let mut r = result("meerkat", None, name);
+        r.avg_recall = recall;
+        r.io = Some(crate::metrics::SearchIoStats {
+            queries: 100,
+            duration_ms: 1000,
+            idx_blks_read: 500,
+            idx_blks_hit: 9500,
+            disk_read_bytes,
+            ..Default::default()
+        });
+        r
+    }
+
+    #[test]
+    fn disk_metric_plots_bytes_per_query_and_skips_missing_io() {
+        let summary = RunSummary {
+            dataset: "t".into(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: vec![
+                result_with_io("a", 0.8, 100 * 4096),
+                result_with_io("a", 0.9, 100 * 65536),
+                result("meerkat", None, "no-io"), // dropped: no io stats
+            ],
+            pareto: Vec::new(),
+        };
+        let opts = PlotOptions {
+            per_config: true,
+            y_metric: YMetric::DiskReadPerQuery,
+            ..Default::default()
+        };
+        let data = prepare_plot_data(std::slice::from_ref(&summary), "t", &opts);
+        assert_eq!(data.series.len(), 1);
+        let s = &data.series[0];
+        // All points connected in recall order, no pareto split.
+        assert_eq!(s.pareto_points.len(), 2);
+        assert!(s.other_points.is_empty());
+        assert_eq!(s.pareto_points[0].y, 4096.0);
+        assert_eq!(s.pareto_points[1].y, 65536.0);
+        // Hover carries QPS + buffer hit ratio.
+        assert!(s.pareto_points[0].hover.contains("QPS: 100"));
+        assert!(s.pareto_points[0].hover.contains("Buffer hit: 95.0%"));
+    }
+
+    #[test]
+    fn zero_disk_reads_floored_for_log_axis() {
+        let summary = RunSummary {
+            dataset: "t".into(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: vec![result_with_io("a", 0.9, 0)],
+            pareto: Vec::new(),
+        };
+        let opts = PlotOptions {
+            y_metric: YMetric::DiskReadPerQuery,
+            per_config: true,
+            ..Default::default()
+        };
+        let data = prepare_plot_data(std::slice::from_ref(&summary), "t", &opts);
+        assert_eq!(data.series[0].pareto_points[0].y, 1.0);
+        // The exact value is still in the hover.
+        assert!(data.series[0].pareto_points[0].hover.contains("0 B"));
+    }
+
+    #[test]
+    fn qps_hover_includes_io_when_present() {
+        let summary = RunSummary {
+            dataset: "t".into(),
+            environment: None,
+            config: serde_json::Value::Null,
+            pg_runtime: None,
+            index_builds: Vec::new(),
+            search_results: vec![result_with_io("a", 0.9, 100 * 4096), result("x", None, "b")],
+            pareto: Vec::new(),
+        };
+        let opts = PlotOptions {
+            per_config: true,
+            ..Default::default()
+        };
+        let data = prepare_plot_data(std::slice::from_ref(&summary), "t", &opts);
+        let with_io = data.series.iter().find(|s| s.name == "a").unwrap();
+        assert!(with_io.pareto_points[0]
+            .hover
+            .contains("Disk read/query: 4.0 kB"));
+        let without_io = data.series.iter().find(|s| s.name == "b").unwrap();
+        assert!(without_io.pareto_points[0].hover.is_empty());
+    }
+
+    #[test]
+    fn fmt_bytes_humanizes() {
+        assert_eq!(fmt_bytes(0.0), "0 B");
+        assert_eq!(fmt_bytes(512.0), "512 B");
+        assert_eq!(fmt_bytes(4096.0), "4.0 kB");
+        assert_eq!(fmt_bytes(1.5 * 1024.0 * 1024.0), "1.5 MB");
+        assert_eq!(fmt_bytes(3.0 * 1024.0 * 1024.0 * 1024.0), "3.0 GB");
     }
 
     #[test]

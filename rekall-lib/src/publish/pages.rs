@@ -730,6 +730,7 @@ fn render_run_page(
         ("pareto", "Pareto"),
         ("distance-recall", "Distance-recall"),
         ("per-config", "Per-config"),
+        ("io", "Disk I/O"),
         ("build-times", "Build times"),
         ("build-sizes", "Index sizes"),
     ]

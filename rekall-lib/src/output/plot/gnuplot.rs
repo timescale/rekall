@@ -15,20 +15,12 @@ pub fn render(
     let mut data_min = 1.0_f64;
     let mut data_max = 0.0_f64;
     for s in &data.series {
-        for &(r, _) in &s.pareto_points {
-            if r < data_min {
-                data_min = r;
+        for p in s.pareto_points.iter().chain(&s.other_points) {
+            if p.recall < data_min {
+                data_min = p.recall;
             }
-            if r > data_max {
-                data_max = r;
-            }
-        }
-        for &(r, _) in &s.other_points {
-            if r < data_min {
-                data_min = r;
-            }
-            if r > data_max {
-                data_max = r;
+            if p.recall > data_max {
+                data_max = p.recall;
             }
         }
     }
@@ -66,7 +58,7 @@ pub fn render(
         title_string(&data.title, data.caption.as_deref())
     )?;
     writeln!(f, "set xlabel noenhanced 'Recall@10' offset 0,-1")?;
-    writeln!(f, "set ylabel 'Queries per second'")?;
+    writeln!(f, "set ylabel '{}'", opts.y_metric.axis_title())?;
     writeln!(f, "set grid")?;
     writeln!(f, "set key left bottom box opaque")?;
     writeln!(f, "set bmargin 7")?;
@@ -76,7 +68,11 @@ pub fn render(
     // Y-axis
     if opts.log_y {
         writeln!(f, "set logscale y")?;
-        writeln!(f, "set format y '%.0s%cQPS'")?;
+        let y_fmt = match opts.y_metric {
+            super::YMetric::Qps => "%.0s%cQPS",
+            super::YMetric::DiskReadPerQuery => "%.0s%cB",
+        };
+        writeln!(f, "set format y '{y_fmt}'")?;
     }
 
     // X-axis: logit scale via gnuplot's nonlinear axis
@@ -143,16 +139,16 @@ pub fn render(
     for (i, s) in data.series.iter().enumerate() {
         // Pareto points
         writeln!(f, "$pareto_{i} << EOD")?;
-        for &(recall, qps) in &s.pareto_points {
-            writeln!(f, "{recall} {qps}")?;
+        for p in &s.pareto_points {
+            writeln!(f, "{} {}", p.recall, p.y)?;
         }
         writeln!(f, "EOD")?;
 
         // Non-Pareto points
         if !opts.pareto_only && !s.other_points.is_empty() {
             writeln!(f, "$other_{i} << EOD")?;
-            for &(recall, qps) in &s.other_points {
-                writeln!(f, "{recall} {qps}")?;
+            for p in &s.other_points {
+                writeln!(f, "{} {}", p.recall, p.y)?;
             }
             writeln!(f, "EOD")?;
         }

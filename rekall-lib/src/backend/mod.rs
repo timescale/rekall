@@ -3,6 +3,7 @@ pub mod meerkat;
 pub mod pg_vector_type;
 pub mod pgvector_hnsw;
 pub mod postgres;
+pub mod search_monitor;
 pub mod vchordrq;
 
 use std::collections::HashMap;

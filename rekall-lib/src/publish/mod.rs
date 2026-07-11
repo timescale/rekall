@@ -714,6 +714,7 @@ mod tests {
             qps_wall: 0.0,
             query_results: Vec::new(),
             cache: None,
+            io: None,
         };
         s.search_results = vec![mk(0.90, 500.0), mk(0.99, 120.0), mk(0.95, 300.0)];
         let meta = RunMeta::from_summary(&s, "rid", "s3://b/rid/").unwrap();

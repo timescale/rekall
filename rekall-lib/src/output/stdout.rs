@@ -311,6 +311,10 @@ impl OutputSink for StdoutSink {
             p50_us: String,
             #[tabled(rename = "p99 (us)")]
             p99_us: String,
+            #[tabled(rename = "Disk/q")]
+            disk_per_q: String,
+            #[tabled(rename = "Hit%")]
+            hit_pct: String,
         }
 
         let rows: Vec<Row> = summary
@@ -325,6 +329,17 @@ impl OutputSink for StdoutSink {
                 avg_us: format!("{:.0}", r.avg_latency_us),
                 p50_us: format!("{:.0}", r.p50_latency_us),
                 p99_us: format!("{:.0}", r.p99_latency_us),
+                disk_per_q: r
+                    .io
+                    .as_ref()
+                    .map(|io| crate::output::plot::fmt_bytes(io.disk_read_bytes_per_query()))
+                    .unwrap_or_else(|| "-".to_string()),
+                hit_pct: r
+                    .io
+                    .as_ref()
+                    .and_then(|io| io.shared_hit_ratio())
+                    .map(|h| format!("{:.1}", h * 100.0))
+                    .unwrap_or_else(|| "-".to_string()),
             })
             .collect();
 

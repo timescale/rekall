@@ -169,12 +169,31 @@ pub struct SearchConfig {
     /// root-owned helper whitelisted in sudoers.
     #[serde(default = "default_cache_drop_command")]
     pub cache_drop_command: String,
+    /// Collect per-sweep-point I/O statistics (PG buffer/backend I/O
+    /// deltas + continuous sampling of the data directory's block
+    /// device) and record them on each result. The counters are always
+    /// maintained by PG and the kernel, so the timed queries themselves
+    /// are unaffected — snapshots run on a separate monitor connection
+    /// at point boundaries.
+    #[serde(default = "default_io_stats")]
+    pub io_stats: bool,
+    /// Interval for the continuous block-device sampling (ms).
+    #[serde(default = "default_io_sample_interval_ms")]
+    pub io_sample_interval_ms: u64,
     #[serde(default)]
     pub sweep: Vec<SweepConfig>,
 }
 
 fn default_cache_drop_command() -> String {
     "sudo -n sh -c 'sync; echo 3 > /proc/sys/vm/drop_caches'".to_string()
+}
+
+fn default_io_stats() -> bool {
+    true
+}
+
+fn default_io_sample_interval_ms() -> u64 {
+    1000
 }
 
 fn default_k() -> usize {
@@ -198,6 +217,8 @@ impl Default for SearchConfig {
             num_queries: None,
             cache: CacheMode::default(),
             cache_drop_command: default_cache_drop_command(),
+            io_stats: default_io_stats(),
+            io_sample_interval_ms: default_io_sample_interval_ms(),
             sweep: Vec::new(),
         }
     }

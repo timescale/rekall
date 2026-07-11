@@ -198,6 +198,7 @@ mod tests {
                 recall: 1.0,
             }],
             cache: None,
+            io: None,
         }
     }
 

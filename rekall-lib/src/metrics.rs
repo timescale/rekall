@@ -67,6 +67,113 @@ pub struct QueryResult {
     pub recall: f64,
 }
 
+/// One interval sample of the block device(s) backing the PG data
+/// directory. All values are deltas over the sample interval.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiskIoSample {
+    pub elapsed_ms: u64,
+    pub read_bytes: u64,
+    pub write_bytes: u64,
+    pub reads: u64,
+    pub writes: u64,
+    /// Time the device spent with I/O in flight during the interval
+    /// (diskstats "time doing I/O"); busy% = io_time_ms / interval.
+    pub io_time_ms: u64,
+}
+
+/// I/O done by the query backend over one sweep point, from PG 18's
+/// `pg_stat_get_backend_io()`, summed across objects and contexts.
+/// Unlike the per-relation counters this is exact per-backend
+/// attribution (nothing from autovacuum, checkpointer, or the monitor).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct BackendIo {
+    /// Shared-buffer misses that became read() calls to the OS. These
+    /// may still be served from the OS page cache — compare with the
+    /// device-level counters to see what actually hit disk.
+    pub reads: i64,
+    pub read_bytes: i64,
+    /// Shared-buffer hits (no syscall).
+    pub hits: i64,
+    pub writes: i64,
+    pub write_bytes: i64,
+    pub evictions: i64,
+    /// Time spent in reads (ms). `None` unless track_io_timing was on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_time_ms: Option<f64>,
+}
+
+/// I/O statistics for one search sweep point, covering all timed runs
+/// (`queries` = num_queries × runs; warmup and cache eviction excluded).
+///
+/// Three layers, from PostgreSQL down to hardware:
+///  - per-relation shared-buffer traffic for the active index and heap
+///    (`pg_statio_*` deltas; one block = 8 kB),
+///  - the query backend's own I/O (`backend`, PG 18+),
+///  - the block device backing the data directory (`disk_*`), which is
+///    what physically hit storage after the OS page cache.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct SearchIoStats {
+    /// Timed queries covered — the denominator for per-query rates.
+    pub queries: u64,
+    /// Wall time covered by the disk counters.
+    pub duration_ms: u64,
+    pub idx_blks_read: i64,
+    pub idx_blks_hit: i64,
+    pub heap_blks_read: i64,
+    pub heap_blks_hit: i64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<BackendIo>,
+    /// Device sampled (e.g. "nvme0n1p1"). `None` means the data
+    /// directory's device could not be resolved and the `disk_*`
+    /// counters aggregate all whole-disk devices on the host.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disk_device: Option<String>,
+    pub disk_read_bytes: u64,
+    pub disk_write_bytes: u64,
+    pub disk_reads: u64,
+    pub disk_writes: u64,
+    pub disk_io_time_ms: u64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub disk_samples: Vec<DiskIoSample>,
+}
+
+impl SearchIoStats {
+    /// Shared-buffer hit ratio, preferring exact backend attribution
+    /// when available, else the per-relation counters. `None` when no
+    /// buffer was touched (avoids a fake 100%/0%).
+    pub fn shared_hit_ratio(&self) -> Option<f64> {
+        let (hits, reads) = match &self.backend {
+            Some(b) => (b.hits, b.reads),
+            None => (
+                self.idx_blks_hit + self.heap_blks_hit,
+                self.idx_blks_read + self.heap_blks_read,
+            ),
+        };
+        let total = hits + reads;
+        (total > 0).then(|| hits as f64 / total as f64)
+    }
+
+    pub fn disk_read_bytes_per_query(&self) -> f64 {
+        if self.queries == 0 {
+            return 0.0;
+        }
+        self.disk_read_bytes as f64 / self.queries as f64
+    }
+
+    /// Shared-buffer misses (8 kB blocks read from the OS) per query.
+    pub fn blks_read_per_query(&self) -> f64 {
+        if self.queries == 0 {
+            return 0.0;
+        }
+        (self.idx_blks_read + self.heap_blks_read) as f64 / self.queries as f64
+    }
+
+    /// Fraction of the wall time the device had I/O in flight.
+    pub fn disk_busy_ratio(&self) -> Option<f64> {
+        (self.duration_ms > 0).then(|| self.disk_io_time_ms as f64 / self.duration_ms as f64)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SearchResult {
     pub index_name: String,
@@ -99,6 +206,11 @@ pub struct SearchResult {
     /// configured mode — reports must trust this, not the config.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<String>,
+    /// I/O statistics for this sweep point (buffer + backend + device).
+    /// Absent when io_stats is disabled or on result files that predate
+    /// the feature.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io: Option<SearchIoStats>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -380,7 +492,61 @@ mod tests {
             qps_wall: qps,
             query_results: Vec::new(),
             cache: None,
+            io: None,
         }
+    }
+
+    #[test]
+    fn search_result_deserializes_without_io_field() {
+        // Result files that predate I/O stats must keep loading.
+        let mut v = serde_json::to_value(make_search_result("a", 0.9, 100.0)).unwrap();
+        v.as_object_mut().unwrap().remove("io");
+        let r: SearchResult = serde_json::from_value(v).unwrap();
+        assert!(r.io.is_none());
+    }
+
+    #[test]
+    fn io_stats_hit_ratio_prefers_backend() {
+        let mut io = SearchIoStats {
+            queries: 10,
+            idx_blks_read: 50,
+            idx_blks_hit: 50,
+            ..Default::default()
+        };
+        // Per-relation only: 50/(50+50).
+        assert_eq!(io.shared_hit_ratio(), Some(0.5));
+        // Exact backend counters win when present.
+        io.backend = Some(BackendIo {
+            reads: 10,
+            hits: 90,
+            ..Default::default()
+        });
+        assert_eq!(io.shared_hit_ratio(), Some(0.9));
+    }
+
+    #[test]
+    fn io_stats_ratios_none_or_zero_when_empty() {
+        let io = SearchIoStats::default();
+        assert_eq!(io.shared_hit_ratio(), None);
+        assert_eq!(io.disk_busy_ratio(), None);
+        assert_eq!(io.disk_read_bytes_per_query(), 0.0);
+        assert_eq!(io.blks_read_per_query(), 0.0);
+    }
+
+    #[test]
+    fn io_stats_per_query_rates() {
+        let io = SearchIoStats {
+            queries: 100,
+            duration_ms: 2000,
+            idx_blks_read: 300,
+            heap_blks_read: 200,
+            disk_read_bytes: 100 * 8192,
+            disk_io_time_ms: 1000,
+            ..Default::default()
+        };
+        assert_eq!(io.blks_read_per_query(), 5.0);
+        assert_eq!(io.disk_read_bytes_per_query(), 8192.0);
+        assert_eq!(io.disk_busy_ratio(), Some(0.5));
     }
 
     #[test]

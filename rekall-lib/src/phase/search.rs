@@ -403,6 +403,37 @@ pub async fn run(
         // backend; recorded on each result to separate Pareto series.
         let data_type = backend.data_type_label();
 
+        // I/O monitor for this query series: one extra connection that
+        // snapshots PG counters and samples the data-dir block device
+        // around each sweep point's timed runs. The backend pid pins
+        // pg_stat_get_backend_io to the connection running the queries.
+        let io_monitor = if config.search.io_stats {
+            let backend_pid = backend
+                .pg()
+                .client()
+                .query_one("SELECT pg_backend_pid()", &[])
+                .await
+                .ok()
+                .map(|r| r.get::<_, i32>(0));
+            let m = crate::backend::search_monitor::SearchIoMonitor::new(
+                &config.connection.dsn,
+                &active_idx,
+                &config.table_name(),
+                backend_pid,
+                std::time::Duration::from_millis(config.search.io_sample_interval_ms),
+            )
+            .await;
+            if m.is_none() {
+                tracing::warn!(
+                    "io stats: monitor connection failed; disabled for '{}'",
+                    query.name
+                );
+            }
+            m
+        } else {
+            None
+        };
+
         let param_combos = expand_sweep_params(&query.params);
 
         for params in &param_combos {
@@ -500,6 +531,17 @@ pub async fn run(
                 }
             }
 
+            // Open the I/O measurement window: flush the query
+            // backend's pending stats first so warmup/eviction I/O
+            // stays out of the deltas.
+            let io_point = match &io_monitor {
+                Some(m) => {
+                    crate::backend::search_monitor::force_stats_flush(backend.pg().client()).await;
+                    Some(m.begin().await)
+                }
+                None => None,
+            };
+
             let mut best_collector = LatencyCollector::new();
             let mut best_avg = f64::MAX;
             let mut best_wall_secs = 0.0;
@@ -555,6 +597,16 @@ pub async fn run(
                 }
             }
 
+            // Close the I/O window. The stats cover ALL runs (QPS
+            // reports the best run), hence queries = num_queries × runs.
+            let io_stats = match (&io_monitor, io_point) {
+                (Some(m), Some(p)) => {
+                    crate::backend::search_monitor::force_stats_flush(backend.pg().client()).await;
+                    Some(m.finish(p, (num_queries * config.search.runs) as u64).await)
+                }
+                _ => None,
+            };
+
             let qps = if best_avg > 0.0 {
                 1_000_000.0 / best_avg
             } else {
@@ -585,7 +637,25 @@ pub async fn run(
                 qps_wall,
                 query_results,
                 cache: Some(effective_cache.to_string()),
+                io: io_stats,
             };
+
+            if let Some(io) = &result.io {
+                let hit = io
+                    .shared_hit_ratio()
+                    .map(|h| format!("{:.1}%", h * 100.0))
+                    .unwrap_or_else(|| "n/a".to_string());
+                info!(
+                    "  io: {:.1} blks read/query (idx {}, heap {}), \
+                     buffer hit {}, disk {}/query, disk busy {:.0}%",
+                    io.blks_read_per_query(),
+                    io.idx_blks_read,
+                    io.heap_blks_read,
+                    hit,
+                    crate::output::plot::fmt_bytes(io.disk_read_bytes_per_query()),
+                    io.disk_busy_ratio().unwrap_or(0.0) * 100.0,
+                );
+            }
 
             let _ = progress.send(ProgressEvent::SearchEnd {
                 index_name: query.name.clone(),

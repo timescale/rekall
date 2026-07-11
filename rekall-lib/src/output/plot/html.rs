@@ -1,7 +1,7 @@
 use std::io::Write;
 use std::path::Path;
 
-use super::{logit, PlotData, PlotOptions, COLORS};
+use super::{logit, PlotData, PlotOptions, PlotPoint, YMetric, COLORS};
 
 pub fn render(
     path: &Path,
@@ -16,15 +16,31 @@ pub fn render(
         (|x| x) as fn(f64) -> f64
     };
 
+    // The y hover line for the QPS metric reads the axis value; the
+    // disk metric's exact value is carried in each point's hover text
+    // (the axis value may be floored for the log scale).
+    let y_line = match opts.y_metric {
+        YMetric::Qps => "<br>QPS: %{y:.0f}",
+        YMetric::DiskReadPerQuery => "",
+    };
+
     let mut traces = String::new();
 
     for (i, s) in data.series.iter().enumerate() {
         let (r, g, b) = COLORS[i % COLORS.len()];
         let color_str = format!("rgb({r},{g},{b})");
 
-        let pareto_x: Vec<f64> = s.pareto_points.iter().map(|&(r, _)| xform_x(r)).collect();
-        let pareto_y: Vec<f64> = s.pareto_points.iter().map(|&(_, q)| q).collect();
-        let pareto_recall: Vec<f64> = s.pareto_points.iter().map(|&(r, _)| r).collect();
+        let coords = |points: &[PlotPoint]| {
+            let x: Vec<f64> = points.iter().map(|p| xform_x(p.recall)).collect();
+            let y: Vec<f64> = points.iter().map(|p| p.y).collect();
+            let recall: Vec<f64> = points.iter().map(|p| p.recall).collect();
+            let hover: Vec<&str> = points.iter().map(|p| p.hover.as_str()).collect();
+            // serde_json (not {:?}) for the hover strings: Rust's debug
+            // escaping is not valid JSON for all inputs.
+            (x, y, recall, serde_json::to_string(&hover).unwrap())
+        };
+
+        let (pareto_x, pareto_y, pareto_recall, pareto_hover) = coords(&s.pareto_points);
 
         if !traces.is_empty() {
             traces.push(',');
@@ -34,21 +50,20 @@ pub fn render(
                 x: {pareto_x:?},
                 y: {pareto_y:?},
                 customdata: {pareto_recall:?},
+                text: {pareto_hover},
                 name: "{name}",
                 type: "scatter",
                 mode: "lines+markers",
                 line: {{ color: "{color_str}", width: 3 }},
                 marker: {{ color: "{color_str}", size: 8 }},
                 legendgroup: "{name}",
-                hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}{y_line}%{{text}}<extra></extra>"
             }}"#,
             name = s.name,
         ));
 
         if !s.other_points.is_empty() && !opts.pareto_only {
-            let other_x: Vec<f64> = s.other_points.iter().map(|&(r, _)| xform_x(r)).collect();
-            let other_y: Vec<f64> = s.other_points.iter().map(|&(_, q)| q).collect();
-            let other_recall: Vec<f64> = s.other_points.iter().map(|&(r, _)| r).collect();
+            let (other_x, other_y, other_recall, other_hover) = coords(&s.other_points);
 
             traces.push(',');
             traces.push_str(&format!(
@@ -56,12 +71,13 @@ pub fn render(
                     x: {other_x:?},
                     y: {other_y:?},
                     customdata: {other_recall:?},
+                    text: {other_hover},
                     type: "scatter",
                     mode: "markers",
                     marker: {{ color: "{color_str}", size: 5, opacity: 0.4 }},
                     legendgroup: "{name}",
                     showlegend: false,
-                    hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}<br>QPS: %{{y:.0f}}<extra></extra>"
+                    hovertemplate: "<b>{name}</b><br>Recall: %{{customdata:.4f}}{y_line}%{{text}}<extra></extra>"
                 }}"#,
                 name = s.name,
             ));
@@ -141,7 +157,7 @@ pub fn render(
             "var layout = {{\n",
             "  margin: {{ t: 20 }},\n",
             "  xaxis: {{ title: \"Recall@10\", {x_axis_config} }},\n",
-            "  yaxis: {{ title: \"Queries per second\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
+            "  yaxis: {{ title: \"{y_title}\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
             "  plot_bgcolor: \"white\",\n",
@@ -162,6 +178,7 @@ pub fn render(
         caption_html = caption_html,
         traces = traces,
         x_axis_config = x_axis_config,
+        y_title = opts.y_metric.axis_title(),
         y_type = y_type,
     );
     f.write_all(html.as_bytes())?;

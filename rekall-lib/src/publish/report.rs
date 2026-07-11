@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use crate::metrics::RunSummary;
 use crate::output::plot::{
-    generate_build_plot, generate_index_size_plot, generate_plot, PlotOptions,
+    generate_build_plot, generate_index_size_plot, generate_plot, PlotOptions, YMetric,
 };
 
 use super::summary::{FinalResults, RecallBasis};
@@ -64,6 +64,28 @@ pub fn generate_into_dir(summary: &RunSummary, dir: &Path, finals: &FinalResults
                 std::slice::from_ref(&dr),
                 &path,
                 Some("Recall vs QPS (ann-benchmarks distance method)"),
+                &opts,
+            ) {
+                Ok(()) => written.push(path),
+                Err(e) => tracing::warn!("could not generate {}: {e}", path.display()),
+            }
+        }
+    }
+
+    // Disk-I/O-per-query plot, when the run recorded I/O stats (per-config
+    // series so each configuration's cost curve is visible on its own).
+    if summary.search_results.iter().any(|r| r.io.is_some()) {
+        for ext in ["html", "svg"] {
+            let path = dir.join(format!("{prefix}-report-io.{ext}"));
+            let opts = PlotOptions {
+                per_config: true,
+                y_metric: YMetric::DiskReadPerQuery,
+                ..Default::default()
+            };
+            match generate_plot(
+                std::slice::from_ref(summary),
+                &path,
+                Some("Disk read per query"),
                 &opts,
             ) {
                 Ok(()) => written.push(path),
