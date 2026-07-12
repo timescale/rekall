@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-10m/2026-07-12/r8i.4xlarge-165948",
+  "dataset": "cohere-10m",
+  "date": "2026-07-12",
+  "time": "16:59:48",
+  "timestamp": "2026-07-12T16:59:48+0000",
+  "instance_type": "r8i.4xlarge",
+  "hostname": "ip-172-31-74-126",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 16,
+  "memory_gb": 123.8,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "8b64f86",
+  "extensions": {
+    "meerkat": "0.1.0 (508fcba)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.5"
+  },
+  "peak_recall": 0.99992,
+  "qps_at_peak": 19.011049465290657,
+  "num_indexes": 6,
+  "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-07-12/r8i.4xlarge-165948/",
+  "comment": "Exact centroid build branch"
+}

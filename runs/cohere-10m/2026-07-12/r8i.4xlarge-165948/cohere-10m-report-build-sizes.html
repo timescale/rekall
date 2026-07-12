@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index size</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index size</div><div class="meta">“Exact centroid build branch”<br>cohere-10m  |  2026-07-12  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (508fcba), pgvector 0.8.5</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n40000-cctrue-fs16-soar-cfs-eps035", "mkt-n40000-cctrue-fs16-soar-cfs-eps025", "mkt-n24000-cctrue-fs16-soar-cfs-eps035", "mkt-n24000-cctrue-fs16-soar-cfs-eps025", "mkt-n40000-cctrue-fs16-soar-cfs-eps015"], y:[19528.703125, 2696.1484375, 2638.59375, 2588.109375, 2541.8984375, 2502.7109375], text:["5045s", "1135s", "1157s", "638s", "646s", "1128s"],
+  textposition:"outside", cliponaxis:false, hovertext:["5045.4s · 19529 MB · 8 workers", "1135.1s · 2696 MB · 8 workers", "1157.1s · 2639 MB · 8 workers", "637.6s · 2588 MB · 8 workers", "645.6s · 2542 MB · 8 workers", "1127.9s · 2503 MB · 8 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Index size (MB)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>
