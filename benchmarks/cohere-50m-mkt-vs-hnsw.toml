@@ -15,9 +15,8 @@
 # Usage: rekall run benchmarks/cohere-50m-mkt-vs-hnsw.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-n120000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n240000-cctrue-fs16-soar-cfs.toml",
     "indexes/mkt-n240000-cctrue-fs16-soar-cfs-eps015.toml",
+    "indexes/mkt-n240000-ccfalse-fs16-soar-eps015.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 
