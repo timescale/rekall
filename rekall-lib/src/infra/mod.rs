@@ -347,7 +347,43 @@ pub fn ssh_provision(
     ssh_wait(ip, ssh_priv_path)?;
 
     info!("Waiting for cloud-init to complete...");
-    ssh_run(ip, ssh_priv_path, "cloud-init status --wait")?;
+    // With the fault-tolerant install tail, a cloud-init failure means the
+    // state-critical bootstrap (PG install, tuning, roles) did not finish —
+    // the box is NOT usable. Pull the diagnostics into the console (status
+    // detail + bootstrap log tail) and fail `infra up` with a pointer to
+    // them, instead of surfacing a bare ssh exit code.
+    if ssh_run(ip, ssh_priv_path, "cloud-init status --wait").is_err() {
+        let _ = ssh_run(ip, ssh_priv_path, "cloud-init status --long || true");
+        let _ = ssh_run(
+            ip,
+            ssh_priv_path,
+            "sudo tail -n 40 /var/log/rekall-setup.log || true",
+        );
+        return Err(Error::Config(format!(
+            "cloud-init failed on {ip}: instance bootstrap did not complete \
+             (status and /var/log/rekall-setup.log tail printed above)"
+        )));
+    }
+
+    // The bootstrap's fault-tolerant tail records failed installs in
+    // /tmp/rekall-setup-failures instead of aborting cloud-init (the
+    // server tuning/roles are already applied by then). Surface them
+    // loudly but continue: the box is usable, and a missing extension
+    // fails fast at CREATE EXTENSION with a clear error.
+    if ssh_run(
+        ip,
+        ssh_priv_path,
+        "test ! -f /tmp/rekall-setup-failures || { \
+           echo \"BOOTSTRAP INSTALL FAILURES:$(cat /tmp/rekall-setup-failures)\"; \
+           exit 1; }",
+    )
+    .is_err()
+    {
+        tracing::warn!(
+            "some bootstrap installs failed on {ip} — components listed \
+             above; details in /var/log/rekall-setup.log on the instance"
+        );
+    }
 
     // Upload deploy keys
     if !deploy_key_paths.is_empty() {
@@ -1069,13 +1105,24 @@ mod tests {
 
         assert!(out.starts_with("#!/bin/bash"));
         assert!(out.contains("apt-get install -y postgresql-18 postgresql-server-dev-18"));
-        assert!(out.contains("Installing pgvector v0.8.2"));
+        assert!(out.contains("try_step \"pgvector v0.8.2\" install_pgvector"));
         assert!(out.contains("shared_buffers = '16GB'"));
         assert!(out.contains("port = 5432"));
-        // Core dumps enabled for crash debugging.
-        assert!(out.contains("apt-get install -y systemd-coredump"));
+        // Core dumps enabled for crash debugging (package installed with the
+        // base toolchain; configuration applied before extension installs).
+        assert!(out.contains("systemd-coredump"));
         assert!(out.contains("LimitCORE=infinity"));
         assert!(out.contains("postgresql@18-main.service.d/coredump.conf"));
+        // State-critical setup (tuning, roles, core dumps) must precede the
+        // network-fragile extension installs, so a failed install loses only
+        // that component — never the server configuration.
+        let pgvector_pos = out.find("try_step \"pgvector").unwrap();
+        assert!(out.find("shared_buffers = '16GB'").unwrap() < pgvector_pos);
+        assert!(out.find("CREATE USER rekall").unwrap() < pgvector_pos);
+        assert!(out.find("LimitCORE=infinity").unwrap() < pgvector_pos);
+        // Fragile installs are fault-tolerant: failures are recorded for
+        // rekall to surface, not fatal to the whole bootstrap.
+        assert!(out.contains("rekall-setup-failures"));
         // Background apt upgrades disabled so they can't restart PG mid-run.
         assert!(out.contains("apt-daily-upgrade.timer"));
         assert!(out.contains("99rekall-no-auto-upgrade"));

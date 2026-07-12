@@ -122,7 +122,7 @@ apt-get install -y build-essential git curl wget pkg-config \
   tmux htop libhdf5-dev gnuplot-nox \
   cmake meson ninja-build clang clang-tools gdb valgrind \
   autoconf automake libtool \
-  unzip gcc-14
+  unzip gcc-14 systemd-coredump
 
 {% if is_amd -%}
 # Build AMD-optimized BLIS from source with Zen-specific microkernels.
@@ -157,17 +157,12 @@ rm -rf /tmp/aws /tmp/awscliv2.zip
 /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 apt-get install -y postgresql-{{ pg_version }} postgresql-server-dev-{{ pg_version }}
 
-{% if "pgvector" in extensions -%}
-echo "=== Installing pgvector {{ pgvector_version }} ==="
-apt-get install -y postgresql-{{ pg_version }}-pgvector || {
-  echo "pgvector apt package not available, building from source"
-  cd /tmp
-  git clone --branch {{ pgvector_version }} --depth 1 https://github.com/pgvector/pgvector.git
-  cd pgvector
-  make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config
-  make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config install
-}
-{%- endif %}
+# Everything that defines the server's state (config tuning, hba, core
+# dumps, the rekall role) runs BEFORE any extension install below. The
+# extension installs are network-fragile (apt mirrors, git clones); with
+# set -e a failure there aborts the script, and it must not leave behind
+# a running-but-untuned server (stock shared_buffers, no rekall user)
+# that looks healthy from the outside.
 
 PG_CONF="/etc/postgresql/{{ pg_version }}/main/postgresql.conf"
 PG_HBA="/etc/postgresql/{{ pg_version }}/main/pg_hba.conf"
@@ -181,11 +176,11 @@ echo "{{ key }} = '{{ value }}'" >> "$PG_CONF"
 echo "host all rekall 0.0.0.0/0 scram-sha-256" >> "$PG_HBA"
 
 echo "=== Enabling core dumps (systemd-coredump) ==="
-# Ubuntu defaults to apport and discards PG backend cores. Install
-# systemd-coredump (sets kernel.core_pattern → systemd-coredump, cores land
-# in /var/lib/systemd/coredump, inspect with `coredumpctl`) so a meerkat /
-# pgvector build crash leaves a debuggable core.
-apt-get install -y systemd-coredump
+# Ubuntu defaults to apport and discards PG backend cores. The
+# systemd-coredump package (installed with the base toolchain above; sets
+# kernel.core_pattern → systemd-coredump, cores land in
+# /var/lib/systemd/coredump, inspect with `coredumpctl`) plus the config
+# below make a meerkat / pgvector build crash leave a debuggable core.
 
 # No size cap: a build backend can hold many GB of maintenance_work_mem and a
 # truncated core loses the heap. Compressed on disk, on the root volume.
@@ -212,16 +207,59 @@ systemctl restart postgresql@{{ pg_version }}-main
 sudo -u postgres psql -p {{ pg_port }} -c "CREATE USER rekall WITH PASSWORD 'rekall' SUPERUSER"
 sudo -u postgres psql -p {{ pg_port }} -c "CREATE DATABASE rekall OWNER rekall"
 
-echo "=== Installing Rust ==="
-sudo -u ubuntu bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
-
 sudo -u ubuntu bash -c 'cat > ~/.tmux.conf << TMUXEOF
 set-window-option -g mode-keys vi
 set -g history-limit 50000
 set -g default-terminal "xterm-256color"
 TMUXEOF'
 
-touch /tmp/rekall-ready
+# --- Fault-tolerant installs --------------------------------------------
+# The server state above is complete; the network-fragile installs below
+# must not abort the script and leave a half-provisioned box. Each step
+# runs in its own `bash -euo pipefail` child (set -e is silently disabled
+# inside `if`/`||` contexts, so a plain function call would keep running
+# past failures); a failing step is recorded and reported at the end, and
+# rekall surfaces /tmp/rekall-setup-failures after cloud-init completes.
+SETUP_FAILURES=""
+try_step() {
+  local name="$1" fn="$2"
+  echo "=== Installing $name ==="
+  if bash -euo pipefail -c "$fn"; then
+    echo "=== $name: OK ==="
+  else
+    echo "!!! $name: FAILED — continuing with remaining setup"
+    SETUP_FAILURES="${SETUP_FAILURES:+$SETUP_FAILURES }$name"
+  fi
+}
 
-echo "=== Rekall instance setup complete ==="
+install_rust() {
+  sudo -u ubuntu bash -c 'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y'
+}
+export -f install_rust
+try_step "rust" install_rust
+
+{% if "pgvector" in extensions -%}
+install_pgvector() {
+  apt-get install -y postgresql-{{ pg_version }}-pgvector || {
+    echo "pgvector apt package not available, building from source"
+    cd /tmp
+    rm -rf pgvector
+    git clone --branch {{ pgvector_version }} --depth 1 https://github.com/pgvector/pgvector.git
+    cd pgvector
+    make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config
+    make PG_CONFIG=/usr/lib/postgresql/{{ pg_version }}/bin/pg_config install
+  }
+}
+export -f install_pgvector
+try_step "pgvector {{ pgvector_version }}" install_pgvector
+{%- endif %}
+
+if [ -n "$SETUP_FAILURES" ]; then
+  echo "$SETUP_FAILURES" > /tmp/rekall-setup-failures
+  echo "=== Rekall instance setup complete WITH FAILURES:$SETUP_FAILURES ==="
+else
+  rm -f /tmp/rekall-setup-failures
+  echo "=== Rekall instance setup complete ==="
+fi
+touch /tmp/rekall-ready
 date
