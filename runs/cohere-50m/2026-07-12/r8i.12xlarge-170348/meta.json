@@ -16,9 +16,9 @@
     "pg_prewarm": "1.2",
     "vector": "0.8.5"
   },
-  "peak_recall": 0.9953999999999994,
-  "qps_at_peak": 26.25826452617699,
-  "num_indexes": 3,
+  "peak_recall": 0.9957999999999996,
+  "qps_at_peak": 42.55262653534134,
+  "num_indexes": 5,
   "s3_url": "s3://rekall-bench/runs/cohere-50m/2026-07-12/r8i.12xlarge-170348/",
   "comment": "Exact centroid build branch"
 }

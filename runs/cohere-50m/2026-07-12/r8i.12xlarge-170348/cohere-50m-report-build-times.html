@@ -12,8 +12,8 @@
 <div id="header"><div class="title">Index build time (heap prewarmed before each build)</div><div class="meta">“Exact centroid build branch”<br>cohere-50m  |  2026-07-12  |  r8i.12xlarge, Intel(R) Xeon(R) 6975P-C, 48 vCPU, 372 GB<br>PG 18.4  |  shared_buffers=96 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=24  |  meerkat 0.1.0 (508fcba), pgvector 0.8.5</div></div>
 <div id="plot"></div>
 <script>
-var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n240000-ccfalse-fs16-soar-eps015", "mkt-n240000-cctrue-fs16-soar-cfs-eps015"], y:[13865.906099254, 5655.259313831, 3421.988296859], text:["97634 MB", "14200 MB", "13221 MB"],
-  textposition:"outside", cliponaxis:false, hovertext:["13865.9s · 97634 MB · 24 workers", "5655.3s · 14200 MB · 24 workers", "3422.0s · 13221 MB · 24 workers"],
+var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n240000-ccfalse-fs16-soar-eps015", "mkt-n240000-cctrue-fs16-soar-cfs-eps015", "mkt-n240000-cctrue-fs16-soar-cfs-eps025", "mkt-n240000-cctrue-fs16-soar-cfs-eps035"], y:[13865.906099254, 5655.259313831, 3421.988296859, 3134.800055826, 2954.246711895], text:["97634 MB", "14200 MB", "13221 MB", "13749 MB", "13941 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["13865.9s · 97634 MB · 24 workers", "5655.3s · 14200 MB · 24 workers", "3422.0s · 13221 MB · 24 workers", "3134.8s · 13749 MB · 24 workers", "2954.2s · 13941 MB · 24 workers"],
   hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
   marker:{color:"rgb(31,119,180)"} };
 var layout = { margin:{t:20},
