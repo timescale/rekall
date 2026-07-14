@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index build time (heap prewarmed before each build)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index build time (heap prewarmed before each build)</div><div class="meta">“100M resized from 24xlarge to 4xlarge”<br>cohere-100m  |  2026-07-11  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.4  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  meerkat 0.1.0 (ca8d3c9), pgvector 0.8.4</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n400000-cctrue-fs16-soar-cfs", "mkt-n400000-cctrue-fs16-soar-cfs-eps015"], y:[21987.218948958, 11575.498290196, 3438.786083063], text:["183485 MB", "20667 MB", "24346 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["21987.2s · 183485 MB · 32 workers", "11575.5s · 20667 MB · 32 workers", "3438.8s · 24346 MB · 32 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Build time (seconds)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>
