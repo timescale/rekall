@@ -345,6 +345,9 @@ impl PgConnection {
 
             let version_candidates = match schema {
                 Some(s) => vec![
+                    // meerkat >= 0.1.0 release machinery
+                    format!("SELECT {s}.extension_version()"),
+                    // older meerkat dev builds
                     format!("SELECT {s}.version()"),
                     format!("SELECT {s}_version()"),
                     format!("SELECT {name}_version()"),
