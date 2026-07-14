@@ -158,6 +158,16 @@ pub struct SearchConfig {
     pub runs: usize,
     #[serde(default = "default_warmup")]
     pub warmup: usize,
+    /// Unmeasured passes of the full query set run per sweep section
+    /// before its first timed point (warm cache only). Prewarm pins
+    /// low-numbered blocks up to the shared-buffers budget and can hold
+    /// only a slice of relations larger than RAM, so the pages the
+    /// measured queries actually hit (over-budget index pages, reranked
+    /// heap rows) become resident only by running queries; without this
+    /// pass a section's first points measure residual cache state plus
+    /// the query set's demand loading. 0 disables.
+    #[serde(default = "default_promotion_passes")]
+    pub promotion_passes: usize,
     #[serde(default)]
     pub num_queries: Option<usize>,
     #[serde(default)]
@@ -208,12 +218,17 @@ fn default_warmup() -> usize {
     100
 }
 
+fn default_promotion_passes() -> usize {
+    1
+}
+
 impl Default for SearchConfig {
     fn default() -> Self {
         Self {
             k: default_k(),
             runs: default_runs(),
             warmup: default_warmup(),
+            promotion_passes: default_promotion_passes(),
             num_queries: None,
             cache: CacheMode::default(),
             cache_drop_command: default_cache_drop_command(),

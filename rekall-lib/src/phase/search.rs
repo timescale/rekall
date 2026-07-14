@@ -436,6 +436,57 @@ pub async fn run(
 
         let param_combos = expand_sweep_params(&query.params);
 
+        // Hot-set promotion (warm cache only). Prewarm pins low-numbered
+        // blocks up to the shared-buffers budget and can retain only a
+        // slice of relations larger than RAM, so the pages the measured
+        // queries actually hit — scattered index pages of over-budget
+        // graphs, and the heap rows each query reranks — become resident
+        // only by running queries. Without a promotion pass a section's
+        // first points measure whatever residual state prior activity
+        // left behind (not reproducible across runs) and pay the query
+        // set's demand-loading (measured: 40 kB disk/query and 61% disk
+        // busy on a first point vs 3 kB and <8% once warm). One
+        // unmeasured pass of the full query set at the section's median
+        // operating point loads that working set before the first timed
+        // run. Per section, not per index: a section's GUCs change which
+        // rows get reranked, and the working-set spike measurably recurs
+        // at regime boundaries. Skipped when every point is already
+        // completed (resumed sections run no queries).
+        if config.search.cache == CacheMode::Warm
+            && config.search.promotion_passes > 0
+            && param_combos
+                .iter()
+                .any(|p| !is_completed(&all_results, &query.name, p))
+        {
+            let median = &param_combos[param_combos.len() / 2];
+            backend.set_search_params(&idx_config.gucs).await?;
+            backend.set_search_params(median).await?;
+            let promo_start = Instant::now();
+            for _ in 0..config.search.promotion_passes {
+                for qi in 0..num_queries {
+                    let q = queries.row(qi).to_vec();
+                    if let Err(e) = backend.query(&q, k).await {
+                        report_crash(
+                            config,
+                            progress,
+                            &format!("search '{}' promotion query #{qi}", query.name),
+                            &e,
+                        );
+                        return Err(e);
+                    }
+                }
+            }
+            let text = format!(
+                "Promotion: {} pass(es) x {} queries at {} in {:.1}s",
+                config.search.promotion_passes,
+                num_queries,
+                serde_json::to_value(median).unwrap_or_default(),
+                promo_start.elapsed().as_secs_f64(),
+            );
+            info!("{text}");
+            let _ = progress.send(ProgressEvent::Message { text });
+        }
+
         for params in &param_combos {
             let params_json = serde_json::to_value(params).unwrap_or_default();
 
