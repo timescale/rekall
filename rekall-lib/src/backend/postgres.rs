@@ -131,11 +131,28 @@ impl PgConnection {
         }
 
         if let Some(ext) = extensions.last() {
+            // Resolve the shared library this extension's C functions are
+            // actually bound to instead of assuming it matches the bare
+            // extension name: some extensions (e.g. meerkat) install a
+            // version-suffixed .so for side-by-side installs, so
+            // `LOAD '{ext}'` can silently load a stale/different file
+            // sharing the unversioned name and double-init the real one
+            // when it's loaded again via the access method handler.
+            let probin_query = format!(
+                "SELECT DISTINCT probin FROM pg_proc p \
+                 JOIN pg_depend d ON d.objid = p.oid \
+                 JOIN pg_extension e ON e.oid = d.refobjid \
+                 WHERE e.extname = '{ext}' AND probin IS NOT NULL LIMIT 1"
+            );
+            let libpath: String = match client.query_opt(&probin_query, &[]).await {
+                Ok(Some(row)) => row.get(0),
+                _ => format!("$libdir/{ext}"),
+            };
             client
-                .execute(&format!("LOAD '{ext}'"), &[])
+                .execute(&format!("LOAD '{libpath}'"), &[])
                 .await
                 .map_err(|e| {
-                    tracing::error!("LOAD '{ext}' failed: {e}");
+                    tracing::error!("LOAD '{libpath}' failed: {e}");
                     Error::ExtensionMissing {
                         extension: (*ext).to_string(),
                     }
