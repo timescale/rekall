@@ -203,6 +203,23 @@ impl InfraConfig {
     /// Load infra config from a standalone TOML file.
     /// Supports .local.toml overrides (same as benchmark configs).
     pub fn from_file(path: &std::path::Path) -> std::result::Result<Self, String> {
+        // A .local.toml is an overlay, not a config: loading one as the
+        // base skips the committed instance file entirely, so every field
+        // it doesn't set silently falls back to defaults — no `extensions`
+        // (pgvector never installed), default instance_type, etc. Refuse
+        // and point at the committed file, which merges the overlay.
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        if let Some(base_name) = name.strip_suffix(".local.toml") {
+            return Err(format!(
+                "'{}' is a local override file, not a launchable config: \
+                 loading it standalone would drop everything the committed \
+                 file defines (extensions, instance_type, ...). Use \
+                 '{}' instead — it merges the .local.toml automatically.",
+                path.display(),
+                path.with_file_name(format!("{base_name}.toml")).display(),
+            ));
+        }
+
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read '{}': {e}", path.display()))?;
         let mut base: toml::Value = toml::from_str(&content)
@@ -525,6 +542,38 @@ mod tests {
         assert_eq!(cfg.pg_version, 18);
         assert_eq!(cfg.pg_port, 5432);
         assert!(cfg.ssh_key.is_none());
+    }
+
+    #[test]
+    fn from_file_refuses_local_toml() {
+        // Loading an overlay as the base config silently drops everything
+        // the committed file defines (extensions → empty → no pgvector,
+        // default instance_type, ...) — refuse with a pointer to the
+        // committed file. The check fires before any file access.
+        let err = InfraConfig::from_file(std::path::Path::new(
+            "infra/instances/r8i.12xlarge.local.toml",
+        ))
+        .unwrap_err();
+        assert!(err.contains("local override file"));
+        assert!(err.contains("infra/instances/r8i.12xlarge.toml"));
+    }
+
+    #[test]
+    fn from_file_merges_sibling_local_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("box.toml");
+        std::fs::write(
+            &base,
+            "extensions = [\"pgvector\", \"meerkat\"]\ninstance_type = \"r8i.12xlarge\"\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("box.local.toml"), "disk_size_gb = 1000\n").unwrap();
+
+        let cfg = InfraConfig::from_file(&base).unwrap();
+        // Overlay applied on top of the committed values, not instead of.
+        assert_eq!(cfg.disk_size_gb, 1000);
+        assert_eq!(cfg.instance_type, "r8i.12xlarge");
+        assert_eq!(cfg.extensions, vec!["pgvector", "meerkat"]);
     }
 
     #[test]
