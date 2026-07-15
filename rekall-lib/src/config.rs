@@ -130,6 +130,14 @@ pub struct IndexConfig {
     /// would only be capped by a reloption.
     #[serde(default)]
     pub table_parallel_workers: Option<i32>,
+    /// Name of another index config whose PHYSICAL index this arm reuses.
+    /// The arm keeps its own `name` for results and plots but resolves the
+    /// on-disk index to `idx_rekall_<table>_<physical_index>`, letting one
+    /// built index be swept under several query-time configurations (e.g.
+    /// session GUC A/B tests) without a rebuild. The referenced index must
+    /// already exist; the build phase treats this arm as build-free.
+    #[serde(default)]
+    pub physical_index: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -57,6 +57,7 @@ where
         pg.set_cancel_registry(cr.clone());
     }
     pg.set_build_gucs(idx.gucs.clone());
+    pg.set_physical_index(idx.physical_index.clone());
     let mut backend = build(pg, idx.name.clone(), params);
     backend.connect().await?;
     Ok(backend)
@@ -259,6 +260,17 @@ pub trait IndexBackend: Send + Sync {
     /// don't override this; the rabitq4-rerank case in vchordrq is the
     /// kind of exception where override is fine.
     async fn build_index(&self) -> Result<IndexBuildResult> {
+        // A physical_index arm never builds: reaching here means the
+        // referenced index does not exist, which is a config error --
+        // building would create a duplicate under the shared name.
+        if let Some(phys) = &self.pg().physical_index {
+            return Err(Error::Config(format!(
+                "'{}' reuses the physical index of '{phys}', which does \
+                 not exist -- build that config first",
+                self.index_name(),
+            )));
+        }
+
         if let (Some(col), Some(ty), Some(expr)) = (
             self.derived_column(),
             self.derived_column_type(),
@@ -343,6 +355,16 @@ pub trait IndexBackend: Send + Sync {
     }
 
     async fn drop_index(&self) -> Result<()> {
+        // Never drop through a physical_index arm: the index belongs to
+        // the referenced config (and possibly other arms sharing it).
+        if let Some(phys) = &self.pg().physical_index {
+            tracing::warn!(
+                "'{}' shares the physical index of '{phys}'; skipping drop",
+                self.index_name(),
+            );
+            return Ok(());
+        }
+
         let idx_name = self.pg().index_sql_name(self.index_name());
         self.pg()
             .client()

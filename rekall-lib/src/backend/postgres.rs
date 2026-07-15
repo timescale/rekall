@@ -30,6 +30,10 @@ pub struct PgConnection {
     /// GUCs applied on the build session before CREATE INDEX (e.g.
     /// `max_parallel_maintenance_workers`). Distinct from search GUCs.
     pub(crate) build_gucs: HashMap<String, toml::Value>,
+    /// When set, this arm reuses another config's physical index:
+    /// `index_sql_name` resolves to the referenced config's index so one
+    /// built index can be swept under several query-time configurations.
+    pub(crate) physical_index: Option<String>,
 }
 
 impl PgConnection {
@@ -45,7 +49,14 @@ impl PgConnection {
             cancel_registry: None,
             progress: None,
             build_gucs: HashMap::new(),
+            physical_index: None,
         }
+    }
+
+    /// Point this arm at another config's physical index (see
+    /// `IndexConfig::physical_index`).
+    pub fn set_physical_index(&mut self, physical: Option<String>) {
+        self.physical_index = physical;
     }
 
     /// Set the cancel registry so connections register their tokens.
@@ -675,11 +686,10 @@ impl PgConnection {
     }
 
     pub fn index_sql_name(&self, index_name: &str) -> String {
-        format!(
-            "idx_rekall_{}_{}",
-            self.table_name,
-            index_name.replace('-', "_")
-        )
+        // A physical_index arm keeps its own name in results and plots
+        // but resolves every SQL-level reference to the shared index.
+        let name = self.physical_index.as_deref().unwrap_or(index_name);
+        format!("idx_rekall_{}_{}", self.table_name, name.replace('-', "_"))
     }
 }
 

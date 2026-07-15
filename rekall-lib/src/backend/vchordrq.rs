@@ -316,6 +316,7 @@ mod tests {
             params,
             gucs: Default::default(),
             table_parallel_workers: None,
+            physical_index: None,
         }
     }
 
