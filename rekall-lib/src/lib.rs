@@ -620,7 +620,14 @@ impl Agent {
                 continue;
             }
 
-            let active_idx = pg.index_sql_name(&idx_config.name);
+            // Resolve through the arm's physical-index redirection: this
+            // management connection is built outside create_pg_backend.
+            let active_idx = pg.index_sql_name(
+                idx_config
+                    .physical_index
+                    .as_deref()
+                    .unwrap_or(&idx_config.name),
+            );
 
             // Disable all other indexes, enable the active one
             for idx_sql in &all_index_names {

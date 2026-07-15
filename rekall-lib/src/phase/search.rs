@@ -348,6 +348,10 @@ pub async fn run(
             config.dataset.dimension,
             config.dataset.metric,
         );
+        // Management connections are built outside create_pg_backend, so
+        // carry the arm's physical-index redirection explicitly or the
+        // SQL name resolves to a relation that does not exist.
+        pg_mgmt.set_physical_index(idx_config.physical_index.clone());
         pg_mgmt.connect().await?;
         let active_idx = pg_mgmt.index_sql_name(&query.index);
         let all_indexes = pg_mgmt.list_rekall_indexes().await?;
@@ -489,6 +493,7 @@ pub async fn run(
                         config.dataset.dimension,
                         config.dataset.metric,
                     );
+                    pg_evict.set_physical_index(idx_config.physical_index.clone());
                     pg_evict.connect().await?;
                     let idx_sql = pg_evict.index_sql_name(&query.index);
                     pg_evict
