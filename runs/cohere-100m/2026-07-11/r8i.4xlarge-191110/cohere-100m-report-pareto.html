@@ -28,7 +28,7 @@ var traces = [{
                 line: { color: "rgb(31,119,180)", width: 3 },
                 marker: { color: "rgb(31,119,180)", size: 8 },
                 legendgroup: "Meerkat",
-                hovertemplate: "<b>Meerkat</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}%{text}<extra></extra>"
+                hovertemplate: "<b>Meerkat</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
             },{
                 x: [1.4712018988331883, 2.024446456127788, 2.5791867097898216, 2.7584713376042926, 2.8926117791193526, 3.2513056216540703, 3.688469534041733],
                 y: [169.7068690586263, 3.693537468904698, 1.500930021043801, 1.170476101737826, 0.9560883974848804, 0.5804866721115427, 0.2814004354346214],
@@ -40,12 +40,12 @@ var traces = [{
                 line: { color: "rgb(255,127,14)", width: 3 },
                 marker: { color: "rgb(255,127,14)", size: 8 },
                 legendgroup: "pgvector HNSW (halfvec)",
-                hovertemplate: "<b>pgvector HNSW (halfvec)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.0f}%{text}<extra></extra>"
+                hovertemplate: "<b>pgvector HNSW (halfvec)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
             }];
 var layout = {
   margin: { t: 20 },
   xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
-  yaxis: { title: "Queries per second", type: "log", gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
   legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
   hovermode: "closest",
   plot_bgcolor: "white",
