@@ -184,7 +184,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
         .unwrap(),
         gucs: HashMap::new(),
         table_parallel_workers: None,
-            physical_index: None,
+        physical_index: None,
     };
 
     let registry = BackendRegistry::new();
@@ -265,7 +265,7 @@ async fn backend_meerkat_lifecycle() {
         .unwrap(),
         gucs: HashMap::new(),
         table_parallel_workers: None,
-            physical_index: None,
+        physical_index: None,
     };
 
     let registry = BackendRegistry::new();

@@ -278,7 +278,9 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
         .is_some_and(|e| e.comment.as_deref().is_some_and(|c| !c.is_empty()));
     if !base_has_comment {
         for p in &gz {
-            let Ok(s) = read_summary_file(p) else { continue };
+            let Ok(s) = read_summary_file(p) else {
+                continue;
+            };
             let Some(env) = s.environment else { continue };
             if env.comment.as_deref().is_some_and(|c| !c.is_empty()) {
                 match base.environment.as_mut() {
