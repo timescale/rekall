@@ -7,6 +7,11 @@
 # finer list count is better -- the 50M optimum landed at ~208 vecs/list, so
 # the 10M optimum may be above n24000. Lower nlists are omitted (known worse).
 #
+# Each nlist runs a boundary_epsilon sweep (0.05 base / 0.15 / 0.25 / 0.35):
+# 0.15 beat 0.05 on 50M, so the higher arms probe where wider replication
+# stops paying. Higher eps replicates more vectors — expect index size and
+# build time to grow with it; the build-sizes report shows the cost side.
+#
 # HNSW: halfvec only (m=24, ef_construction=200, expression index on v -- no
 # table rewrite), the default baseline per the pg-aiguide tuning guide.
 # Full-precision is dropped (halfvec supersedes it); binary quantization is
@@ -19,10 +24,11 @@
 # Usage: rekall run benchmarks/cohere-10m-mkt-vs-hnsw.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-n24000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n24000-cctrue-fs16-soar-cfs-eps015.toml",
-    "indexes/mkt-n40000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n24000-cctrue-fs16-soar-cfs-eps025.toml",
+    "indexes/mkt-n24000-cctrue-fs16-soar-cfs-eps035.toml",
     "indexes/mkt-n40000-cctrue-fs16-soar-cfs-eps015.toml",
+    "indexes/mkt-n40000-cctrue-fs16-soar-cfs-eps025.toml",
+    "indexes/mkt-n40000-cctrue-fs16-soar-cfs-eps035.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 

@@ -8,6 +8,11 @@
 # magnitude below both other curves (0.95 recall at ~24 QPS), adding cost
 # without an interesting comparison.
 #
+# The meerkat arms sweep boundary replication: no boundary, then
+# boundary_epsilon 0.15 / 0.25 / 0.35, to test whether a wider replication
+# band improves recall at this scale. Wider eps replicates more vectors,
+# so build time and index size grow with it.
+#
 # DISK: ~600 GB+ free required (heap ~380 GB + halfvec ~190 GB + meerkat ~30 GB)
 # plus the ~300 GB dataset load. Build on a >=2 TB volume; the 100M halfvec
 # graph build and the n400k meerkat build are each multi-hour.
@@ -17,6 +22,8 @@
 indexes = [
     "indexes/mkt-n400000-cctrue-fs16-soar-cfs.toml",
     "indexes/mkt-n400000-cctrue-fs16-soar-cfs-eps015.toml",
+    "indexes/mkt-n400000-cctrue-fs16-soar-cfs-eps025.toml",
+    "indexes/mkt-n400000-cctrue-fs16-soar-cfs-eps035.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 
