@@ -18,9 +18,11 @@ pub fn render(
 
     // The y hover line for the QPS metric reads the axis value; the
     // disk metric's exact value is carried in each point's hover text
-    // (the axis value may be floored for the log scale).
+    // (the axis value may be floored for the log scale). Four
+    // significant digits, trimmed: whole-number rounding displayed
+    // sub-1-QPS points (deep sweeps of a slow config) as "QPS: 0".
     let y_line = match opts.y_metric {
-        YMetric::Qps => "<br>QPS: %{y:.0f}",
+        YMetric::Qps => "<br>QPS: %{y:.4~r}",
         YMetric::DiskReadPerQuery => "",
     };
 
@@ -84,6 +86,15 @@ pub fn render(
         }
     }
 
+    // Log y-axes label decades only: Plotly's default (D2) also labels the
+    // 2- and 5-mantissa minor ticks with the bare digit, so the ticks just
+    // below 1 read "5" and "2" when they mean 0.5 and 0.2. The trimmed
+    // fixed format keeps sub-1 decades readable ("0.1", not "100m").
+    let y_axis_extra = if opts.log_y {
+        ", dtick: 1, tickformat: \",.1~f\""
+    } else {
+        ""
+    };
     let y_type = if opts.log_y { "\"log\"" } else { "\"linear\"" };
     let min_r = if opts.min_recall > 0.0 {
         opts.min_recall
@@ -157,7 +168,7 @@ pub fn render(
             "var layout = {{\n",
             "  margin: {{ t: 20 }},\n",
             "  xaxis: {{ title: \"Recall@10\", {x_axis_config} }},\n",
-            "  yaxis: {{ title: \"{y_title}\", type: {y_type}, gridcolor: \"#eeeeee\" }},\n",
+            "  yaxis: {{ title: \"{y_title}\", type: {y_type}{y_axis_extra}, gridcolor: \"#eeeeee\" }},\n",
             "  legend: {{ x: 0.02, y: 0.02, xanchor: \"left\", yanchor: \"bottom\", bgcolor: \"rgba(255,255,255,0.9)\", bordercolor: \"#cccccc\", borderwidth: 1 }},\n",
             "  hovermode: \"closest\",\n",
             "  plot_bgcolor: \"white\",\n",
@@ -180,6 +191,7 @@ pub fn render(
         x_axis_config = x_axis_config,
         y_title = opts.y_metric.axis_title(),
         y_type = y_type,
+        y_axis_extra = y_axis_extra,
     );
     f.write_all(html.as_bytes())?;
 

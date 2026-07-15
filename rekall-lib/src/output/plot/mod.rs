@@ -302,6 +302,16 @@ fn group_label(r: &SearchResult, per_config: bool) -> String {
     crate::metrics::family_label(&r.index_type, r.data_type.as_deref())
 }
 
+/// QPS for hover text: whole numbers once they'd round faithfully,
+/// two decimals below that so sub-1-QPS points don't display as "0".
+fn fmt_qps(qps: f64) -> String {
+    if qps >= 10.0 {
+        format!("{qps:.0}")
+    } else {
+        format!("{qps:.2}")
+    }
+}
+
 /// Extra hover lines shared by both y metrics: the recorded I/O stats,
 /// when present. `<br>`-prefixed HTML fragments (empty when absent).
 fn io_hover(r: &SearchResult) -> String {
@@ -355,7 +365,7 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
                         // so they survive the log axis. The hover shows
                         // the exact value.
                         y: io.disk_read_bytes_per_query().max(1.0),
-                        hover: format!("<br>QPS: {:.0}{}", r.qps, io_hover(r)),
+                        hover: format!("<br>QPS: {}{}", fmt_qps(r.qps), io_hover(r)),
                     }
                 }
             };
