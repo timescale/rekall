@@ -18,8 +18,9 @@
     "pg_prewarm": "1.2",
     "vector": "0.8.4"
   },
-  "peak_recall": 0.9923799999999922,
-  "qps_at_peak": 49.77837869351584,
+  "peak_recall": 0.992479999999992,
+  "qps_at_peak": 42.1977136401037,
   "num_indexes": 5,
-  "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-07-13/r8i.24xlarge-182039/"
+  "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-07-13/r8i.24xlarge-182039/",
+  "comment": "Includes an experimental arm (mkt-n400000-eps35f-pq) running Meerkat's in-development intra-query parallel scan (feature/parallel-query build), engagement forced via core parallel GUCs against the same physical index as the serial arm."
 }

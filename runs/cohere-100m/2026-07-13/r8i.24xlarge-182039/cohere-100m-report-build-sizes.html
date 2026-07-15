@@ -9,7 +9,7 @@
   #header .meta{margin-top:4px;font-size:12px;color:#555}
   #plot{flex:1 1 auto;min-height:0;width:100%}
 </style></head><body>
-<div id="header"><div class="title">Index size</div><div class="meta">cohere-100m  |  2026-07-13  |  r8i.24xlarge, Intel(R) Xeon(R) 6975P-C, 96 vCPU, 744 GB<br>PG 18.4  |  shared_buffers=192 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (71e3cff), pgvector 0.8.4</div></div>
+<div id="header"><div class="title">Index size</div><div class="meta">“Includes an experimental arm (mkt-n400000-eps35f-pq) running Meerkat's in-development intra-query parallel scan (feature/parallel-query build), engagement forced via core parallel GUCs against the same physical index as the serial arm.”<br>cohere-100m  |  2026-07-13  |  r8i.24xlarge, Intel(R) Xeon(R) 6975P-C, 96 vCPU, 744 GB<br>PG 18.4  |  shared_buffers=192 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (71e3cff), pgvector 0.8.4</div></div>
 <div id="plot"></div>
 <script>
 var trace = { type:"bar", x:["hnsw-m24-halfvec", "mkt-n400000-eps35f", "mkt-n400000-eps25f", "mkt-n400000-eps15f", "mkt-n400000-fixed"], y:[183485.296875, 25741.0234375, 25374.4140625, 24411.90625, 20649.46875], text:["22012s", "3432s", "3325s", "5673s", "6210s"],
