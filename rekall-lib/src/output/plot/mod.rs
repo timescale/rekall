@@ -325,7 +325,13 @@ fn io_hover(r: &SearchResult) -> String {
 }
 
 fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) -> PlotData {
-    let mut by_group: BTreeMap<String, Vec<PlotPoint>> = BTreeMap::new();
+    // Keyed (family, label) so series order — and therefore palette
+    // assignment — is the same in per-algo and per-config plots: sorting
+    // per-config series by their raw index names can order the arms
+    // differently than the family labels do (e.g. "hnsw-*" < "mkt-*" but
+    // "Meerkat" < "pgvector HNSW"), which used to swap the two curves'
+    // colors between the Pareto and per-config views of one run.
+    let mut by_group: BTreeMap<(String, String), Vec<PlotPoint>> = BTreeMap::new();
     for summary in summaries {
         for r in &summary.search_results {
             let point = match opts.y_metric {
@@ -353,14 +359,15 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
                     }
                 }
             };
+            let family = group_label(r, false);
             let label = group_label(r, opts.per_config);
-            by_group.entry(label).or_default().push(point);
+            by_group.entry((family, label)).or_default().push(point);
         }
     }
 
     let mut series = Vec::new();
 
-    for (name, mut points) in by_group {
+    for ((_family, name), mut points) in by_group {
         points.sort_by(|a, b| a.recall.partial_cmp(&b.recall).unwrap());
         if opts.min_recall > 0.0 {
             points.retain(|p| p.recall >= opts.min_recall);
