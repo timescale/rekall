@@ -31,8 +31,7 @@
 #            benchmarks/cohere-100m-mkt.toml --comment "..."
 
 indexes = [
-    "indexes/mkt-n240000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n400000-cctrue-fs16-soar-cfs.toml",
+    "indexes/mkt-n400000-cctrue-fs16-soar-cfs-eps035.toml",
 ]
 
 [[suite]]
