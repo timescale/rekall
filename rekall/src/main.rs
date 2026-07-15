@@ -440,6 +440,10 @@ enum InfraCommand {
         /// given) or us-east-1.
         #[arg(short, long)]
         region: Option<String>,
+
+        /// Skip the confirmation prompt.
+        #[arg(short = 'y', long)]
+        yes: bool,
     },
 
     /// Show infrastructure status
@@ -1621,6 +1625,22 @@ fn resolve_infra_config(
 /// Resolve the AWS region from CLI args, preferring explicit `--region`
 /// then the config's region. Falls back to us-east-1 when neither is
 /// available, but most commands have a config so this rarely kicks in.
+/// Interactive y/N gate for destructive infra commands. Returns false
+/// (after printing "Aborted.") on anything but an explicit yes.
+fn confirm() -> anyhow::Result<bool> {
+    use std::io::Write;
+    print!("\nProceed? [y/N] ");
+    std::io::stdout().flush().ok();
+    let mut answer = String::new();
+    std::io::stdin().read_line(&mut answer)?;
+    if matches!(answer.trim(), "y" | "Y" | "yes") {
+        Ok(true)
+    } else {
+        println!("Aborted.");
+        Ok(false)
+    }
+}
+
 fn effective_region(explicit: Option<&str>, config: Option<&PathBuf>) -> String {
     if let Some(r) = explicit {
         return r.to_string();
@@ -1987,16 +2007,8 @@ iam_instance_profile = "rekall-profile"
                  volume (and any built index) is preserved; the public IP will change."
             );
 
-            if !yes {
-                use std::io::Write;
-                print!("\nProceed? [y/N] ");
-                std::io::stdout().flush().ok();
-                let mut answer = String::new();
-                std::io::stdin().read_line(&mut answer)?;
-                if !matches!(answer.trim(), "y" | "Y" | "yes") {
-                    println!("Aborted.");
-                    return Ok(());
-                }
+            if !yes && !confirm()? {
+                return Ok(());
             }
 
             let outcome = rekall_lib::infra::resize_instance_to(
@@ -2040,20 +2052,37 @@ iam_instance_profile = "rekall-profile"
             instance_id,
             instance_name,
             region,
+            yes,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
             // Targeted termination: resolve the specific instance via
             // AWS, terminate only that one, leave SG/key in place.
             if instance_id.is_some() || instance_name.is_some() {
-                let id = if let Some(id) = instance_id {
-                    id
+                let inst = if let Some(id) = instance_id {
+                    rekall_lib::infra::find_instance(&region, &id)?
                 } else {
                     let n = instance_name.unwrap();
-                    let inst = rekall_lib::infra::find_instance_by_name(&region, &n)?;
-                    inst.status
-                        .instance_id
-                        .ok_or_else(|| anyhow::anyhow!("Instance '{n}' has no instance-id"))?
+                    rekall_lib::infra::find_instance_by_name(&region, &n)?
                 };
+                let id = inst
+                    .status
+                    .instance_id
+                    .clone()
+                    .ok_or_else(|| anyhow::anyhow!("Instance has no instance-id"))?;
+
+                println!(
+                    "Terminate {id} ({}, {}, {region})",
+                    inst.status.instance_name.as_deref().unwrap_or("-"),
+                    inst.status.instance_type.as_deref().unwrap_or("-"),
+                );
+                println!(
+                    "\nThis PERMANENTLY destroys the instance and its EBS volume, \n\
+                     including any loaded dataset and built indexes."
+                );
+                if !yes && !confirm()? {
+                    return Ok(());
+                }
+
                 rekall_lib::infra::terminate_instance(&region, &id)?;
                 println!(
                     "Terminated {id}. Shared security group and key pair left in \
@@ -2063,6 +2092,17 @@ iam_instance_profile = "rekall-profile"
             } else {
                 let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
                 let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+
+                println!(
+                    "Tear down suite '{}' in {region}: terminates its \
+                     latest-launched instance (with its EBS volume, dataset and \
+                     indexes) and deletes the suite's security group and key pair.",
+                    infra_cfg.name_prefix,
+                );
+                if !yes && !confirm()? {
+                    return Ok(());
+                }
+
                 mgr.down()?;
                 println!("Infrastructure '{}' destroyed.", infra_cfg.name_prefix);
             }
