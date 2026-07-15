@@ -4,9 +4,12 @@
 # Exactly two builds, to compare how the indexes build and then trade
 # recall for throughput on the same hardware:
 #
-#   mkt-defaults      CREATE INDEX with no options and no GUCs — what
-#                     a user gets (auto nlist ≈ 390k here; requires a
-#                     meerkat build with the tuned defaults)
+#   mkt-defaults      built by a bare CREATE INDEX — no options, no
+#                     pinned GUCs, auto nlist ≈ 390k (requires a
+#                     meerkat build with the tuned defaults). The
+#                     search phase still sweeps nprobe for the full
+#                     recall/QPS line; the nprobe=0 point on it is
+#                     the shipped auto default
 #   hnsw-m24-halfvec  the pg-aiguide-tuned baseline (m=24,
 #                     ef_construction=200, halfvec expression index)
 #
