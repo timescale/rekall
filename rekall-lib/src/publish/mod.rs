@@ -267,6 +267,29 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
         }
     }
 
+    // Surface a run comment (`rekall run --comment`) recorded by ANY arm:
+    // the base summary comes from the alphabetically-first file, which is
+    // not necessarily the session that carried the comment (incremental
+    // arms added to an existing results dir record theirs in their own
+    // file). First non-empty comment in filename order wins.
+    let base_has_comment = base
+        .environment
+        .as_ref()
+        .is_some_and(|e| e.comment.as_deref().is_some_and(|c| !c.is_empty()));
+    if !base_has_comment {
+        for p in &gz {
+            let Ok(s) = read_summary_file(p) else { continue };
+            let Some(env) = s.environment else { continue };
+            if env.comment.as_deref().is_some_and(|c| !c.is_empty()) {
+                match base.environment.as_mut() {
+                    Some(base_env) => base_env.comment = env.comment,
+                    None => base.environment = Some(env),
+                }
+                break;
+            }
+        }
+    }
+
     // Build info: the separate build-<name>.json files are authoritative (they
     // survive search-only re-runs, where the query files carry no index_builds).
     // Cross-check against the build info embedded in the query files and warn on
