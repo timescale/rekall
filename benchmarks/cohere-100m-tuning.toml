@@ -1,0 +1,28 @@
+# Suite: cohere-100m parameter-tuning sweep.
+#
+# Requires a meerkat build with the tuned defaults. The smallest of
+# the three tuning suites — 100M builds are ~an hour each — so only
+# the questions worth that much compute:
+#
+#   defaults:  nlist auto lands at ~390k, essentially the n400000
+#              July winner; this arm confirms the out-of-the-box
+#              configuration reproduces it
+#   nlist:     n640000 (~156 rows/list) probes finer partitioning at
+#              the scale where routing cost matters most
+#   boundary:  eps 0.45, past the 0.35 default
+#   ablation:  SOAR off
+#
+# Four builds plus sweeps: about a day on an r8i.24xlarge. Disk: see
+# the mkt-vs-hnsw suite notes (the heap alone is ~380 GB).
+#
+# Usage: rekall run benchmarks/cohere-100m-tuning.toml [--dry-run]
+
+indexes = [
+    "indexes/mkt-defaults.toml",
+    "indexes/mkt-tuned-n640000.toml",
+    "indexes/mkt-tuned-eps45.toml",
+    "indexes/mkt-tuned-soar-off.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-100m.toml"

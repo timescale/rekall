@@ -1,0 +1,14 @@
+# Boundary band wider than the 0.35 default: the July sweeps improved\n# monotonically through 0.35 and never probed beyond — find where\n# widening stops paying.
+# Everything not set stays at the shipped defaults; nprobe=0
+# exercises the auto heuristic on this shape.
+[[index]]
+type = "meerkat"
+name = "mkt-tuned-eps45"
+table_parallel_workers = 32
+[index.params]
+boundary_epsilon = 0.45
+
+[[search.sweep]]
+index = "mkt-tuned-eps45"
+[search.sweep.params]
+"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]

@@ -1,0 +1,15 @@
+# Tuned defaults with an explicit nlist=120000 arm: probes the
+# rows-per-list optimum around the automatic value (rows/256).
+# Everything else stays at the shipped defaults. The sweep includes
+# nprobe=0 so the auto-nprobe heuristic is validated at this nlist.
+[[index]]
+type = "meerkat"
+name = "mkt-tuned-n120000"
+table_parallel_workers = 32
+[index.params]
+nlist = 120000
+
+[[search.sweep]]
+index = "mkt-tuned-n120000"
+[search.sweep.params]
+"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]

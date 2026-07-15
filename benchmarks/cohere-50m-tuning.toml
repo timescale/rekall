@@ -1,0 +1,30 @@
+# Suite: cohere-50m parameter-tuning sweep.
+#
+# Requires a meerkat build with the tuned defaults. Anchored on
+# mkt-defaults (nlist auto = ~195k, 256 rows/list); arms:
+#
+#   nlist:     n120000 (~416 rows/list), n240000 (~208, the July
+#              winner), n320000 (~156) around the automatic value —
+#              the one scale where the measured optimum (208) sits
+#              meaningfully off rows/256
+#   boundary:  eps 0.45 (beyond the 0.35 default; 0.05-0.35 already
+#              measured in the July suites)
+#   ablation:  SOAR off (the build-cost/recall reference at a scale
+#              where build time is material)
+#
+# Builds are ~50-60 minutes each on an r8i.12xlarge: budget most of a
+# day for the six builds plus sweeps.
+#
+# Usage: rekall run benchmarks/cohere-50m-tuning.toml [--dry-run]
+
+indexes = [
+    "indexes/mkt-defaults.toml",
+    "indexes/mkt-tuned-n120000.toml",
+    "indexes/mkt-tuned-n240000.toml",
+    "indexes/mkt-tuned-n320000.toml",
+    "indexes/mkt-tuned-eps45.toml",
+    "indexes/mkt-tuned-soar-off.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-50m.toml"

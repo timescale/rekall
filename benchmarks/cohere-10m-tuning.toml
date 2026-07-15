@@ -1,0 +1,41 @@
+# Suite: cohere-10m parameter-tuning sweep.
+#
+# Requires a meerkat build with the tuned defaults (auto nlist/nprobe,
+# fastscan + centroid fastscan, SOAR 1.0, boundary 0.35, beam 0.5 +
+# floor). The anchor is mkt-defaults — the exact out-of-the-box
+# configuration, nlist auto (~39k here) — and every other arm changes
+# ONE thing against it:
+#
+#   nlist:        n24000 (~416 rows/list) and n64000 (~156) bracket
+#                 the automatic rows/256
+#   boundary:     eps 0 (SOAR-only) and eps 0.45 (the July sweeps
+#                 improved through 0.35 and never probed beyond)
+#   ablations:    SOAR off, all replication off, centroid compression
+#                 off, posting fastscan off — single reference points
+#                 for each feature's cost/benefit on current code, not
+#                 sweeps (the features are known wins)
+#   query GUCs:   fastscan_bits 8, beam scale 0.25/1.0, capped rerank
+#                 pool — one-knob validations of the query defaults on
+#                 a second copy of the default index (mkt-defaults-x)
+#
+# Every sweep includes nprobe=0, the shipped auto default, so the
+# heuristic is validated on every index shape. ~10 builds at roughly
+# 10-20 minutes each plus sweeps: an afternoon on an r8i.4xlarge.
+#
+# Usage: rekall run benchmarks/cohere-10m-tuning.toml [--dry-run]
+
+indexes = [
+    "indexes/mkt-defaults.toml",
+    "indexes/mkt-defaults-experiments.toml",
+    "indexes/mkt-tuned-n24000.toml",
+    "indexes/mkt-tuned-n64000.toml",
+    "indexes/mkt-tuned-eps0.toml",
+    "indexes/mkt-tuned-eps45.toml",
+    "indexes/mkt-tuned-soar-off.toml",
+    "indexes/mkt-tuned-replication-off.toml",
+    "indexes/mkt-tuned-cc-off.toml",
+    "indexes/mkt-tuned-fastscan-off.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-10m.toml"
