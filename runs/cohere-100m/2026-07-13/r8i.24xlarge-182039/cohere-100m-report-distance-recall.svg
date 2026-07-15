@@ -242,57 +242,53 @@
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<path stroke='black'  d='M97.70,665.00 L97.70,629.00 L308.06,629.00 L308.06,665.00 L97.70,665.00 Z  '/></g>
-	<g id="gnuplot_plot_1" ><title>hnsw-m24-halfvec</title>
-<g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
-<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 31, 119, 180)'  d='M189.43,323.78 L320.12,351.35 L448.39,386.00 L565.17,427.22 L603.34,441.31 L631.40,452.76 L654.14,463.80 L676.24,476.11
-		L697.76,483.51 L712.31,494.35 L742.81,507.62 L766.43,515.46 L783.89,524.29 L811.80,540.95 L891.25,595.86 L924.66,612.82
-		 '/>	<use xlink:href='#gpPt6' transform='translate(189.43,323.78) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(320.12,351.35) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(448.39,386.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(565.17,427.22) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(603.34,441.31) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(631.40,452.76) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(654.14,463.80) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(676.24,476.11) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(697.76,483.51) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(712.31,494.35) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(742.81,507.62) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(766.43,515.46) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(783.89,524.29) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(811.80,540.95) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(891.25,595.86) scale(4.50)' color='rgb( 31, 119, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(924.66,612.82) scale(4.50)' color='rgb( 31, 119, 180)'/>
-</g>
-	</g>
-	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
-<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
+	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(574.99,386.12) scale(2.25)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(574.99,386.12) scale(2.25)' color='rgb( 31, 119, 180)'/>
 </g>
 	</g>
-	<g id="gnuplot_plot_3" ><title>mkt-n400000-eps35f</title>
-<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g id="gnuplot_plot_2" ><title>mkt-n400000-eps35f</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,  14)'  d='M173.09,222.64 L268.42,252.77 L364.52,292.24 L466.85,338.80 L509.46,348.19 L541.12,359.55 L568.15,369.07 L592.64,378.67
-		L634.59,394.23 L672.35,407.39 L725.49,426.01 L804.57,453.66 L865.29,474.01 L962.25,506.73 L1068.91,538.31  '/>	<use xlink:href='#gpPt6' transform='translate(173.09,222.64) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(268.42,252.77) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(364.52,292.24) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(466.85,338.80) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(509.46,348.19) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(541.12,359.55) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(568.15,369.07) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(592.64,378.67) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(634.59,394.23) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(672.35,407.39) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(725.49,426.01) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(804.57,453.66) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(865.29,474.01) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(962.25,506.73) scale(4.50)' color='rgb(255, 127,  14)'/>
-	<use xlink:href='#gpPt6' transform='translate(1068.91,538.31) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<path stroke='rgb( 31, 119, 180)'  d='M173.09,222.64 L268.42,252.77 L364.52,292.24 L466.85,338.80 L509.46,348.19 L541.12,359.55 L568.15,369.07 L592.64,378.67
+		L634.59,394.23 L672.35,407.39 L725.49,426.01 L804.57,453.66 L865.29,474.01 L962.25,506.73 L1068.91,538.31  '/>	<use xlink:href='#gpPt6' transform='translate(173.09,222.64) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(268.42,252.77) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(364.52,292.24) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(466.85,338.80) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(509.46,348.19) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(541.12,359.55) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(568.15,369.07) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(592.64,378.67) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(634.59,394.23) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(672.35,407.39) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(725.49,426.01) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(804.57,453.66) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(865.29,474.01) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(962.25,506.73) scale(4.50)' color='rgb( 31, 119, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(1068.91,538.31) scale(4.50)' color='rgb( 31, 119, 180)'/>
+</g>
+	</g>
+	<g id="gnuplot_plot_3" ><title>hnsw-m24-halfvec</title>
+<g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='rgb(255, 127,  14)'  d='M189.43,323.78 L320.12,351.35 L448.39,386.00 L565.17,427.22 L603.34,441.31 L631.40,452.76 L654.14,463.80 L676.24,476.11
+		L697.76,483.51 L712.31,494.35 L742.81,507.62 L766.43,515.46 L783.89,524.29 L811.80,540.95 L891.25,595.86 L924.66,612.82
+		 '/>	<use xlink:href='#gpPt6' transform='translate(189.43,323.78) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(320.12,351.35) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(448.39,386.00) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(565.17,427.22) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(603.34,441.31) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(631.40,452.76) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(654.14,463.80) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(676.24,476.11) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(697.76,483.51) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(712.31,494.35) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(742.81,507.62) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(766.43,515.46) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(783.89,524.29) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(811.80,540.95) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(891.25,595.86) scale(4.50)' color='rgb(255, 127,  14)'/>
+	<use xlink:href='#gpPt6' transform='translate(924.66,612.82) scale(4.50)' color='rgb(255, 127,  14)'/>
 </g>
 	</g>
 	<g stroke='none' shape-rendering='crispEdges'>
@@ -302,30 +298,26 @@
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<path stroke='black'  d='M97.70,665.00 L97.70,629.00 L308.06,629.00 L308.06,665.00 L97.70,665.00 Z  '/></g>
-	<g id="gnuplot_plot_1" ><title>hnsw-m24-halfvec</title>
-<g fill="none" color="#FFFFFF" stroke="black" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
+	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+</g>
+	</g>
+	<g id="gnuplot_plot_2" ><title>mkt-n400000-eps35f</title>
+<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 	<g transform="translate(248.72,641.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
-		<text><tspan font-family="sans" >hnsw-m24-halfvec</tspan></text>
+		<text><tspan font-family="sans" >mkt-n400000-eps35f</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 	<path stroke='rgb( 31, 119, 180)'  d='M257.11,638.00 L299.67,638.00  '/>	<use xlink:href='#gpPt6' transform='translate(278.39,638.00) scale(4.50)' color='rgb( 31, 119, 180)'/>
 </g>
 	</g>
-	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
-<g fill="none" color="#FFFFFF" stroke="rgb( 31, 119, 180)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
-<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
-	</g>
-	<g id="gnuplot_plot_3" ><title>mkt-n400000-eps35f</title>
-<g fill="none" color="#FFFFFF" stroke="rgb(255, 127,  14)" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
+	<g id="gnuplot_plot_3" ><title>hnsw-m24-halfvec</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
 	<g transform="translate(248.72,659.90)" stroke="none" fill="black" font-family="sans" font-size="12.00"  text-anchor="end">
-		<text><tspan font-family="sans" >mkt-n400000-eps35f</tspan></text>
+		<text><tspan font-family="sans" >hnsw-m24-halfvec</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.50" stroke-linecap="butt" stroke-linejoin="miter">
