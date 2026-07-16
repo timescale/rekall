@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-100m/2026-07-15/r8i.24xlarge-162346",
+  "dataset": "cohere-100m",
+  "date": "2026-07-15",
+  "time": "16:23:46",
+  "timestamp": "2026-07-15T16:23:46+0000",
+  "instance_type": "r8i.24xlarge",
+  "hostname": "ip-172-31-75-2",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 96,
+  "memory_gb": 744.0,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "c1f5545",
+  "extensions": {
+    "meerkat": "0.1.0 (1f3ad94)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.5"
+  },
+  "peak_recall": 0.9968699999999956,
+  "qps_at_peak": 24.478931668922655,
+  "num_indexes": 2,
+  "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-07-15/r8i.24xlarge-162346/",
+  "comment": "100M dataset build on 24xlarge downsized to 8xlarge"
+}
