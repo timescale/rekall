@@ -1,0 +1,95 @@
+# Rekall benchmark instance: r8g.24xlarge (Graviton4, 96 vCPU, 768 GiB RAM).
+#
+# The Graviton4 counterpart of r8i.24xlarge — identical vCPU/RAM
+# shape — for Intel-vs-ARM comparisons on the same workloads.
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r8g.24xlarge.toml
+#
+# Big memory-optimized box sized for 10M+ datasets and fast parallel
+# index builds. The PG tuning below is build-heavy: a large
+# maintenance_work_mem keeps the whole pgvector HNSW graph in RAM (no
+# on-disk second pass), and max_parallel_maintenance_workers lets both
+# HNSW and Meerkat builds fan out across the 96 vCPUs.
+#
+# This file is the canonical, committed config for this instance type.
+# Personal/machine-specific overrides go in `r8g.24xlarge.local.toml`
+# (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
+# and the meerkat git_url/git_ref. See `local.toml.example`.
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r8g.24xlarge"
+
+# r8i is EBS-only (no instance store), so give the root volume enough
+# space for the dataset + indexes + WAL, and max out gp3 IOPS/throughput
+# so load and build aren't I/O bound. Sized for cohere-50M, where the HDF5
+# file (~155 GB), the heap (~155 GB), and the pgvector HNSW graph (~165 GB,
+# which stores the vectors) dominate, plus the HNSW-bq and Meerkat indexes
+# (~30 GB combined — Meerkat reranks from the heap, so its index is small)
+# and WAL. That's ~600 GB of working set; 1000 GB leaves headroom for WAL
+# spikes during the big HNSW build and temp/sort space.
+disk_size_gb    = 1000
+disk_iops       = 16000
+disk_throughput = 1000
+
+name_prefix = "rekall-r8g24"
+
+# ----- OS image ----------------------------------------------------------
+
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+# pg_port  = 5432
+
+# Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
+extensions = ["pgvector", "meerkat"]
+
+# PG GUC overrides — merged over the auto-computed defaults. Only the
+# values that deliberately differ from the defaults are listed here;
+# everything else is derived from the instance type (96 vCPU / 768 GiB):
+# shared_buffers = 192GB, effective_cache_size = 576GB,
+# maintenance_work_mem = 2·RAM/5 = 307GB (capped at 40% of RAM so the
+# parallel HNSW build's DSM graph area stays under the /dev/shm 50%
+# ceiling; fits a cohere-100M halfvec build graph ~260GB), and
+# max_parallel_maintenance_workers = 32 (physical cores capped at 32,
+# the knee where HNSW's shared-graph locking flattens returns; on
+# Graviton every vCPU is a physical core). Run
+# `rekall infra show -c infra/instances/r8g.24xlarge.toml` for the full
+# effective config. All values must be strings.
+[pg_config]
+# Larger search-phase working memory than the 256MB default.
+work_mem = "1GB"
+
+# Bigger WAL ceiling → far fewer checkpoints during a big bulk load.
+max_wal_size = "64GB"
+
+# This box's gp3 volume is provisioned for high IOPS; raise the prefetch
+# depth above the default 200.
+effective_io_concurrency = "256"
+maintenance_io_concurrency = "256"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "feat/parallel-build-pg-on-foundation"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template
