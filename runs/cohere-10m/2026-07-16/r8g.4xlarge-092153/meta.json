@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-10m/2026-07-16/r8g.4xlarge-092153",
+  "dataset": "cohere-10m",
+  "date": "2026-07-16",
+  "time": "09:21:53",
+  "timestamp": "2026-07-16T09:21:53+0000",
+  "instance_type": "r8g.4xlarge",
+  "hostname": "ip-172-31-10-233",
+  "cpu_model": "unknown",
+  "cpu_count": 16,
+  "memory_gb": 123.5,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "764db1b",
+  "extensions": {
+    "meerkat": "0.1.0 (b50abf1)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.5"
+  },
+  "peak_recall": 0.9996,
+  "qps_at_peak": 29.015296957404892,
+  "num_indexes": 2,
+  "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-07-16/r8g.4xlarge-092153/",
+  "comment": "10m Cohere on Graviton 4xlarge"
+}
