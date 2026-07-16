@@ -237,6 +237,15 @@ pub struct IndexBuildResult {
     /// determined how warm the heap was).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<String>,
+    /// Effective index settings as reported by the extension's own
+    /// introspection (meerkat's `mkt.index_settings()`), with automatic
+    /// values resolved to what the build actually chose (e.g. `nlist = 0`
+    /// resolved from the row count). An array of
+    /// `{name, setting, source}` objects; absent for backends without
+    /// such introspection, extension versions predating it, and result
+    /// files predating this field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_settings: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -504,9 +504,19 @@ impl Agent {
                 // Recover the persisted build result so reused indexes still
                 // report build time/size/workers (e.g. in the build-time
                 // graph) instead of silently dropping out.
-                if let Some(prior) =
+                if let Some(mut prior) =
                     crate::phase::index::load_build_result(&self.config, &idx_config.name)
                 {
+                    // Build logs from before settings capture (or from an
+                    // extension version without introspection) lack the
+                    // resolved settings; the index is live right now, so
+                    // read them off it and persist for the next reuse.
+                    if prior.index_settings.is_none() {
+                        prior.index_settings = backend.index_settings().await;
+                        if prior.index_settings.is_some() {
+                            crate::phase::index::save_build_result(&self.config, &prior);
+                        }
+                    }
                     index_builds.push(prior);
                 } else {
                     for output in self.outputs.iter_mut() {

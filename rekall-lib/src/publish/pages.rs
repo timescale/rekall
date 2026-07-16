@@ -876,6 +876,36 @@ fn render_run_page(
             )));
         }
         b.push_str("</pre></details>");
+        // Effective settings as the extension resolved them (explicit
+        // options plus resolved automatic values), collapsible. Only
+        // builds that recorded them appear (older runs and backends
+        // without introspection have none).
+        let with_settings: Vec<_> = summary
+            .index_builds
+            .iter()
+            .filter_map(|ib| {
+                ib.index_settings
+                    .as_ref()
+                    .and_then(|s| s.as_array())
+                    .map(|rows| (ib, rows))
+            })
+            .collect();
+        if !with_settings.is_empty() {
+            b.push_str("<details><summary>Index settings (resolved)</summary><pre>");
+            for (ib, rows) in with_settings {
+                b.push_str(&esc(&format!("{}:\n", ib.index_name)));
+                for r in rows {
+                    let get = |k: &str| r.get(k).and_then(|v| v.as_str()).unwrap_or("");
+                    b.push_str(&esc(&format!(
+                        "  {} = {} ({})\n",
+                        get("name"),
+                        get("setting"),
+                        get("source")
+                    )));
+                }
+            }
+            b.push_str("</pre></details>");
+        }
     }
 
     // Full PG settings, collapsible.

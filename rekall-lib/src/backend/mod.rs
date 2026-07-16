@@ -338,6 +338,7 @@ pub trait IndexBackend: Send + Sync {
         let peak_workers = monitor_result.as_ref().map(|m| m.peak_workers).unwrap_or(0);
 
         let size = self.index_size().await?;
+        let index_settings = self.index_settings().await;
 
         Ok(IndexBuildResult {
             index_name: self.index_name().to_string(),
@@ -351,6 +352,7 @@ pub trait IndexBackend: Send + Sync {
             build_gucs: serde_json::to_value(&self.pg().build_gucs)
                 .unwrap_or(serde_json::Value::Null),
             monitor: monitor_result,
+            index_settings,
         })
     }
 
@@ -385,6 +387,14 @@ pub trait IndexBackend: Send + Sync {
             .await?;
         let size: i64 = row.get(0);
         Ok(size as u64)
+    }
+
+    /// Effective index settings from the extension's own introspection,
+    /// with automatic values resolved to what the index actually uses
+    /// (see `IndexBuildResult::index_settings`). Backends without such a
+    /// facility return `None` — the default.
+    async fn index_settings(&self) -> Option<serde_json::Value> {
+        None
     }
 
     async fn index_exists(&self) -> Result<bool> {

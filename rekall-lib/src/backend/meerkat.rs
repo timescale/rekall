@@ -95,6 +95,36 @@ impl IndexBackend for MeerkatBackend {
     fn build_params_json(&self) -> serde_json::Value {
         serde_json::to_value(&self.params).unwrap_or_default()
     }
+
+    /// Resolved settings from `mkt.index_settings()`: what the index
+    /// actually uses once automatic values (nlist, formats, nprobe) are
+    /// resolved, keyed with where each value came from. Returns `None`
+    /// on meerkat versions predating the function, so recording degrades
+    /// gracefully.
+    async fn index_settings(&self) -> Option<serde_json::Value> {
+        let idx_name = self.pg.index_sql_name(self.index_name());
+        let rows = self
+            .pg
+            .client()
+            .query(
+                "SELECT name, setting, source \
+                 FROM mkt.index_settings($1::regclass)",
+                &[&idx_name],
+            )
+            .await
+            .ok()?;
+        let settings: Vec<serde_json::Value> = rows
+            .iter()
+            .map(|r| {
+                serde_json::json!({
+                    "name": r.get::<_, String>(0),
+                    "setting": r.get::<_, String>(1),
+                    "source": r.get::<_, String>(2),
+                })
+            })
+            .collect();
+        Some(serde_json::Value::Array(settings))
+    }
 }
 
 /// Translate parsed params into the `CREATE INDEX ... WITH (...)` list.
