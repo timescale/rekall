@@ -1,0 +1,19 @@
+# pgvector IVFFlat over a halfvec (f16) expression index (`(v::halfvec(N)) halfvec_*_ops`), ~2x smaller for the cohere 10m suites.
+# lists = 3162 -- pgvector guidance: sqrt(rows) beyond 1M rows.
+# ivfflat.probes swept for the recall/QPS curve; raw-mode recall is bounded
+# by the probed lists' contents (no ef-style depth knob). The ladder stops
+# at 320: each probe scans ~rows/lists tuples, so deeper points cost hours
+# of sweep time for QPS below practical interest (probes = lists would be
+# a full-table scan per query).
+[[index]]
+type = "pgvector-ivfflat"
+name = "ivfflat-10m-halfvec"
+table_parallel_workers = 32
+[index.params]
+lists = 3162
+encoding = "halfvec"
+
+[[search.sweep]]
+index = "ivfflat-10m-halfvec"
+[search.sweep.params]
+"ivfflat.probes" = [1, 2, 5, 10, 20, 40, 80, 160, 320]

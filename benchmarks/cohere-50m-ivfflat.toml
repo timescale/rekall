@@ -1,0 +1,21 @@
+# Suite: cohere-50m -- pgvector IVFFlat across the three operand encodings
+# (full vector / halfvec / binary-quantized+rerank), lists = 7071
+# (sqrt(rows)), compared against Meerkat's out-of-the-box defaults arm.
+# Uncomment the HNSW include for a three-way against the standing pgvector
+# baseline (or add tuned meerkat arms from the corresponding mkt suites).
+#
+# IVFFlat builds train k-means at CREATE INDEX, so give the build box a large
+# maintenance_work_mem (see infra/instances/r8i.24xlarge.toml).
+#
+# Usage: rekall run benchmarks/cohere-50m-ivfflat.toml [--dry-run]
+
+indexes = [
+    "indexes/ivfflat-50m-fullvec.toml",
+    "indexes/ivfflat-50m-halfvec.toml",
+    "indexes/ivfflat-50m-bq.toml",
+    "indexes/mkt-defaults.toml",
+    # "indexes/hnsw-m24-halfvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-50m.toml"
