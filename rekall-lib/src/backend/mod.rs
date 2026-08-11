@@ -1,6 +1,7 @@
 pub mod build_monitor;
 pub mod meerkat;
 pub mod pg_vector_type;
+pub mod pgvector_encoding;
 pub mod pgvector_hnsw;
 pub mod postgres;
 pub mod search_monitor;
