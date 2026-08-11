@@ -3,6 +3,7 @@ pub mod meerkat;
 pub mod pg_vector_type;
 pub mod pgvector_encoding;
 pub mod pgvector_hnsw;
+pub mod pgvector_ivfflat;
 pub mod postgres;
 pub mod search_monitor;
 pub mod vchordrq;
@@ -477,6 +478,19 @@ impl BackendRegistry {
             }
             "pgvector-hnsw" => {
                 let b = pgvector_hnsw::PgvectorHnswBackend::create(
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
+                    cancel_registry,
+                    query_mode,
+                )
+                .await?;
+                Box::new(b)
+            }
+            "pgvector-ivfflat" => {
+                let b = pgvector_ivfflat::PgvectorIvfflatBackend::create(
                     conn,
                     table,
                     dimension,
