@@ -1,0 +1,31 @@
+# Suite: gist-960 -- reproduce VectorChord's published pgvector comparison
+# (https://docs.vectorchord.ai/vectorchord/benchmark/pgvector.html: GIST
+# 1M x 960, "QPS could be twice that of pgvector" at equal recall,
+# top-10) and put Meerkat on the same axes.
+#
+# Their page publishes the claim but not the configuration, so the
+# vchordrq arm follows their documented sizing guidance with the
+# epsilon/probes frontier swept (see indexes/vchordrq-gist-repro.toml),
+# and pgvector runs BOTH plausible baselines: their-likely one (pgvector
+# CREATE INDEX defaults, m=16 efc=64) and the tuned one (efc=200). If
+# VectorChord's 2x only appears against the defaults baseline, that
+# explains the discrepancy with the cohere-10m rekall run, where
+# vchordrq measured ~2.5x SLOWER than tuned HNSW.
+#
+# Hardware: their GIST hardware is unpublished; their small-box class is
+# r6a.xlarge (LAION-5M blog). Any box works for the relative comparison
+# -- GIST-1M is ~4 GB resident -- but for their absolute numbers use:
+#
+#   rekall infra up -c infra/instances/r6a.xlarge.toml
+#
+# Usage: rekall run benchmarks/gist-960-vchordrq-repro.toml [--dry-run]
+
+indexes = [
+    "indexes/vchordrq-gist-repro.toml",
+    "indexes/hnsw-m16-efc64-fullvec.toml",
+    "indexes/hnsw-m16.toml",
+    "indexes/mkt-defaults.toml",
+]
+
+[[suite]]
+dataset = "datasets/gist-960.toml"

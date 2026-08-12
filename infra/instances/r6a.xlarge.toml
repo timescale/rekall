@@ -1,0 +1,63 @@
+# Rekall benchmark instance: r6a.xlarge (AMD Milan, 4 vCPU, 32 GiB RAM).
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r6a.xlarge.toml
+#
+# This is the small-box class VectorChord's published LAION-5M benchmark
+# ran on (blog: r6a.xlarge, 4 vCPU / 32 GB / 200 GB EBS), for reproducing
+# their numbers on their hardware. The PG settings below are the ones
+# their blog documents for that run: shared_buffers = 28GB (~87% of RAM,
+# their vector-workload guidance), JIT off, effective_io_concurrency 200.
+#
+# This file is the canonical, committed config for this instance type.
+# Personal/machine-specific overrides go in `r6a.xlarge.local.toml`
+# (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
+# and the meerkat git_url/git_ref. See `local.toml.example`.
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r6a.xlarge"
+
+# Matches their blog's 200 GB EBS; enough for GIST-1M / LAION-5M scale
+# heaps + indexes + WAL.
+disk_size_gb = 200
+
+name_prefix = "rekall-r6a-xl"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# VectorChord's documented settings for this box (LAION-5M blog).
+[pg_config]
+shared_buffers = "28GB"
+jit = "off"
+effective_io_concurrency = "200"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.5"
+
+[vectorchord]
+version = "1.1.1"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template

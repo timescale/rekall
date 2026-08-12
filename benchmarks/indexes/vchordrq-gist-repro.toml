@@ -1,0 +1,28 @@
+# VectorChord vchordrq arm reproducing their published GIST-1M setup as
+# closely as their documentation allows. Their benchmark page publishes
+# the claim (2x pgvector QPS at equal recall, top-10) but not the
+# configs, so this follows their documented guidance:
+#   - lists = 4000: 4*sqrt(N) (their sizing guidance low end; their
+#     LAION-5M blog used nlist 8192 ~= 3.7*sqrt(N), same ballpark).
+#   - internal build. Their headline runs import EXTERNALLY computed
+#     K-means centroids ("conducted externally, such as on a GPU");
+#     rekall builds in-database, which may cost them some centroid
+#     quality -- noted as a fidelity gap.
+#   - vchordrq.epsilon SWEPT (0.0-4.0 GUC, default 1.9): their tuned
+#     runs trade the rerank admission bound against recall; sweeping it
+#     jointly with probes traces their reachable frontier instead of
+#     pinning the default like the earlier cohere-10m suite did.
+[[index]]
+type = "vchordrq"
+name = "vchordrq-gist-n4000"
+[index.params]
+lists = [4000]
+residual_quantization = true
+spherical_centroids = false
+build_threads = 4
+
+[[search.sweep]]
+index = "vchordrq-gist-n4000"
+[search.sweep.params]
+"vchordrq.probes" = ["2", "5", "10", "20", "40", "80", "160"]
+"vchordrq.epsilon" = [1.0, 1.3, 1.6, 1.9]

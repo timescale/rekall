@@ -1,0 +1,26 @@
+[dataset]
+name = "gist-960"
+# The standard ann-benchmarks GIST dataset (1M x 960, euclidean, 1k test
+# queries with exact ground truth) -- the dataset behind VectorChord's
+# published "QPS could be twice that of pgvector" comparison
+# (https://docs.vectorchord.ai/vectorchord/benchmark/pgvector.html).
+uri = "https://ann-benchmarks.com/gist-960-euclidean.hdf5"
+metric = "euclidean"
+dimension = 960
+
+# Uncomment to override the global connection (from ~/.config/rekall/config.toml)
+# [connection]
+# dsn = "host=localhost port=5432 dbname=postgres"
+
+[load]
+table = "gist_960"
+
+[search]
+k = 10
+runs = 3
+warmup = 200
+num_queries = 1000
+
+[output]
+format = ["table", "json"]
+results_dir = "results/gist-960"
