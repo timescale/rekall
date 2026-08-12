@@ -35,6 +35,13 @@ name = "hnsw-m16"
 m = 16
 ef_construction = 200
 
+[[index]]
+type = "pgvector-ivfflat"
+name = "ivfflat-l3162"
+[index.params]
+lists = 3162               # pgvector guidance: sqrt(rows) beyond 1M rows
+# encoding = "halfvec"     # or "bit"; both support mode = "rerank" queries
+
 [search]
 k = 10
 runs = 3                  # best-of-N runs kept

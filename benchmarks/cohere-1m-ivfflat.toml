@@ -1,0 +1,20 @@
+# Suite: cohere-1m -- pgvector IVFFlat across the three operand encodings
+# (full vector / halfvec / binary-quantized+rerank), lists = 1000
+# (rows/1000 == sqrt(rows) at this scale), compared against Meerkat's
+# out-of-the-box defaults arm. The smallest cohere IVFFlat suite -- a quick
+# (~1h) end-to-end validation of the arms before committing to 10M+.
+# Uncomment the HNSW include for a three-way against the standing pgvector
+# baseline (or add tuned meerkat arms from the corresponding mkt suites).
+#
+# Usage: rekall run benchmarks/cohere-1m-ivfflat.toml [--dry-run]
+
+indexes = [
+    "indexes/ivfflat-1m-fullvec.toml",
+    "indexes/ivfflat-1m-halfvec.toml",
+    "indexes/ivfflat-1m-bq.toml",
+    "indexes/mkt-defaults.toml",
+    # "indexes/hnsw-m24-halfvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m.toml"
