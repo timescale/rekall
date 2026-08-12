@@ -90,6 +90,11 @@ pub struct InfraConfig {
     pub disk_iops: Option<u32>,
     #[serde(default)]
     pub disk_throughput: Option<u32>,
+    /// CPU threads per physical core (AWS `cpu_options`). Set to 1 to
+    /// disable hyperthreading/SMT — e.g. to reproduce ann-benchmarks'
+    /// published environment. Unset keeps the instance-type default.
+    #[serde(default)]
+    pub threads_per_core: Option<u32>,
     #[serde(default = "default_pg_version")]
     pub pg_version: u32,
     #[serde(default = "default_pg_port")]
@@ -160,6 +165,7 @@ impl Default for InfraConfig {
             disk_size_gb: default_disk_size(),
             disk_iops: None,
             disk_throughput: None,
+            threads_per_core: None,
             pg_version: default_pg_version(),
             pg_port: default_pg_port(),
             ubuntu_version: default_ubuntu_version(),
@@ -512,6 +518,9 @@ impl InfraConfig {
         if let Some(throughput) = self.disk_throughput {
             vars["disk_throughput"] = serde_json::json!(throughput);
         }
+        if let Some(tpc) = self.threads_per_core {
+            vars["threads_per_core"] = serde_json::json!(tpc);
+        }
         if let Some(ref profile) = self.iam_instance_profile {
             vars["iam_instance_profile"] = serde_json::json!(profile);
         }
@@ -542,6 +551,14 @@ mod tests {
         assert_eq!(cfg.pg_version, 18);
         assert_eq!(cfg.pg_port, 5432);
         assert!(cfg.ssh_key.is_none());
+    }
+
+    #[test]
+    fn threads_per_core_flows_to_tfvars_only_when_set() {
+        let mut cfg = InfraConfig::default();
+        assert!(cfg.to_tfvars().get("threads_per_core").is_none());
+        cfg.threads_per_core = Some(1);
+        assert_eq!(cfg.to_tfvars()["threads_per_core"], serde_json::json!(1));
     }
 
     #[test]

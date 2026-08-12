@@ -109,3 +109,9 @@ variable "github_ssh_key_paths" {
   type        = list(string)
   default     = []
 }
+
+variable "threads_per_core" {
+  description = "CPU threads per core (1 disables hyperthreading/SMT); null keeps the instance default"
+  type        = number
+  default     = null
+}

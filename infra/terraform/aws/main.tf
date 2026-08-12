@@ -65,6 +65,10 @@ resource "aws_security_group" "rekall" {
   }
 }
 
+data "aws_ec2_instance_type" "selected" {
+  instance_type = var.instance_type
+}
+
 resource "aws_instance" "benchmark" {
   ami                  = data.aws_ami.ubuntu.id
   instance_type        = var.instance_type
@@ -72,6 +76,17 @@ resource "aws_instance" "benchmark" {
   iam_instance_profile = var.iam_instance_profile
 
   vpc_security_group_ids = [aws_security_group.rekall.id]
+
+  # Optional SMT control: threads_per_core = 1 disables hyperthreading
+  # (core_count must be given alongside; derive it from the instance's
+  # default vCPU count via the instance-type data source).
+  dynamic "cpu_options" {
+    for_each = var.threads_per_core == null ? [] : [var.threads_per_core]
+    content {
+      core_count       = data.aws_ec2_instance_type.selected.default_cores
+      threads_per_core = cpu_options.value
+    }
+  }
 
   root_block_device {
     volume_size = var.disk_size_gb

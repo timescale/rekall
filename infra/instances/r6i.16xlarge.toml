@@ -1,0 +1,76 @@
+# Rekall benchmark instance: r6i.16xlarge (Intel Ice Lake, 64 vCPU,
+# 512 GiB RAM) with HYPERTHREADING DISABLED (threads_per_core = 1 →
+# 32 single-threaded cores).
+#
+# Launch with:
+#   rekall infra up -c infra/instances/r6i.16xlarge.toml
+#
+# This reproduces the environment of the published ann-benchmarks.com
+# runs (https://ann-benchmarks.com): r6i.16xlarge, SMT off, every
+# algorithm restricted to one CPU. ann-benchmarks packs 31 independent
+# single-CPU workers on the box (--parallelism 31); rekall instead runs
+# one benchmark at a time on an otherwise-idle machine — the per-query
+# cost model is the same (one core, one query at a time), with none of
+# the co-tenancy cache pressure. Expect rekall QPS to read slightly
+# higher than the site's for identical configs.
+#
+# The PG config below pins the single-CPU query discipline
+# (max_parallel_workers_per_gather = 0, matching the ann-benchmarks
+# PostgreSQL images); serial index builds are set per-arm in the
+# reproduction suite (table_parallel_workers = 0).
+#
+# This file is the canonical, committed config for this instance type.
+# Personal/machine-specific overrides go in `r6i.16xlarge.local.toml`
+# (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
+# and the meerkat git_url/git_ref. See `local.toml.example`.
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "r6i.16xlarge"
+
+# Disable SMT: one thread per physical core, like the published
+# ann-benchmarks environment.
+threads_per_core = 1
+
+# The ann-benchmarks datasets are small (glove-100 is ~5 GB with heap +
+# indexes); size the volume for a few datasets plus WAL headroom rather
+# than for the 50M+ suites.
+disk_size_gb    = 300
+disk_iops       = 10000
+disk_throughput = 500
+
+name_prefix = "rekall-r6i16"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat"]
+
+[pg_config]
+# Single-CPU queries, as in the ann-benchmarks PostgreSQL images: no
+# parallel gather may pick up query work on the benchmark connection.
+max_parallel_workers_per_gather = "0"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.5"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template
