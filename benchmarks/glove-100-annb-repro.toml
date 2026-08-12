@@ -1,0 +1,38 @@
+# Suite: glove-100 -- reproduce the published ann-benchmarks.com pgvector
+# HNSW results, then compare Meerkat and IVFFlat under identical rules.
+#
+# The published environment: r6i.16xlarge, hyperthreading disabled,
+# every algorithm limited to one CPU (the site packs 31 single-CPU
+# workers via --parallelism 31; rekall runs one benchmark at a time on
+# an idle box instead, so expect slightly higher QPS at equal config --
+# no co-tenant cache pressure). Launch the matching instance with:
+#
+#   rekall infra up -c infra/instances/r6i.16xlarge.toml
+#
+# which also pins max_parallel_workers_per_gather = 0 like the
+# ann-benchmarks PostgreSQL images. All arms build single-threaded
+# (table_parallel_workers = 0), matching their one-CPU builds.
+#
+# HNSW arms follow the ann-benchmarks pgvector configuration (M in
+# {16, 24}, ef_construction 200, their ef_search ladder) over halfvec
+# expression indexes -- the pg-aiguide default baseline. IVFFlat runs
+# halfvec plus binary-quantized+rerank; Meerkat runs pure defaults.
+# For a STRICT reproduction of the published numbers (their module
+# indexes full-precision vector), swap in the commented fullvec arms.
+#
+# Usage: rekall run benchmarks/glove-100-annb-repro.toml [--dry-run]
+
+indexes = [
+    "indexes/hnsw-m16-annb-halfvec.toml",
+    "indexes/hnsw-m24-annb-halfvec.toml",
+    "indexes/ivfflat-glove-halfvec.toml",
+    "indexes/ivfflat-glove-bq.toml",
+    "indexes/mkt-defaults-serial.toml",
+    # Strict ann-benchmarks reproduction arms (full-precision vector):
+    # "indexes/hnsw-m16-annb.toml",
+    # "indexes/hnsw-m24-annb.toml",
+    # "indexes/ivfflat-glove-fullvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/glove-100.toml"

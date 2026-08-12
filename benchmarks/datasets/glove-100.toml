@@ -1,0 +1,26 @@
+[dataset]
+name = "glove-100"
+# The standard ann-benchmarks dataset (1,183,514 x 100, angular, with
+# 10k test queries and exact ground truth baked into the file).
+uri = "https://ann-benchmarks.com/glove-100-angular.hdf5"
+metric = "angular"
+dimension = 100
+
+# Uncomment to override the global connection (from ~/.config/rekall/config.toml)
+# [connection]
+# dsn = "host=localhost port=5432 dbname=postgres"
+
+[load]
+table = "glove_100"
+
+[search]
+# The ann-benchmarks protocol: k=10, every test query, five runs with
+# the best kept.
+k = 10
+runs = 5
+warmup = 500
+num_queries = 10000
+
+[output]
+format = ["table", "json"]
+results_dir = "results/glove-100"

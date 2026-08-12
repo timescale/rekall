@@ -1,0 +1,12 @@
+# Meerkat pure defaults with a SINGLE-THREADED build, for suites that
+# reproduce the ann-benchmarks one-CPU-per-algorithm discipline. Same
+# sweep as indexes/mkt-defaults.toml; only the build parallelism differs.
+[[index]]
+type = "meerkat"
+name = "mkt-defaults-serial"
+table_parallel_workers = 0
+
+[[search.sweep]]
+index = "mkt-defaults-serial"
+[search.sweep.params]
+"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]

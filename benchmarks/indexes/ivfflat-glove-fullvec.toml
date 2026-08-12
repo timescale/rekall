@@ -1,0 +1,16 @@
+# pgvector IVFFlat comparison arm for glove-100 under the ann-benchmarks
+# single-CPU discipline: full-precision vector, single-threaded build,
+# lists = sqrt(1.18M) ~= 1086 (pgvector guidance beyond 1M rows).
+# Quantized encodings are omitted: at 100 dimensions binary quantization
+# ranks poorly (see the cohere suites for where it pays).
+[[index]]
+type = "pgvector-ivfflat"
+name = "ivfflat-glove-fullvec"
+table_parallel_workers = 0
+[index.params]
+lists = 1086
+
+[[search.sweep]]
+index = "ivfflat-glove-fullvec"
+[search.sweep.params]
+"ivfflat.probes" = [1, 2, 5, 10, 20, 40, 80, 160, 320]

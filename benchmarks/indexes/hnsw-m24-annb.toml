@@ -1,0 +1,19 @@
+# pgvector HNSW M=24 exactly as the ann-benchmarks pgvector arm runs it:
+# full-precision `vector` encoding over the bare v column (their module
+# indexes vector, not halfvec), ef_construction = 200, the module's
+# ef_search ladder, and a SINGLE-THREADED build (table_parallel_workers=0
+# -- ann-benchmarks builds get one CPU). Pair with an instance config
+# that pins max_parallel_workers_per_gather = 0 (see
+# infra/instances/r6i.16xlarge.toml) for the full published environment.
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-m24-annb"
+table_parallel_workers = 0
+[index.params]
+m = 24
+ef_construction = 200
+
+[[search.sweep]]
+index = "hnsw-m24-annb"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800]

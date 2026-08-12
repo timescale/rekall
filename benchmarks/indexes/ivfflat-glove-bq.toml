@@ -1,0 +1,24 @@
+# pgvector IVFFlat binary-quantized arm for glove-100, always reranked
+# (80x oversampling at k=10). Single-threaded build, lists = 1086.
+#
+# Expectation check: at 100 dimensions sign-bit quantization preserves
+# angular ordering poorly, so this arm's recall ceiling sits far below
+# the full/halfvec arms even with the rerank (measured ~0.7 on
+# comparable low-dim data); it's included to quantify exactly that,
+# in contrast to the 768-dim cohere suites where bq+rerank is the
+# best IVFFlat variant.
+[[index]]
+type = "pgvector-ivfflat"
+name = "ivfflat-glove-bq"
+table_parallel_workers = 0
+[index.params]
+lists = 1086
+encoding = "bit"
+
+[[query]]
+name = "ivfflat-glove-bq-rerank"
+index = "ivfflat-glove-bq"
+mode = "rerank"
+[query.params]
+rerank_pool = [800]
+"ivfflat.probes" = [1, 2, 5, 10, 20, 40, 80, 160, 320]

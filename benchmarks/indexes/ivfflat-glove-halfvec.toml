@@ -1,0 +1,15 @@
+# pgvector IVFFlat halfvec (f16) arm for glove-100 under the
+# ann-benchmarks single-CPU discipline: single-threaded build,
+# lists = sqrt(1.18M) ~= 1086 (pgvector guidance beyond 1M rows).
+[[index]]
+type = "pgvector-ivfflat"
+name = "ivfflat-glove-halfvec"
+table_parallel_workers = 0
+[index.params]
+lists = 1086
+encoding = "halfvec"
+
+[[search.sweep]]
+index = "ivfflat-glove-halfvec"
+[search.sweep.params]
+"ivfflat.probes" = [1, 2, 5, 10, 20, 40, 80, 160, 320]

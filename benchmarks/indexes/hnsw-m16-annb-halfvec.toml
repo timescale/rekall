@@ -1,0 +1,18 @@
+# pgvector HNSW M=16 under the ann-benchmarks single-CPU discipline,
+# but over a halfvec (f16) expression index -- the pg-aiguide default
+# baseline -- instead of the full-precision vector the ann-benchmarks
+# module indexes. Single-threaded build (table_parallel_workers = 0),
+# ef_construction = 200, the ann-benchmarks ef_search ladder.
+[[index]]
+type = "pgvector-hnsw"
+name = "hnsw-m16-annb-halfvec"
+table_parallel_workers = 0
+[index.params]
+m = 16
+ef_construction = 200
+encoding = "halfvec"
+
+[[search.sweep]]
+index = "hnsw-m16-annb-halfvec"
+[search.sweep.params]
+"hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800]
