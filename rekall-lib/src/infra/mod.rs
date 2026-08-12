@@ -553,6 +553,7 @@ pub fn render_user_data(config: &InfraConfig, local_pub_key: Option<&str>) -> Re
         huge_pages => config.huge_pages,
         nr_hugepages => config.nr_huge_pages().unwrap_or(0),
         swap_gb => config.swap_gb,
+        pg_on_instance_store => config.pg_on_instance_store,
         is_amd => is_amd,
         authorized_keys => authorized_keys,
     };
@@ -1225,6 +1226,35 @@ mod tests {
             assert!(s.success(), "bash -n rejected the rendered script:\n{out}");
         }
         // If bash isn't on PATH, skip silently — CI may not have it.
+    }
+
+    #[test]
+    fn render_user_data_instance_store_blocks_are_valid_bash() {
+        // The instance-store blocks (PGDATA + swap) render conditionally;
+        // exercise both together, including the shared detection function.
+        let cfg = InfraConfig {
+            instance_type: "i4i.xlarge".to_string(),
+            extensions: vec!["pgvector".to_string()],
+            pg_on_instance_store: true,
+            swap_gb: 8,
+            ..Default::default()
+        };
+        let out = render_user_data(&cfg, None).expect("template renders");
+        assert!(out.contains("find_instance_store_dev"));
+        assert!(
+            !out.contains("nvme id-ctrl"),
+            "detection must not depend on nvme-cli"
+        );
+
+        let mut tmp = std::env::temp_dir();
+        tmp.push("rekall-render-check-istore.sh");
+        std::fs::write(&tmp, &out).unwrap();
+        let status = std::process::Command::new("bash")
+            .args(["-n", tmp.to_str().unwrap()])
+            .status();
+        if let Ok(s) = status {
+            assert!(s.success(), "bash -n rejected the rendered script:\n{out}");
+        }
     }
 
     #[test]
