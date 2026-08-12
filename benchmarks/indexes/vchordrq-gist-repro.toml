@@ -20,6 +20,9 @@ lists = [4000]
 residual_quantization = true
 spherical_centroids = false
 build_threads = 4
+# Match the 25 K-means iterations their blog cites for the published
+# builds (VectorChord's internal default is 10).
+kmeans_iterations = 25
 
 [[search.sweep]]
 index = "vchordrq-gist-n4000"
