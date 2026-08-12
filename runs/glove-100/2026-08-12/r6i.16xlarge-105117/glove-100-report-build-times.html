@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index build time (heap prewarmed before each build)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index build time (heap prewarmed before each build)</div><div class="meta">glove-100  |  2026-08-12  |  r6i.16xlarge, Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz, 64 vCPU, 496 GB<br>PG 18.4  |  shared_buffers=128 GB  |  work_mem=256 MB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (0c154a4), pgvector 0.8.6</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["hnsw-m24-annb-halfvec", "hnsw-m24-annb", "hnsw-m16-annb", "mkt-defaults-serial", "ivfflat-glove-halfvec", "ivfflat-glove-fullvec", "ivfflat-glove-bq"], y:[2019.780496573, 1783.291468428, 1253.100745748, 83.901148982, 57.877753579, 44.337192559, 24.394599449], text:["711 MB", "926 MB", "841 MB", "93 MB", "254 MB", "491 MB", "45 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["2019.8s · 711 MB · 0 workers", "1783.3s · 926 MB · 0 workers", "1253.1s · 841 MB · 0 workers", "83.9s · 93 MB · 0 workers", "57.9s · 254 MB · 0 workers", "44.3s · 491 MB · 0 workers", "24.4s · 45 MB · 0 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Build time (seconds)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>

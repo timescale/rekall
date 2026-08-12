@@ -1,0 +1,23 @@
+{
+  "run_id": "glove-100/2026-08-12/r6i.16xlarge-105117",
+  "dataset": "glove-100",
+  "date": "2026-08-12",
+  "time": "10:51:17",
+  "timestamp": "2026-08-12T10:51:17+0000",
+  "instance_type": "r6i.16xlarge",
+  "hostname": "ip-172-31-15-118",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+  "cpu_count": 64,
+  "memory_gb": 495.8,
+  "pg_version": "PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg26.04+1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "dd61107",
+  "extensions": {
+    "meerkat": "0.1.0 (0c154a4)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.9980799999999964,
+  "qps_at_peak": 44.98640344438222,
+  "num_indexes": 7,
+  "s3_url": "s3://rekall-bench/runs/glove-100/2026-08-12/r6i.16xlarge-105117/"
+}
