@@ -119,6 +119,14 @@ pub struct InfraConfig {
     /// pressure. Set to 0 or omit to disable.
     #[serde(default)]
     pub swap_gb: u32,
+    /// Put the PostgreSQL data directory on the local NVMe instance
+    /// store (i4i/c6id/... families). Ephemeral by nature -- survives
+    /// reboots, not stops -- which matches the published disk-oriented
+    /// benchmark setups this exists to reproduce (the dataset is
+    /// reloaded per benchmark anyway). Default false: PGDATA stays on
+    /// the EBS root volume.
+    #[serde(default)]
+    pub pg_on_instance_store: bool,
     #[serde(default)]
     pub rekall: Option<GitSourceConfig>,
     #[serde(default)]
@@ -167,6 +175,7 @@ impl Default for InfraConfig {
             pg_config: HashMap::new(),
             huge_pages: false,
             swap_gb: 0,
+            pg_on_instance_store: false,
             rekall: None,
             meerkat: None,
             pgvector: None,
@@ -542,6 +551,14 @@ mod tests {
         assert_eq!(cfg.pg_version, 18);
         assert_eq!(cfg.pg_port, 5432);
         assert!(cfg.ssh_key.is_none());
+    }
+
+    #[test]
+    fn pg_on_instance_store_defaults_off_and_parses() {
+        let cfg = InfraConfig::default();
+        assert!(!cfg.pg_on_instance_store);
+        let cfg: InfraConfig = toml::from_str("pg_on_instance_store = true").unwrap();
+        assert!(cfg.pg_on_instance_store);
     }
 
     #[test]

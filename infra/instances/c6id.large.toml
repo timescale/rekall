@@ -1,0 +1,58 @@
+# Rekall benchmark instance: c6id.large (Intel Ice Lake, 2 vCPU,
+# 4 GiB RAM, 118 GB local NVMe instance store).
+#
+# Launch with:
+#   rekall infra up -c infra/instances/c6id.large.toml
+#
+# Reproduces the "vectors on disk" environment of VectorChord's
+# comparative benchmark blog: RAM (4 GB, shared_buffers = 2GB) far
+# below the dataset size, PGDATA on local NVMe -- the disk-bound
+# regime where index size and IO patterns dominate. The instance
+# store is ephemeral (survives reboots, not stops).
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "c6id.large"
+
+pg_on_instance_store = true
+disk_size_gb = 60
+
+name_prefix = "rekall-c6id-l"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# VectorChord's documented settings for this experiment.
+[pg_config]
+shared_buffers = "2GB"
+jit = "off"
+effective_io_concurrency = "200"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.5"
+
+[vectorchord]
+version = "1.1.1"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template

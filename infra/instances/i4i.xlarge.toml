@@ -1,0 +1,60 @@
+# Rekall benchmark instance: i4i.xlarge (Intel Ice Lake, 4 vCPU,
+# 32 GiB RAM, 937 GB local NVMe instance store).
+#
+# Launch with:
+#   rekall infra up -c infra/instances/i4i.xlarge.toml
+#
+# Reproduces the "vectors in memory" environment of VectorChord's
+# comparative benchmark blog (i4i.xlarge, shared_buffers = 24GB,
+# PGDATA on the local NVMe). The instance store is ephemeral --
+# it survives reboots but NOT stops -- fine for benchmarks, which
+# reload data anyway.
+
+# ----- Provider & region -------------------------------------------------
+
+provider = "aws"
+region   = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "i4i.xlarge"
+
+# PGDATA lives on the 937 GB local NVMe; the EBS root only holds the
+# OS, tools, and the downloaded dataset files.
+pg_on_instance_store = true
+disk_size_gb = 100
+
+name_prefix = "rekall-i4i-xl"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat", "vectorchord"]
+
+# VectorChord's documented settings for this experiment.
+[pg_config]
+shared_buffers = "24GB"
+jit = "off"
+effective_io_concurrency = "200"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.5"
+
+[vectorchord]
+version = "1.1.1"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+# Meerkat is a private repo. Put the URL and ref in .local.toml:
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
+# s3_bucket            = "my-datasets-bucket"      # scopes IAM template

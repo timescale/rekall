@@ -71,21 +71,51 @@ systemctl daemon-reload
 systemctl enable disable-thp.service
 {%- endif %}
 
+{% if pg_on_instance_store or swap_gb > 0 -%}
+# Find an NVMe instance-store device: ephemeral disks are NVMe like the
+# EBS root volume, but the controller model distinguishes them ("Amazon
+# EC2 NVMe Instance Storage" vs "Amazon Elastic Block Store"). Read the
+# model from sysfs — this runs before any packages are installed, so
+# tools like nvme-cli aren't available yet.
+find_instance_store_dev() {
+    local ctrl dev
+    for ctrl in /sys/class/nvme/nvme*; do
+        [ -r "$ctrl/model" ] || continue
+        grep -qi "instance storage\|ephemeral" "$ctrl/model" || continue
+        dev="/dev/$(basename "$ctrl")n1"
+        [ -b "$dev" ] || continue
+        # Skip devices already claimed (e.g. PGDATA took the only disk;
+        # a later swap request must not reformat it).
+        grep -q "^$dev " /proc/mounts && continue
+        echo "$dev"
+        return 0
+    done
+    return 1
+}
+{%- endif %}
+
+{% if pg_on_instance_store -%}
+echo "=== Mounting NVMe instance store for the PostgreSQL data directory ==="
+# Runs BEFORE PostgreSQL is installed, so the package's initdb lands
+# directly on the instance store.
+PGSTORE_DEV=$(find_instance_store_dev || true)
+if [ -z "$PGSTORE_DEV" ]; then
+    echo "ERROR: pg_on_instance_store set but no NVMe instance store found" >&2
+    exit 1
+fi
+echo "Found NVMe instance store: $PGSTORE_DEV"
+mkfs.ext4 -F -L pgstore "$PGSTORE_DEV"
+mkdir -p /var/lib/postgresql
+mount -o noatime "$PGSTORE_DEV" /var/lib/postgresql
+# Ephemeral: contents vanish on instance stop. Remount on reboot only.
+echo "LABEL=pgstore /var/lib/postgresql ext4 noatime,nofail 0 2" >> /etc/fstab
+{%- endif %}
+
 {% if swap_gb > 0 -%}
 echo "=== Configuring {{ swap_gb }} GB swap on NVMe instance store ==="
-# Find the first NVMe instance store device (not the root EBS volume).
-# Instance store devices are ephemeral — they appear as /dev/nvmeXn1 but
-# are NOT listed in the block device mapping. We identify them via the
-# nvme id-ctrl model string which contains "Instance Storage".
-SWAP_DEV=""
-for dev in /dev/nvme*n1; do
-    [ -b "$dev" ] || continue
-    model=$(nvme id-ctrl -o json "$dev" 2>/dev/null | grep -o '"mn"[^,]*' | head -1 || true)
-    if echo "$model" | grep -qi "instance storage\|ephemeral"; then
-        SWAP_DEV="$dev"
-        break
-    fi
-done
+# First NVMe instance-store device (not the root EBS volume); detection
+# shared with the pg-on-instance-store block above.
+SWAP_DEV=$(find_instance_store_dev || true)
 
 if [ -z "$SWAP_DEV" ]; then
     echo "WARNING: swap_gb={{ swap_gb }} requested but no NVMe instance store found. Skipping swap."
