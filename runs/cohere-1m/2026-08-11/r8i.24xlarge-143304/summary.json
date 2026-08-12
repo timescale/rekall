@@ -1,0 +1,386 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.3120000000000015,
+      "qps": 379.459694929584,
+      "p50_latency_us": 2703.0,
+      "p95_latency_us": 3041.0,
+      "p99_latency_us": 3347.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.4418000000000004,
+      "qps": 343.6555430522212,
+      "p50_latency_us": 2901.0,
+      "p95_latency_us": 3259.0,
+      "p99_latency_us": 3455.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.6141999999999994,
+      "qps": 282.08649223190224,
+      "p50_latency_us": 3485.0,
+      "p95_latency_us": 4147.0,
+      "p99_latency_us": 4407.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.728400000000001,
+      "qps": 218.8034427408896,
+      "p50_latency_us": 4459.0,
+      "p95_latency_us": 5591.0,
+      "p99_latency_us": 5939.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.8231999999999996,
+      "qps": 154.95397944287552,
+      "p50_latency_us": 6263.0,
+      "p95_latency_us": 8147.0,
+      "p99_latency_us": 8879.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.8998500000000034,
+      "qps": 102.20461486541592,
+      "p50_latency_us": 9479.0,
+      "p95_latency_us": 12431.0,
+      "p99_latency_us": 13791.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.9510500000000042,
+      "qps": 48.710340162815335,
+      "p50_latency_us": 20447.0,
+      "p95_latency_us": 23695.0,
+      "p99_latency_us": 25183.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.9769000000000034,
+      "qps": 25.503352007567777,
+      "p50_latency_us": 39071.0,
+      "p95_latency_us": 43615.0,
+      "p99_latency_us": 45055.0
+    },
+    {
+      "index_name": "ivfflat-1m-bq-rerank",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "bit",
+      "recall": 0.990050000000002,
+      "qps": 12.302989764306217,
+      "p50_latency_us": 81343.0,
+      "p95_latency_us": 86527.0,
+      "p99_latency_us": 88127.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.46832999999999964,
+      "qps": 501.35144294961407,
+      "p50_latency_us": 1905.0,
+      "p95_latency_us": 3339.0,
+      "p99_latency_us": 4691.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.6177199999999989,
+      "qps": 282.9934412308087,
+      "p50_latency_us": 3415.0,
+      "p95_latency_us": 5583.0,
+      "p99_latency_us": 7483.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.7808799999999896,
+      "qps": 128.20311804598242,
+      "p50_latency_us": 7595.0,
+      "p95_latency_us": 11695.0,
+      "p99_latency_us": 14423.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.8677299999999785,
+      "qps": 68.43758311744465,
+      "p50_latency_us": 14311.0,
+      "p95_latency_us": 20543.0,
+      "p99_latency_us": 24607.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.9279899999999763,
+      "qps": 34.7806696884391,
+      "p50_latency_us": 28559.0,
+      "p95_latency_us": 38495.0,
+      "p99_latency_us": 43999.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.9687000000000038,
+      "qps": 16.074420710026438,
+      "p50_latency_us": 62239.0,
+      "p95_latency_us": 77311.0,
+      "p99_latency_us": 82943.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.9884000000000019,
+      "qps": 8.111320015454336,
+      "p50_latency_us": 123775.0,
+      "p95_latency_us": 145919.0,
+      "p99_latency_us": 152319.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.9974500000000008,
+      "qps": 4.13321791184541,
+      "p50_latency_us": 242559.0,
+      "p95_latency_us": 274687.0,
+      "p99_latency_us": 284415.0
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "recall": 0.9997500000000001,
+      "qps": 2.1502919924502395,
+      "p50_latency_us": 469759.0,
+      "p95_latency_us": 518911.0,
+      "p99_latency_us": 529407.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.48215000000000036,
+      "qps": 583.5681222411818,
+      "p50_latency_us": 1663.0,
+      "p95_latency_us": 2819.0,
+      "p99_latency_us": 3431.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.6325499999999998,
+      "qps": 362.4488494061281,
+      "p50_latency_us": 2657.0,
+      "p95_latency_us": 4231.0,
+      "p99_latency_us": 5123.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.7909500000000022,
+      "qps": 171.38618517660296,
+      "p50_latency_us": 5611.0,
+      "p95_latency_us": 8679.0,
+      "p99_latency_us": 10487.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.8751500000000028,
+      "qps": 93.4997654090886,
+      "p50_latency_us": 10263.0,
+      "p95_latency_us": 15655.0,
+      "p99_latency_us": 17967.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.9354500000000048,
+      "qps": 46.87525781391797,
+      "p50_latency_us": 20975.0,
+      "p95_latency_us": 29391.0,
+      "p99_latency_us": 33375.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.9699500000000042,
+      "qps": 23.79398973336931,
+      "p50_latency_us": 41855.0,
+      "p95_latency_us": 55103.0,
+      "p99_latency_us": 59903.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.987850000000003,
+      "qps": 12.007328504850326,
+      "p50_latency_us": 84095.0,
+      "p95_latency_us": 102783.0,
+      "p99_latency_us": 108671.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.9949500000000017,
+      "qps": 6.155444978594811,
+      "p50_latency_us": 163967.0,
+      "p95_latency_us": 188927.0,
+      "p99_latency_us": 196735.0
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "data_type": "halfvec",
+      "recall": 0.997400000000001,
+      "qps": 3.3012424397586657,
+      "p50_latency_us": 303103.0,
+      "p95_latency_us": 340735.0,
+      "p99_latency_us": 352511.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9495000000000025,
+      "qps": 1093.9608438595164,
+      "p50_latency_us": 878.0,
+      "p95_latency_us": 1233.0,
+      "p99_latency_us": 1413.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.8717000000000044,
+      "qps": 2055.0253590129305,
+      "p50_latency_us": 463.0,
+      "p95_latency_us": 679.0,
+      "p99_latency_us": 733.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9249000000000025,
+      "qps": 1517.6303113266806,
+      "p50_latency_us": 631.0,
+      "p95_latency_us": 856.0,
+      "p99_latency_us": 1003.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9600500000000024,
+      "qps": 1047.634911804856,
+      "p50_latency_us": 937.0,
+      "p95_latency_us": 1185.0,
+      "p99_latency_us": 1307.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.982950000000003,
+      "qps": 723.6447671256861,
+      "p50_latency_us": 1359.0,
+      "p95_latency_us": 1693.0,
+      "p99_latency_us": 1821.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9936000000000018,
+      "qps": 409.38029443858903,
+      "p50_latency_us": 2443.0,
+      "p95_latency_us": 2757.0,
+      "p99_latency_us": 2905.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9980000000000006,
+      "qps": 229.7572385017991,
+      "p50_latency_us": 4359.0,
+      "p95_latency_us": 4899.0,
+      "p99_latency_us": 5087.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9997,
+      "qps": 130.59764354835886,
+      "p50_latency_us": 7687.0,
+      "p95_latency_us": 8319.0,
+      "p99_latency_us": 8543.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 1.0,
+      "qps": 67.0550764917374,
+      "p50_latency_us": 14967.0,
+      "p95_latency_us": 15807.0,
+      "p99_latency_us": 16103.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 1.0,
+      "qps": 34.18385499263407,
+      "p50_latency_us": 29359.0,
+      "p95_latency_us": 30143.0,
+      "p99_latency_us": 30479.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "ivfflat-1m-bq",
+      "index_type": "pgvector-ivfflat",
+      "build_time_secs": 10.866229764,
+      "size_bytes": 121380864,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "ivfflat-1m-fullvec",
+      "index_type": "pgvector-ivfflat",
+      "build_time_secs": 57.87137439,
+      "size_bytes": 4102258688,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "ivfflat-1m-halfvec",
+      "index_type": "pgvector-ivfflat",
+      "build_time_secs": 48.268174791,
+      "size_bytes": 1643307008,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "build_time_secs": 17.590520782,
+      "size_bytes": 280231936,
+      "cache": "prewarmed"
+    }
+  ]
+}
