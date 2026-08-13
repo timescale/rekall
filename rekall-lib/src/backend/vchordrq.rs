@@ -51,6 +51,12 @@ struct VchordrqParams {
     /// `plain` and `rabitq8` variants.
     #[serde(default = "default_rerank_n")]
     rerank_n: u32,
+    /// K-means iterations for the internal build (VectorChord default:
+    /// 10). VectorChord's published external builds ran 25, so the
+    /// reproduction arms set this to match; convergence gains past ~10
+    /// are small but nonzero on subsampled training sets.
+    #[serde(default)]
+    kmeans_iterations: Option<u32>,
 }
 
 fn default_lists() -> Vec<u32> {
@@ -170,6 +176,7 @@ impl VchordrqBackend {
         if self.params.residual_quantization {
             top.push_str("residual_quantization = true\n");
         }
+
         let mut internal = String::new();
         if !self.params.lists.is_empty() {
             let lists = self
@@ -186,6 +193,9 @@ impl VchordrqBackend {
         }
         if self.params.build_threads > 1 {
             internal.push_str(&format!("build_threads = {}\n", self.params.build_threads));
+        }
+        if let Some(iters) = self.params.kmeans_iterations {
+            internal.push_str(&format!("kmeans_iterations = {iters}\n"));
         }
 
         let mut body = top;
@@ -363,6 +373,7 @@ mod tests {
             spherical_centroids: true,
             build_threads: 8,
             rerank_n: 200,
+            kmeans_iterations: None,
         };
         // Synthesize the body without going through PgConnection (which
         // would require a live DB). Replicates the impl exactly.
