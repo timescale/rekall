@@ -1,0 +1,25 @@
+# VectorChord GIST-1M arm with EXTERNALLY computed K-means centroids --
+# the build path their published benchmarks actually used. Their
+# scripts (removed upstream, vendored under scripts/vchordrq-external/
+# with the original dual license) compute centroids with faiss K-means
+# at a FIXED SEED (42), so the partitioning is reproducible even though
+# they never published the centroid artifacts themselves.
+#
+# Workflow (between `rekall load` and `rekall index`):
+#   python scripts/vchordrq-external/train.py \
+#       -i gist-960-euclidean.hdf5 -o gist-centroids.npy --lists 4000 -m l2 --niter 25
+#   python scripts/vchordrq-external/load_centroids.py \
+#       --centroids gist-centroids.npy --table public.gist_960_centroids \
+#       --dim 960 --dsn "$REKALL_DSN"
+[[index]]
+type = "vchordrq"
+name = "vchordrq-gist-n4000-ext"
+[index.params]
+external_build_table = "public.gist_960_centroids"
+residual_quantization = true
+
+[[search.sweep]]
+index = "vchordrq-gist-n4000-ext"
+[search.sweep.params]
+"vchordrq.probes" = ["2", "5", "10", "20", "40", "80", "160"]
+"vchordrq.epsilon" = [1.0, 1.3, 1.6, 1.9]

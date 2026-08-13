@@ -51,6 +51,21 @@ struct VchordrqParams {
     /// `plain` and `rabitq8` variants.
     #[serde(default = "default_rerank_n")]
     rerank_n: u32,
+    /// K-means iterations for the internal build (VectorChord default:
+    /// 10). VectorChord's published external builds ran 25, so the
+    /// reproduction arms set this to match; convergence gains past ~10
+    /// are small but nonzero on subsampled training sets.
+    #[serde(default)]
+    kmeans_iterations: Option<u32>,
+    /// Externally computed centroid table for `[build.external]`
+    /// (VectorChord's published-benchmark build path: K-means run
+    /// outside the database -- see scripts/vchordrq-external/ -- and
+    /// imported). When set, the internal-build options (`lists`,
+    /// `spherical_centroids`, `build_threads`) are ignored: the
+    /// partitioning comes entirely from the table. The table must
+    /// exist before `rekall index` runs.
+    #[serde(default)]
+    external_build_table: Option<String>,
 }
 
 fn default_lists() -> Vec<u32> {
@@ -170,6 +185,15 @@ impl VchordrqBackend {
         if self.params.residual_quantization {
             top.push_str("residual_quantization = true\n");
         }
+
+        // External build: the centroid table replaces the whole
+        // internal-build section (VectorChord rejects mixing them).
+        if let Some(ref table) = self.params.external_build_table {
+            top.push_str("[build.external]\n");
+            top.push_str(&format!("table = \"{table}\"\n"));
+            return top;
+        }
+
         let mut internal = String::new();
         if !self.params.lists.is_empty() {
             let lists = self
@@ -186,6 +210,9 @@ impl VchordrqBackend {
         }
         if self.params.build_threads > 1 {
             internal.push_str(&format!("build_threads = {}\n", self.params.build_threads));
+        }
+        if let Some(iters) = self.params.kmeans_iterations {
+            internal.push_str(&format!("kmeans_iterations = {iters}\n"));
         }
 
         let mut body = top;
@@ -321,6 +348,22 @@ mod tests {
     }
 
     #[test]
+    fn external_build_table_replaces_internal_section() {
+        let cfg = idx(
+            "a",
+            toml::toml! {
+                external_build_table = "public.gist_960_centroids"
+            }
+            .into(),
+        );
+        let p: VchordrqParams = cfg.params.try_into().unwrap();
+        assert_eq!(
+            p.external_build_table.as_deref(),
+            Some("public.gist_960_centroids")
+        );
+    }
+
+    #[test]
     fn params_default_when_omitted() {
         let cfg = idx("a", toml::Value::Table(Default::default()));
         let p: VchordrqParams = cfg.params.try_into().unwrap();
@@ -363,6 +406,8 @@ mod tests {
             spherical_centroids: true,
             build_threads: 8,
             rerank_n: 200,
+            kmeans_iterations: None,
+            external_build_table: None,
         };
         // Synthesize the body without going through PgConnection (which
         // would require a live DB). Replicates the impl exactly.
