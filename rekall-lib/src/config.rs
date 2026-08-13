@@ -436,6 +436,46 @@ pub struct BenchmarkConfig {
     /// branch before the run. Absent / no `branch` → use whatever is installed.
     #[serde(default)]
     pub meerkat: MeerkatBuildConfig,
+    /// Per-phase PostgreSQL config overrides (`[phase_pg_config]`):
+    /// applied via ALTER SYSTEM for the duration of the index or search
+    /// phase, then restored to whatever the box had before. Published
+    /// benchmarks on memory-constrained boxes lower shared_buffers for
+    /// the index build (freeing RAM for maintenance_work_mem); a suite
+    /// can declare that need without knowing anything about the machine
+    /// it runs on.
+    #[serde(default)]
+    pub phase_pg_config: PhasePgConfig,
+}
+
+/// `[phase_pg_config]` — phase-scoped ALTER SYSTEM overrides. Each
+/// phase's GUCs are applied before the phase and restored afterward
+/// (the prior postgresql.auto.conf entry verbatim if the box had one,
+/// ALTER SYSTEM RESET if not), so a run leaves the server configured
+/// exactly as it found it — including when the phase fails. Reloadable
+/// GUCs take effect via pg_reload_conf(); postmaster-context GUCs (like
+/// shared_buffers) restart PostgreSQL, using a mechanism auto-detected
+/// from the server (Debian/Ubuntu systemd units via cluster_name or
+/// data_directory).
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct PhasePgConfig {
+    /// Escape hatch: shell command that restarts PostgreSQL, for
+    /// environments where auto-detection fails (non-systemd, custom
+    /// units). Machine-specific — belongs in the global config next to
+    /// the DSN, not in suite files.
+    #[serde(default)]
+    pub restart_command: Option<String>,
+    /// Overrides in effect during the index (build) phase.
+    #[serde(default)]
+    pub index: std::collections::HashMap<String, String>,
+    /// Overrides in effect during the search phase.
+    #[serde(default)]
+    pub search: std::collections::HashMap<String, String>,
+}
+
+impl PhasePgConfig {
+    pub fn is_empty(&self) -> bool {
+        self.index.is_empty() && self.search.is_empty()
+    }
 }
 
 /// `[meerkat]` — build & install a specific meerkat branch before the run, so
@@ -1643,6 +1683,35 @@ runs = 1
     fn no_local_config_is_fine() {
         let cfg = parse_config(MINIMAL_CONFIG);
         assert_eq!(cfg.search.k, 10); // default, no local override
+    }
+
+    #[test]
+    fn phase_pg_config_parses_and_defaults_empty() {
+        let cfg = parse_config(MINIMAL_CONFIG);
+        assert!(cfg.phase_pg_config.is_empty());
+        assert!(cfg.phase_pg_config.restart_command.is_none());
+
+        let cfg = parse_config(concat!(
+            "[dataset]\nname = \"t\"\npath = \"/x.hdf5\"\nmetric = \"angular\"\ndimension = 4\n",
+            "[phase_pg_config]\nrestart_command = \"true\"\n",
+            "[phase_pg_config.index]\nshared_buffers = \"1GB\"\n",
+            "[phase_pg_config.search]\nshared_buffers = \"24GB\"\n",
+        ));
+        assert_eq!(
+            cfg.phase_pg_config
+                .index
+                .get("shared_buffers")
+                .map(String::as_str),
+            Some("1GB")
+        );
+        assert_eq!(
+            cfg.phase_pg_config
+                .search
+                .get("shared_buffers")
+                .map(String::as_str),
+            Some("24GB")
+        );
+        assert_eq!(cfg.phase_pg_config.restart_command.as_deref(), Some("true"));
     }
 
     const INDEX_HNSW: &str = r#"
