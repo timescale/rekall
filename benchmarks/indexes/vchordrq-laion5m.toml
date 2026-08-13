@@ -1,0 +1,29 @@
+# VectorChord vchordrq arm for the LAION-5M reproduction, following
+# their blogged configuration where published: nlist = 8192 (their
+# LAION-5M setting), residual quantization on. Their headline builds
+# imported externally computed K-means centroids via a train.py that
+# no longer ships in 1.x, so the in-database build is now the
+# supported path -- any centroid-quality delta vs their 0.2.2-era
+# external build is inherent to the version, not a config gap.
+# vchordrq.epsilon is swept jointly with probes (their tuned frontier)
+# rather than pinned at the cost-maximal 1.9 default.
+[[index]]
+type = "vchordrq"
+name = "vchordrq-laion5m-n8192"
+[index.params]
+lists = [8192]
+# Their blog runs LAION under L2 (the dataset metric here), and these
+# are VectorChord's recommended settings for L2: residual quantization
+# on, spherical (dot-product) centroids off.
+residual_quantization = true
+spherical_centroids = false
+build_threads = 4
+# Match the 25 K-means iterations their blog cites for the published
+# builds (VectorChord's internal default is 10).
+kmeans_iterations = 25
+
+[[search.sweep]]
+index = "vchordrq-laion5m-n8192"
+[search.sweep.params]
+"vchordrq.probes" = ["2", "5", "10", "20", "40", "80", "160", "320"]
+"vchordrq.epsilon" = [1.0, 1.3, 1.6, 1.9]
