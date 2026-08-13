@@ -329,6 +329,188 @@ impl Agent {
         Ok(())
     }
 
+    /// Apply one phase's `[phase_pg_config]` overrides: ALTER SYSTEM each
+    /// GUC, then either pg_reload_conf() or -- when any changed GUC is
+    /// restart-context (e.g. shared_buffers) -- run the configured
+    /// restart_command and wait for the server to come back.
+    /// Apply a phase's `[phase_pg_config]` GUC overrides via `ALTER SYSTEM`,
+    /// returning a restore plan that puts every touched GUC back to its
+    /// pre-phase state. The suite declares only what the phase needs (e.g.
+    /// a small `shared_buffers` for builds); the box's own configuration is
+    /// snapshotted here and reinstated by [`Self::restore_phase_pg_config`],
+    /// so a run leaves `postgresql.auto.conf` exactly as it found it.
+    async fn apply_phase_pg_config(
+        &mut self,
+        phase_label: &str,
+        gucs: &std::collections::HashMap<String, String>,
+    ) -> Result<PgRestorePlan> {
+        if gucs.is_empty() {
+            return Ok(Vec::new());
+        }
+        let valid = |s: &str| {
+            !s.is_empty()
+                && s.chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '.')
+        };
+        let pg = self.admin_pg();
+        let client = pg.open_connection().await?;
+        let names: Vec<String> = gucs.keys().cloned().collect();
+        for k in &names {
+            if !valid(k) {
+                return Err(crate::error::Error::Config(format!(
+                    "phase_pg_config: invalid GUC name '{k}'"
+                )));
+            }
+        }
+        // Snapshot the current postgresql.auto.conf entries for the GUCs
+        // we are about to override (raw file values, so units and quoting
+        // survive the round trip; last entry wins as in PostgreSQL).
+        let mut prior: std::collections::HashMap<String, String> = Default::default();
+        for row in client
+            .query(
+                "SELECT DISTINCT ON (name) name, setting FROM pg_file_settings \
+                 WHERE sourcefile LIKE '%postgresql.auto.conf' AND name = ANY($1) \
+                 ORDER BY name, seqno DESC",
+                &[&names],
+            )
+            .await?
+        {
+            prior.insert(row.get(0), row.get(1));
+        }
+        let plan: PgRestorePlan = names
+            .iter()
+            .map(|k| (k.clone(), prior.get(k).cloned()))
+            .collect();
+
+        for (k, v) in gucs {
+            let quoted = v.replace('\'', "''");
+            client
+                .execute(&format!("ALTER SYSTEM SET {k} = '{quoted}'"), &[])
+                .await?;
+        }
+        self.sync_pg_config(
+            &pg,
+            client,
+            &names,
+            &format!("Applying {phase_label}-phase pg config"),
+        )
+        .await?;
+        Ok(plan)
+    }
+
+    /// Reinstate the pre-phase PostgreSQL config recorded by
+    /// [`Self::apply_phase_pg_config`]: GUCs the box had overridden in
+    /// `postgresql.auto.conf` get their old value back verbatim; GUCs it
+    /// hadn't are `ALTER SYSTEM RESET`, so nothing of the phase override
+    /// outlives the phase.
+    async fn restore_phase_pg_config(
+        &mut self,
+        phase_label: &str,
+        plan: PgRestorePlan,
+    ) -> Result<()> {
+        if plan.is_empty() {
+            return Ok(());
+        }
+        let pg = self.admin_pg();
+        let client = pg.open_connection().await?;
+        let names: Vec<String> = plan.iter().map(|(k, _)| k.clone()).collect();
+        for (k, prior) in &plan {
+            client
+                .execute(&restore_guc_sql(k, prior.as_deref()), &[])
+                .await?;
+        }
+        self.sync_pg_config(
+            &pg,
+            client,
+            &names,
+            &format!("Restoring pre-{phase_label} pg config"),
+        )
+        .await
+    }
+
+    fn admin_pg(&self) -> backend::postgres::PgConnection {
+        backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        )
+    }
+
+    /// Make pending `ALTER SYSTEM` changes to `names` effective: reload if
+    /// every touched GUC is reloadable, otherwise restart PostgreSQL and
+    /// wait for it to accept connections again. The restart mechanism is
+    /// `phase_pg_config.restart_command` if configured (an escape hatch for
+    /// unusual environments) and auto-detected from the server otherwise.
+    async fn sync_pg_config(
+        &mut self,
+        pg: &backend::postgres::PgConnection,
+        client: tokio_postgres::Client,
+        names: &[String],
+        action: &str,
+    ) -> Result<()> {
+        let needs_restart = client
+            .query(
+                "SELECT count(*) FROM pg_settings WHERE name = ANY($1) \
+                 AND context = 'postmaster'",
+                &[&names],
+            )
+            .await?
+            .first()
+            .map(|r| r.get::<_, i64>(0) > 0)
+            .unwrap_or(false);
+
+        if needs_restart {
+            let cmd = match self.config.phase_pg_config.restart_command.clone() {
+                Some(cmd) => cmd,
+                None => detect_restart_command(&client).await?,
+            };
+            drop(client);
+            for output in self.outputs.iter_mut() {
+                output.on_progress(&ProgressEvent::Message {
+                    text: format!(
+                        "{action} ({}) and restarting PostgreSQL via '{cmd}'",
+                        names.join(", ")
+                    ),
+                });
+            }
+            let status = tokio::process::Command::new("sh")
+                .arg("-c")
+                .arg(&cmd)
+                .status()
+                .await
+                .map_err(|e| {
+                    crate::error::Error::Config(format!("restart command failed to spawn: {e}"))
+                })?;
+            if !status.success() {
+                return Err(crate::error::Error::Config(format!(
+                    "restart command '{cmd}' exited with {status}"
+                )));
+            }
+            // Wait for the server to accept connections again.
+            let deadline = Instant::now() + std::time::Duration::from_secs(120);
+            loop {
+                match pg.open_connection().await {
+                    Ok(_) => break,
+                    Err(e) if Instant::now() >= deadline => {
+                        return Err(crate::error::Error::Config(format!(
+                            "PostgreSQL did not come back after restart: {e}"
+                        )));
+                    }
+                    Err(_) => tokio::time::sleep(std::time::Duration::from_secs(2)).await,
+                }
+            }
+        } else {
+            client.execute("SELECT pg_reload_conf()", &[]).await?;
+            for output in self.outputs.iter_mut() {
+                output.on_progress(&ProgressEvent::Message {
+                    text: format!("{action} ({}) via reload", names.join(", ")),
+                });
+            }
+        }
+        Ok(())
+    }
+
     async fn run_phase(
         &mut self,
         phase: Phase,
@@ -362,6 +544,8 @@ impl Agent {
                 load_handle.await.unwrap()?;
             }
             Phase::Index => {
+                let gucs = self.config.phase_pg_config.index.clone();
+                let plan = self.apply_phase_pg_config("index", &gucs).await?;
                 let (tx, mut rx) = progress_channel();
                 let config = self.config.clone();
                 let registry = backend::BackendRegistry::new();
@@ -376,7 +560,13 @@ impl Agent {
                         output.on_progress(&event);
                     }
                 }
-                let results = build_handle.await.unwrap()?;
+                // Restore the box's config whether or not the build
+                // succeeded; a failed build must not leave the phase
+                // override behind. The build error takes precedence.
+                let build_result = build_handle.await.unwrap();
+                let restore_result = self.restore_phase_pg_config("index", plan).await;
+                let results = build_result?;
+                restore_result?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
                         output.on_index_built(result);
@@ -385,14 +575,19 @@ impl Agent {
                 index_builds.extend(results);
             }
             Phase::Search => {
-                let results = self
+                let gucs = self.config.phase_pg_config.search.clone();
+                let plan = self.apply_phase_pg_config("search", &gucs).await?;
+                let search_result = self
                     .run_search(
                         filter_index,
                         Some(run_env.clone()),
                         pg_runtime.clone(),
                         index_builds.clone(),
                     )
-                    .await?;
+                    .await;
+                let restore_result = self.restore_phase_pg_config("search", plan).await;
+                let results = search_result?;
+                restore_result?;
                 for result in &results {
                     for output in self.outputs.iter_mut() {
                         output.on_search_result(result);
@@ -461,8 +656,48 @@ impl Agent {
         );
         let admin = admin_pg.open_connection().await?;
 
-        // Phase 1: Build any indexes that don't exist yet
-        for idx_config in &index_configs {
+        {
+            let gucs = self.config.phase_pg_config.index.clone();
+            let plan = self.apply_phase_pg_config("index", &gucs).await?;
+            let build_result = self
+                .interleaved_build(&index_configs, &admin, rebuild, index_builds)
+                .await;
+            // Restore the box's config whether or not the phase succeeded;
+            // the phase error takes precedence.
+            let restore_result = self.restore_phase_pg_config("index", plan).await;
+            build_result?;
+            restore_result?;
+        }
+
+        {
+            let gucs = self.config.phase_pg_config.search.clone();
+            let plan = self.apply_phase_pg_config("search", &gucs).await?;
+            let search_result = self
+                .interleaved_search(
+                    &index_configs,
+                    index_builds,
+                    search_results,
+                    run_env,
+                    pg_runtime,
+                )
+                .await;
+            let restore_result = self.restore_phase_pg_config("search", plan).await;
+            search_result?;
+            restore_result?;
+        }
+        Ok(())
+    }
+
+    /// Phase 1 of the interleaved runner: build any indexes that don't
+    /// exist yet.
+    async fn interleaved_build(
+        &mut self,
+        index_configs: &[config::IndexConfig],
+        admin: &tokio_postgres::Client,
+        rebuild: bool,
+        index_builds: &mut Vec<IndexBuildResult>,
+    ) -> Result<()> {
+        for idx_config in index_configs {
             let (progress_tx, mut progress_rx) = progress_channel();
             let backend = self
                 .registry
@@ -526,7 +761,7 @@ impl Agent {
                 }
 
                 crate::phase::index::normalize_table_parallel_workers(
-                    &admin,
+                    admin,
                     &self.config.table_name(),
                     idx_config.table_parallel_workers,
                 )
@@ -587,8 +822,19 @@ impl Agent {
                 }
             }
         }
+        Ok(())
+    }
 
-        // Phase 2: For each index, disable all others, run search, re-enable
+    /// Phase 2 of the interleaved runner: for each index, disable all
+    /// other indexes, run its searches, then re-enable everything.
+    async fn interleaved_search(
+        &mut self,
+        index_configs: &[config::IndexConfig],
+        index_builds: &[IndexBuildResult],
+        search_results: &mut Vec<SearchResult>,
+        run_env: &RunEnvironment,
+        pg_runtime: &Option<PgRuntimeInfo>,
+    ) -> Result<()> {
         let pg = backend::postgres::PgConnection::new(
             &self.config.connection,
             &self.config.table_name(),
@@ -608,7 +854,7 @@ impl Agent {
         // Other indexes from previous runs must also be disabled.
         let all_index_names = pg_mgmt.list_rekall_indexes().await?;
 
-        for idx_config in &index_configs {
+        for idx_config in index_configs {
             let has_searches = self
                 .config
                 .search
@@ -661,7 +907,7 @@ impl Agent {
 
             let env_clone = run_env.clone();
             let pg_clone = pg_runtime.clone();
-            let builds_clone = index_builds.clone();
+            let builds_clone = index_builds.to_vec();
             let rerun = self.rerun;
             let search_handle = tokio::spawn(async move {
                 phase::search::run(
@@ -741,5 +987,242 @@ impl Agent {
         }
 
         search_handle.await.unwrap()
+    }
+}
+
+/// Per-GUC pre-phase state captured by `apply_phase_pg_config`: the raw
+/// `postgresql.auto.conf` value if the box had one, or `None` if the GUC
+/// wasn't overridden there (restored with `ALTER SYSTEM RESET`).
+type PgRestorePlan = Vec<(String, Option<String>)>;
+
+/// SQL that puts one GUC back to its pre-phase `postgresql.auto.conf`
+/// state. GUC names are validated at apply time; values are quote-escaped.
+fn restore_guc_sql(name: &str, prior: Option<&str>) -> String {
+    match prior {
+        Some(v) => format!("ALTER SYSTEM SET {name} = '{}'", v.replace('\'', "''")),
+        None => format!("ALTER SYSTEM RESET {name}"),
+    }
+}
+
+/// Derive the systemd unit for a Debian/Ubuntu-packaged cluster from
+/// `cluster_name` (e.g. `18/main` -> `postgresql@18-main`).
+fn pg_unit_from_cluster_name(cluster_name: &str) -> Option<String> {
+    let (version, cluster) = cluster_name.trim().split_once('/')?;
+    if version.is_empty() || cluster.is_empty() {
+        return None;
+    }
+    Some(format!("postgresql@{version}-{cluster}"))
+}
+
+/// Derive the systemd unit from a Debian/Ubuntu-layout data directory
+/// (e.g. `/var/lib/postgresql/18/main` -> `postgresql@18-main`).
+fn pg_unit_from_data_directory(datadir: &str) -> Option<String> {
+    let parts: Vec<&str> = datadir.trim().trim_end_matches('/').split('/').collect();
+    match parts.as_slice() {
+        [.., "postgresql", version, cluster] if !version.is_empty() && !cluster.is_empty() => {
+            Some(format!("postgresql@{version}-{cluster}"))
+        }
+        _ => None,
+    }
+}
+
+/// Work out how to restart the PostgreSQL the DSN points at, by asking the
+/// server where it lives: `cluster_name`/`data_directory` name the systemd
+/// unit under Debian/Ubuntu packaging, with a generic `postgresql` unit as
+/// fallback. Each candidate is verified to exist (`systemctl cat`) before
+/// being chosen. `sudo -n` fails fast rather than prompting if the rekall
+/// user can't restart services; `phase_pg_config.restart_command` remains
+/// as the manual escape hatch for non-systemd environments.
+async fn detect_restart_command(client: &tokio_postgres::Client) -> Result<String> {
+    let show = |name: &'static str| async move {
+        client
+            .query_one(&format!("SHOW {name}"), &[])
+            .await
+            .map(|r| r.get::<_, String>(0))
+    };
+    let mut candidates: Vec<String> = Vec::new();
+    if let Ok(cn) = show("cluster_name").await {
+        candidates.extend(pg_unit_from_cluster_name(&cn));
+    }
+    if let Ok(dd) = show("data_directory").await {
+        candidates.extend(pg_unit_from_data_directory(&dd));
+    }
+    candidates.push("postgresql".to_string());
+    candidates.dedup();
+
+    for unit in &candidates {
+        let exists = tokio::process::Command::new("systemctl")
+            .args(["cat", "--", unit])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false);
+        if exists {
+            return Ok(format!("sudo -n systemctl restart {unit}"));
+        }
+    }
+    Err(crate::error::Error::Config(format!(
+        "cannot auto-detect how to restart PostgreSQL (no systemd unit found; \
+         tried {}); set phase_pg_config.restart_command",
+        candidates.join(", ")
+    )))
+}
+
+#[cfg(test)]
+mod phase_pg_tests {
+    use super::*;
+
+    #[test]
+    fn restore_sql_resets_when_no_prior() {
+        assert_eq!(
+            restore_guc_sql("shared_buffers", None),
+            "ALTER SYSTEM RESET shared_buffers"
+        );
+    }
+
+    #[test]
+    fn restore_sql_reinstates_prior_verbatim() {
+        assert_eq!(
+            restore_guc_sql("shared_buffers", Some("24GB")),
+            "ALTER SYSTEM SET shared_buffers = '24GB'"
+        );
+        // Values from the file are quote-escaped on the way back.
+        assert_eq!(
+            restore_guc_sql("search_path", Some("it''s")),
+            "ALTER SYSTEM SET search_path = 'it''''s'"
+        );
+    }
+
+    #[test]
+    fn unit_from_cluster_name() {
+        assert_eq!(
+            pg_unit_from_cluster_name("18/main").as_deref(),
+            Some("postgresql@18-main")
+        );
+        assert_eq!(pg_unit_from_cluster_name("").as_deref(), None);
+        assert_eq!(pg_unit_from_cluster_name("nodash").as_deref(), None);
+        assert_eq!(pg_unit_from_cluster_name("18/").as_deref(), None);
+    }
+
+    #[test]
+    fn unit_from_data_directory() {
+        assert_eq!(
+            pg_unit_from_data_directory("/var/lib/postgresql/18/main").as_deref(),
+            Some("postgresql@18-main")
+        );
+        assert_eq!(
+            pg_unit_from_data_directory("/var/lib/postgresql/18/main/").as_deref(),
+            Some("postgresql@18-main")
+        );
+        assert_eq!(pg_unit_from_data_directory("/pgdata").as_deref(), None);
+        assert_eq!(pg_unit_from_data_directory("").as_deref(), None);
+    }
+
+    fn test_agent(dsn: &str) -> Agent {
+        let cfg: BenchmarkConfig = toml::from_str(&format!(
+            r#"
+[dataset]
+name = "phase-pg-test"
+metric = "angular"
+dimension = 3
+
+[connection]
+dsn = "{dsn}"
+"#
+        ))
+        .unwrap();
+        Agent::new(cfg, Vec::new(), new_cancel_registry())
+    }
+
+    async fn show(pg: &backend::postgres::PgConnection, guc: &str) -> String {
+        pg.open_connection()
+            .await
+            .unwrap()
+            .query_one(&format!("SHOW {guc}"), &[])
+            .await
+            .unwrap()
+            .get(0)
+    }
+
+    /// Live roundtrip on the reload path (needs REKALL_TEST_DSN pointing
+    /// at a superuser connection): apply overrides the value for new
+    /// sessions, restore reinstates the pre-apply state — both when the
+    /// box had no auto.conf entry (RESET) and when it had one (verbatim).
+    #[tokio::test]
+    async fn phase_pg_apply_restore_roundtrip_live() {
+        let Ok(dsn) = std::env::var("REKALL_TEST_DSN") else {
+            eprintln!("Skipping PG test: REKALL_TEST_DSN not set");
+            return;
+        };
+        let mut agent = test_agent(&dsn);
+        let pg = agent.admin_pg();
+        let settle = || tokio::time::sleep(std::time::Duration::from_millis(500));
+        let original = show(&pg, "work_mem").await;
+
+        // Case 1: no prior auto.conf entry -> restore RESETs.
+        let gucs: std::collections::HashMap<String, String> =
+            [("work_mem".to_string(), "77MB".to_string())].into();
+        let plan = agent.apply_phase_pg_config("test", &gucs).await.unwrap();
+        settle().await;
+        assert_eq!(show(&pg, "work_mem").await, "77MB");
+        agent.restore_phase_pg_config("test", plan).await.unwrap();
+        settle().await;
+        assert_eq!(show(&pg, "work_mem").await, original);
+
+        // Case 2: the box had its own auto.conf override -> restore
+        // reinstates it verbatim.
+        let client = pg.open_connection().await.unwrap();
+        client
+            .execute("ALTER SYSTEM SET work_mem = '55MB'", &[])
+            .await
+            .unwrap();
+        client
+            .execute("SELECT pg_reload_conf()", &[])
+            .await
+            .unwrap();
+        settle().await;
+        let plan = agent.apply_phase_pg_config("test", &gucs).await.unwrap();
+        settle().await;
+        assert_eq!(show(&pg, "work_mem").await, "77MB");
+        agent.restore_phase_pg_config("test", plan).await.unwrap();
+        settle().await;
+        assert_eq!(show(&pg, "work_mem").await, "55MB");
+
+        // Leave the server as we found it.
+        let client = pg.open_connection().await.unwrap();
+        client
+            .execute("ALTER SYSTEM RESET work_mem", &[])
+            .await
+            .unwrap();
+        client
+            .execute("SELECT pg_reload_conf()", &[])
+            .await
+            .unwrap();
+    }
+
+    /// Live roundtrip on the restart path, including restart-command
+    /// auto-detection. Restarts the server twice — run explicitly:
+    ///   REKALL_TEST_DSN=... cargo test -p rekall-lib \
+    ///     phase_pg_restart_roundtrip_live -- --ignored
+    #[tokio::test]
+    #[ignore]
+    async fn phase_pg_restart_roundtrip_live() {
+        let Ok(dsn) = std::env::var("REKALL_TEST_DSN") else {
+            eprintln!("Skipping PG test: REKALL_TEST_DSN not set");
+            return;
+        };
+        let mut agent = test_agent(&dsn);
+        let pg = agent.admin_pg();
+        let original = show(&pg, "shared_buffers").await;
+        assert_ne!(original, "1536MB", "pick a different test value");
+
+        let gucs: std::collections::HashMap<String, String> =
+            [("shared_buffers".to_string(), "1536MB".to_string())].into();
+        let plan = agent.apply_phase_pg_config("test", &gucs).await.unwrap();
+        assert_eq!(show(&pg, "shared_buffers").await, "1536MB");
+        agent.restore_phase_pg_config("test", plan).await.unwrap();
+        assert_eq!(show(&pg, "shared_buffers").await, original);
     }
 }
