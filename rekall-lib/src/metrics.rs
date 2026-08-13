@@ -289,9 +289,14 @@ pub fn compute_recall(result_ids: &[i64], ground_truth: &[i64], k: usize) -> f64
 }
 
 /// ann-benchmarks-style recall@k that handles distance ties: any ground-truth
-/// neighbour within `gt_distances[k-1] + epsilon` counts as correct, so a
-/// returned point that ties the k-th true neighbour isn't penalized. Returns
-/// 0 if the ground truth has fewer than `k` entries.
+/// neighbour within `epsilon` of the k-th true neighbour's value counts as
+/// correct, so a returned point that ties the k-th true neighbour isn't
+/// penalized. Returns 0 if the ground truth has fewer than `k` entries.
+///
+/// Ground-truth rows are best-first, but the stored values may be either
+/// distances (ascending, e.g. ann-benchmarks) or similarities (descending,
+/// e.g. the inner-product LAION files); the row's own ordering determines
+/// which side of the k-th value counts as "at least as good".
 pub fn recall_distance_based(
     result_ids: &[i64],
     gt_neighbors: &[i64],
@@ -302,11 +307,19 @@ pub fn recall_distance_based(
     if gt_distances.len() < k || gt_neighbors.len() < k {
         return 0.0;
     }
-    let threshold = gt_distances[k - 1] as f64 + epsilon;
+    let similarity = (gt_distances[0] as f64) > (gt_distances[k - 1] as f64);
+    let kth = gt_distances[k - 1] as f64;
     let correct_set: HashSet<i64> = gt_neighbors
         .iter()
         .zip(gt_distances.iter())
-        .filter(|(_, d)| (**d as f64) <= threshold)
+        .filter(|(_, d)| {
+            let d = **d as f64;
+            if similarity {
+                d >= kth - epsilon
+            } else {
+                d <= kth + epsilon
+            }
+        })
         .map(|(id, _)| *id)
         .collect();
     let hits = result_ids
@@ -438,6 +451,38 @@ mod tests {
         let result = vec![5, 3, 1, 4, 2];
         let gt = vec![1, 2, 3, 4, 5];
         assert_eq!(compute_recall(&result, &gt, 5), 1.0);
+    }
+
+    #[test]
+    fn recall_distance_based_ascending_distances() {
+        // Distance GT (best-first, ascending): id 6 ties the k-th value
+        // within epsilon and counts as correct.
+        let gt_ids = vec![1, 2, 3, 4, 5, 6];
+        let gt_d = vec![0.10, 0.20, 0.30, 0.40, 0.50, 0.5005];
+        let result = vec![1, 2, 3, 4, 6];
+        assert_eq!(recall_distance_based(&result, &gt_ids, &gt_d, 5, 1e-3), 1.0);
+        // id 6 outside epsilon does not count.
+        let gt_d = vec![0.10, 0.20, 0.30, 0.40, 0.50, 0.51];
+        assert_eq!(recall_distance_based(&result, &gt_ids, &gt_d, 5, 1e-3), 0.8);
+    }
+
+    #[test]
+    fn recall_distance_based_descending_similarities() {
+        // Similarity GT (best-first, descending, e.g. inner-product LAION):
+        // ties resolve on the opposite side of the k-th value.
+        let gt_ids = vec![1, 2, 3, 4, 5, 6];
+        let gt_s = vec![0.90, 0.80, 0.70, 0.60, 0.50, 0.4995];
+        let result = vec![1, 2, 3, 4, 6];
+        assert_eq!(recall_distance_based(&result, &gt_ids, &gt_s, 5, 1e-3), 1.0);
+        // Beyond epsilon: only the 4 true top-5 hits count.
+        let gt_s = vec![0.90, 0.80, 0.70, 0.60, 0.50, 0.49];
+        assert_eq!(recall_distance_based(&result, &gt_ids, &gt_s, 5, 1e-3), 0.8);
+        // Deep GT entries far below the k-th similarity must NOT count
+        // (the pre-fix behavior admitted the entire tail).
+        let gt_ids = vec![1, 2, 3, 4, 5, 100, 200];
+        let gt_s = vec![0.90, 0.80, 0.70, 0.60, 0.50, 0.30, 0.10];
+        let result = vec![100, 200, 7, 8, 9];
+        assert_eq!(recall_distance_based(&result, &gt_ids, &gt_s, 5, 1e-3), 0.0);
     }
 
     #[test]
