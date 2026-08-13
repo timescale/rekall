@@ -28,6 +28,12 @@ pub struct DatasetConfig {
     pub path: Option<String>,
     #[serde(default)]
     pub uri: Option<String>,
+    /// Local cache filename under `data_dir`, overriding the name derived
+    /// from the `uri`'s last path segment. For sources whose URLs end in a
+    /// non-identifying name (e.g. buckets where every dataset is
+    /// `base.hdf5`), so distinct datasets don't collide in the cache.
+    #[serde(default)]
+    pub filename: Option<String>,
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
     pub metric: Metric,
@@ -44,17 +50,18 @@ impl DatasetConfig {
     /// Resolve the local file path for this dataset.
     ///
     /// If `path` is set explicitly, use it (with tilde expansion).
-    /// Otherwise derive from `data_dir` + the filename component of `uri`.
+    /// Otherwise `data_dir` + `filename` if set, else `data_dir` + the
+    /// filename component of `uri`.
     pub fn resolved_path(&self) -> PathBuf {
         if let Some(ref path) = self.path {
             return PathBuf::from(shellexpand::tilde(path).as_ref());
         }
-        if let Some(ref uri) = self.uri {
-            let filename = uri.rsplit('/').next().unwrap_or("dataset.hdf5");
-            let data_dir = shellexpand::tilde(&self.data_dir);
-            return PathBuf::from(data_dir.as_ref()).join(filename);
-        }
-        PathBuf::from(shellexpand::tilde(&self.data_dir).as_ref()).join("dataset.hdf5")
+        let filename = self
+            .filename
+            .as_deref()
+            .or_else(|| self.uri.as_ref().and_then(|u| u.rsplit('/').next()))
+            .unwrap_or("dataset.hdf5");
+        PathBuf::from(shellexpand::tilde(&self.data_dir).as_ref()).join(filename)
     }
 
     /// Human-readable path string for display/dry-run output.
@@ -1450,6 +1457,27 @@ dsn = "host=localhost"
         assert_eq!(
             cfg.dataset.resolved_path(),
             PathBuf::from("/explicit/path.hdf5")
+        );
+    }
+
+    #[test]
+    fn resolved_path_filename_overrides_uri_name() {
+        let toml_str = r#"
+[dataset]
+name = "test"
+uri = "https://bucket.example.com/laion/5m/base.hdf5"
+filename = "laion-5m-test-ip.hdf5"
+data_dir = "my-data"
+metric = "euclidean"
+dimension = 128
+
+[connection]
+dsn = "host=localhost"
+"#;
+        let cfg = parse_config(toml_str);
+        assert_eq!(
+            cfg.dataset.resolved_path(),
+            PathBuf::from("my-data/laion-5m-test-ip.hdf5")
         );
     }
 
