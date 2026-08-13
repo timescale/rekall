@@ -1,0 +1,56 @@
+[dataset]
+name = "laion-5m"
+# The LAION-5M dataset behind VectorChord's comparative benchmark blog
+# (5M x 768 CLIP embeddings, 10k test queries with ground truth),
+# originally hosted by MyScale (whose bucket now 404s -- the canonical
+# URL from VectorChord's scripts README was
+# https://myscale-datasets.s3.ap-southeast-1.amazonaws.com/laion-5m-test-ip.hdf5).
+# The URI below is EnterpriseDB's public mirror of the same artifact,
+# as registered under the name laion-5m-test-ip by their vector-search
+# benchmark suite (https://github.com/EnterpriseDB/vsbt, datasets.py);
+# 20M and 100M variants live in the same bucket.
+# The file's ground truth is computed under
+# inner product; the vectors are L2-normalized CLIP embeddings, where
+# inner-product, cosine, and euclidean rankings coincide. Verify
+# normalization holds if this file is ever regenerated (rekall dataset
+# info).
+uri = "https://enterprisedb-vector-datasets.s3.amazonaws.com/laion/5m/base.hdf5"
+# The uri filename is base.hdf5 for every dataset in that bucket, so pin
+# the cache name (under the machine's data_dir) to the canonical dataset
+# name.
+filename = "laion-5m-test-ip.hdf5"
+# Euclidean to match the blog's stated "L2 distance" setup exactly
+# (valid against the inner-product ground truth by the normalization
+# argument above -- as was their own L2 run).
+metric = "euclidean"
+dimension = 768
+
+# Uncomment to override the global connection (from ~/.config/rekall/config.toml)
+# [connection]
+# dsn = "host=localhost port=5432 dbname=postgres"
+
+[load]
+table = "laion_5m"
+
+[search]
+# Their methodology: 10k test queries, recall@10 (they also report
+# recall@100 -- run a second pass with k = 100 for that axis).
+k = 10
+runs = 3
+warmup = 500
+num_queries = 10000
+
+# Their blog's setup table dedicates a row to index building:
+# shared_buffers = 1 GiB during builds (vs the box's normal query-time
+# value), keeping the buffer pool small so the build's own memory (and
+# their peak-memory measurement) isn't confounded. The override is
+# scoped to the index phase: rekall applies it via ALTER SYSTEM,
+# restarts PostgreSQL (mechanism auto-detected from the server), and
+# restores the box's own configuration afterward -- so this suite
+# needs to know nothing about the machine it runs on.
+[phase_pg_config.index]
+shared_buffers = "1GB"
+
+[output]
+format = ["table", "json"]
+results_dir = "results/laion-5m"
