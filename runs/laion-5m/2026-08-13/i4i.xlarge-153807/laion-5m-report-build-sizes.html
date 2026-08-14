@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Index size</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html,body{height:100%;margin:0;background:white;font-family:system-ui,sans-serif}
+  body{display:flex;flex-direction:column}
+  #header{flex:0 0 auto;padding:10px 16px 6px;text-align:center}
+  #header .title{font-size:20px;font-weight:600;color:#222}
+  #header .meta{margin-top:4px;font-size:12px;color:#555}
+  #plot{flex:1 1 auto;min-height:0;width:100%}
+</style></head><body>
+<div id="header"><div class="title">Index size</div><div class="meta">laion-5m  |  2026-08-13  |  i4i.xlarge, Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz, 4 vCPU, 31 GB<br>PG 18.6  |  shared_buffers=24 GB  |  work_mem=4 MB  |  max_parallel_maintenance_workers=2  |  meerkat 0.1.0 (30760bc), vchord 1.1.1, pgvector 0.8.6</div></div>
+<div id="plot"></div>
+<script>
+var trace = { type:"bar", x:["vchordrq-laion5m-n8192", "hnsw-m16-efc64", "hnsw-m16", "mkt-defaults"], y:[20499.2734375, 19173.328125, 19164.609375, 1298.234375], text:["1233s", "6788s", "12492s", "582s"],
+  textposition:"outside", cliponaxis:false, hovertext:["1233.2s · 20499 MB · 2 workers", "6788.0s · 19173 MB · 2 workers", "12491.8s · 19165 MB · 2 workers", "582.3s · 1298 MB · 2 workers"],
+  hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
+  marker:{color:"rgb(31,119,180)"} };
+var layout = { margin:{t:20},
+  yaxis:{ title:"Index size (MB)", gridcolor:"#eeeeee", rangemode:"tozero" },
+  xaxis:{ automargin:true, tickangle:-40 },
+  plot_bgcolor:"white", paper_bgcolor:"white" };
+Plotly.newPlot("plot",[trace],layout,{responsive:true});
+</script></body></html>

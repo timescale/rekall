@@ -1,0 +1,24 @@
+{
+  "run_id": "laion-5m/2026-08-13/i4i.xlarge-153807",
+  "dataset": "laion-5m",
+  "date": "2026-08-13",
+  "time": "15:38:07",
+  "timestamp": "2026-08-13T15:38:07+0000",
+  "instance_type": "i4i.xlarge",
+  "hostname": "ip-172-31-87-191",
+  "cpu_model": "Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz",
+  "cpu_count": 4,
+  "memory_gb": 30.8,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "dd61107",
+  "extensions": {
+    "meerkat": "0.1.0 (30760bc)",
+    "pg_prewarm": "1.2",
+    "vchord": "1.1.1",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.9831099999999788,
+  "qps_at_peak": 13.279301378716552,
+  "num_indexes": 4,
+  "s3_url": "s3://rekall-bench/runs/laion-5m/2026-08-13/i4i.xlarge-153807/"
+}
