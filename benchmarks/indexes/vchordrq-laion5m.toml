@@ -3,8 +3,14 @@
 # LAION-5M setting), residual quantization on. Their headline builds
 # imported externally computed K-means centroids via a train.py that
 # no longer ships in 1.x, so the in-database build is now the
-# supported path -- any centroid-quality delta vs their 0.2.2-era
-# external build is inherent to the version, not a config gap.
+# supported path. Checked against EnterpriseDB's vsbt reference config
+# for this same dataset (github.com/EnterpriseDB/vsbt) -- that config
+# uses metric=dot, hierarchical two-level lists, and build_threads=32,
+# none of which match this blog post (stated L2, a flat nlist, and a
+# 4-vCPU i4i.xlarge that can't use 32 build threads); the blog doesn't
+# reference vsbt or any third-party toolkit, so vsbt's config belongs
+# to a different EnterpriseDB benchmark exercise and isn't authoritative
+# here. Kept our own flat/L2 structure below rather than switching to it.
 # vchordrq.epsilon is swept jointly with probes (their tuned frontier)
 # rather than pinned at the cost-maximal 1.9 default.
 [[index]]
@@ -21,6 +27,15 @@ build_threads = 4
 # Match the 25 K-means iterations their blog cites for the published
 # builds (VectorChord's internal default is 10).
 kmeans_iterations = 25
+# The 25-iteration figure is explicit in the blog; sampling coverage
+# for the external/GPU build isn't documented at all (sampling_factor
+# is an in-database-build-only knob, so it doesn't even apply to their
+# external path). Raised well past the 256 default (-> ~2.1M of 5M rows)
+# to the minimum that covers the full table (8192*611 > 5,000,000), as
+# a deliberate best-effort approximation of "external, full-dataset"
+# clustering quality within the in-database build's constraints -- not
+# a literal reproduction of a disclosed value, since none exists.
+sampling_factor = 611
 
 [[search.sweep]]
 index = "vchordrq-laion5m-n8192"
