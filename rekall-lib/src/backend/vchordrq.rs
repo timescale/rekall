@@ -57,6 +57,14 @@ struct VchordrqParams {
     /// are small but nonzero on subsampled training sets.
     #[serde(default)]
     kmeans_iterations: Option<u32>,
+    /// Training-sample cap for the internal build, as a multiple of
+    /// `lists.last()` (VectorChord default: 256). The sample is
+    /// `min(row_count, lists.last() * sampling_factor)` — with the
+    /// default and a large `lists`, this can train centroids on well
+    /// under half the table. Raise it to sample more of the table when
+    /// approximating an external, full-dataset clustering pass.
+    #[serde(default)]
+    sampling_factor: Option<u32>,
 }
 
 fn default_lists() -> Vec<u32> {
@@ -196,6 +204,9 @@ impl VchordrqBackend {
         }
         if let Some(iters) = self.params.kmeans_iterations {
             internal.push_str(&format!("kmeans_iterations = {iters}\n"));
+        }
+        if let Some(factor) = self.params.sampling_factor {
+            internal.push_str(&format!("sampling_factor = {factor}\n"));
         }
 
         let mut body = top;
@@ -362,6 +373,22 @@ mod tests {
         assert_eq!(p.rerank_n, 100);
     }
 
+    #[test]
+    fn params_parse_kmeans_iterations_and_sampling_factor() {
+        let cfg = idx(
+            "a",
+            toml::toml! {
+                lists = [8192]
+                kmeans_iterations = 25
+                sampling_factor = 512
+            }
+            .into(),
+        );
+        let p: VchordrqParams = cfg.params.try_into().unwrap();
+        assert_eq!(p.kmeans_iterations, Some(25));
+        assert_eq!(p.sampling_factor, Some(512));
+    }
+
     /// Builds the WITH (options = ...) body — verify the TOML structure
     /// matches VectorChord's expected format (top-level keys, then a
     /// [build.internal] table with the partition settings).
@@ -373,7 +400,8 @@ mod tests {
             spherical_centroids: true,
             build_threads: 8,
             rerank_n: 200,
-            kmeans_iterations: None,
+            kmeans_iterations: Some(25),
+            sampling_factor: Some(512),
         };
         // Synthesize the body without going through PgConnection (which
         // would require a live DB). Replicates the impl exactly.
@@ -398,6 +426,12 @@ mod tests {
                 backend_params.build_threads
             ));
         }
+        if let Some(iters) = backend_params.kmeans_iterations {
+            internal.push_str(&format!("kmeans_iterations = {iters}\n"));
+        }
+        if let Some(factor) = backend_params.sampling_factor {
+            internal.push_str(&format!("sampling_factor = {factor}\n"));
+        }
         let mut body = top;
         body.push_str("[build.internal]\n");
         body.push_str(&internal);
@@ -407,6 +441,8 @@ mod tests {
         assert!(body.contains("lists = [1000]"));
         assert!(body.contains("spherical_centroids = true"));
         assert!(body.contains("build_threads = 8"));
+        assert!(body.contains("kmeans_iterations = 25"));
+        assert!(body.contains("sampling_factor = 512"));
         // residual_quantization should appear BEFORE [build.internal]
         // — top-level options must not be inside a section.
         let rq_pos = body.find("residual_quantization").unwrap();
