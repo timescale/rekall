@@ -26,6 +26,7 @@ indexes = [
     "indexes/hnsw-m16-efc64-fullvec.toml",
     "indexes/hnsw-m16.toml",
     "indexes/mkt-defaults.toml",
+    "indexes/mkt-fs8-tuned.toml",
 ]
 
 [[suite]]
