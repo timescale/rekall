@@ -18,8 +18,8 @@
     "vchord": "1.1.1",
     "vector": "0.8.6"
   },
-  "peak_recall": 0.9831099999999788,
-  "qps_at_peak": 13.279301378716552,
+  "peak_recall": 0.9744999999999776,
+  "qps_at_peak": 61.80595543150301,
   "num_indexes": 4,
   "s3_url": "s3://rekall-bench/runs/laion-5m/2026-08-13/i4i.xlarge-153807/"
 }
