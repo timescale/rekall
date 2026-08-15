@@ -13,6 +13,7 @@
   "rekall_commit": "dd61107",
   "extensions": {
     "meerkat": "0.1.0 (30760bc)",
+    "pg_buffercache": "1.6",
     "pg_prewarm": "1.2",
     "vchord": "1.1.1",
     "vector": "0.8.6"
