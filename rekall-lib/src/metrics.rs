@@ -292,6 +292,15 @@ pub fn compute_recall(result_ids: &[i64], ground_truth: &[i64], k: usize) -> f64
 /// neighbour within `gt_distances[k-1] + epsilon` counts as correct, so a
 /// returned point that ties the k-th true neighbour isn't penalized. Returns
 /// 0 if the ground truth has fewer than `k` entries.
+///
+/// `gt_distances` is ordered best-first (index 0 = nearest neighbour), but
+/// "best" means smallest for a true distance (L2, cosine distance) and
+/// largest for a raw similarity (inner product). Direction is inferred from
+/// the data itself rather than assumed, so datasets whose ground truth is
+/// stored as descending similarity (e.g. inner-product ground truth reused
+/// under a euclidean-metric benchmark) aren't scored backwards -- that bug
+/// previously collapsed every engine's recall to ~k-th-rank-only regardless
+/// of tuning.
 pub fn recall_distance_based(
     result_ids: &[i64],
     gt_neighbors: &[i64],
@@ -302,11 +311,19 @@ pub fn recall_distance_based(
     if gt_distances.len() < k || gt_neighbors.len() < k {
         return 0.0;
     }
-    let threshold = gt_distances[k - 1] as f64 + epsilon;
+    let kth = gt_distances[k - 1] as f64;
+    let ascending = gt_distances[0] as f64 <= kth;
     let correct_set: HashSet<i64> = gt_neighbors
         .iter()
         .zip(gt_distances.iter())
-        .filter(|(_, d)| (**d as f64) <= threshold)
+        .filter(|(_, d)| {
+            let d = **d as f64;
+            if ascending {
+                d <= kth + epsilon
+            } else {
+                d >= kth - epsilon
+            }
+        })
         .map(|(id, _)| *id)
         .collect();
     let hits = result_ids
