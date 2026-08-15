@@ -19,14 +19,19 @@
 # their HNSW configuration is unpublished: CREATE INDEX defaults
 # (m=16, efc=64) and the tuned efc=200 build.
 #
+# Meerkat runs only the tuned arm (mkt-laion5m-tuned.toml, index name
+# "meerkat-fs8") -- mkt-defaults (untouched fastscan_bits=16 and query
+# GUCs) is dominated by it at every recall measured here, so it's left
+# out of this suite rather than run alongside for no signal. See that
+# file's header comment for why the tuning is dataset-specific.
+#
 # Usage: rekall run benchmarks/laion-5m-vectorchord-repro.toml [--dry-run]
 
 indexes = [
     "indexes/vchordrq-laion5m.toml",
     "indexes/hnsw-m16-efc64-fullvec.toml",
     "indexes/hnsw-m16.toml",
-    "indexes/mkt-defaults.toml",
-    "indexes/mkt-fs8-tuned.toml",
+    "indexes/mkt-laion5m-tuned.toml",
 ]
 
 [[suite]]
