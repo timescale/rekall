@@ -548,6 +548,54 @@ enum InfraCommand {
         comment: Option<String>,
     },
 
+    /// Load a dataset into a remote instance's database, and stop there.
+    ///
+    /// The remote counterpart of `rekall load`. Uploads the suite files
+    /// first, which is the whole point: without them a bare `rekall load`
+    /// over SSH can only see configs that happen to exist in the instance's
+    /// own checkout. Indexes are NOT built — follow with `infra run`.
+    #[command(name = "load")]
+    RemoteLoad {
+        /// Infra config file
+        #[arg(short, long)]
+        config: Option<PathBuf>,
+
+        /// Suite name (name_prefix), alternative to --config. Selects
+        /// the latest-launched instance under that suite via local state.
+        #[arg(long)]
+        suite: Option<String>,
+
+        /// AWS instance-id (e.g. i-0abc123). Bypasses local state.
+        #[arg(short = 'i', long)]
+        instance_id: Option<String>,
+
+        /// Look up the instance by its Name tag (set via `infra up
+        /// --name`). Errors if zero or multiple instances match.
+        #[arg(short = 'n', long = "instance-name", visible_alias = "name")]
+        instance_name: Option<String>,
+
+        /// AWS region for --instance-id/--instance-name lookup.
+        /// Defaults to the config's region (when -c is given) or us-east-1.
+        #[arg(short, long)]
+        region: Option<String>,
+
+        /// Benchmark config paths (files or directories) to upload and load
+        #[arg(required = true)]
+        benchmarks: Vec<PathBuf>,
+
+        /// tmux session name (default: rekall)
+        #[arg(short, long, default_value = "rekall")]
+        session: String,
+
+        /// Number of parallel COPY streams
+        #[arg(long)]
+        parallelism: Option<usize>,
+
+        /// S3 path for the dataset (downloaded on instance if not present)
+        #[arg(long)]
+        s3_dataset: Option<String>,
+    },
+
     /// Attach to the tmux session on a benchmark instance.
     /// Creates a new session if one doesn't exist.
     Attach {
@@ -1068,10 +1116,20 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Command::Init { config } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Init], None, false, false).await?;
+            // Suite-aware like run/search: `rekall init <suite.toml>` has to
+            // work, or the load it precedes cannot either.
+            let groups = config::resolve_groups(&config)?;
+            let num_groups = groups.len();
+            for group in groups {
+                if num_groups > 1 {
+                    println!("\n{}", "=".repeat(60));
+                    println!("=== Group: {} ===", group.name);
+                    println!("{}\n", "=".repeat(60));
+                }
+                let outputs = build_outputs(&group.config);
+                let mut agent = Agent::new(group.config, outputs, cancel_registry.clone());
+                agent.run(&[Phase::Init], None, false, false).await?;
+            }
         }
 
         Command::Load {
@@ -1079,22 +1137,46 @@ async fn main() -> anyhow::Result<()> {
             parallelism,
             ..
         } => {
-            let mut cfg = BenchmarkConfig::from_path(&config)?;
-            if let Some(p) = parallelism {
-                cfg.load.parallelism = p;
+            // Resolve suites/`extends` the same way `run` and `search` do, so
+            // `rekall load <suite.toml>` works -- a plain config is a single
+            // group. Without this a suite file fails with a bare "missing
+            // field `name` in `dataset`", since a suite has no [dataset] of
+            // its own. `rekall infra load` uploads suite files, so this is
+            // the shape it hands to the remote.
+            let groups = config::resolve_groups(&config)?;
+            let num_groups = groups.len();
+            for group in groups {
+                if num_groups > 1 {
+                    println!("\n{}", "=".repeat(60));
+                    println!("=== Group: {} ===", group.name);
+                    println!("{}\n", "=".repeat(60));
+                }
+                let mut cfg = group.config;
+                if let Some(p) = parallelism {
+                    cfg.load.parallelism = p;
+                }
+                let outputs = build_outputs(&cfg);
+                let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
+                agent.run(&[Phase::Load], None, false, false).await?;
             }
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent.run(&[Phase::Load], None, false, false).await?;
         }
 
         Command::Index { config, name } => {
-            let cfg = BenchmarkConfig::from_path(&config)?;
-            let outputs = build_outputs(&cfg);
-            let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-            agent
-                .run(&[Phase::Index], name.as_deref(), false, false)
-                .await?;
+            // Suite-aware for the same reason as Load above.
+            let groups = config::resolve_groups(&config)?;
+            let num_groups = groups.len();
+            for group in groups {
+                if num_groups > 1 {
+                    println!("\n{}", "=".repeat(60));
+                    println!("=== Group: {} ===", group.name);
+                    println!("{}\n", "=".repeat(60));
+                }
+                let outputs = build_outputs(&group.config);
+                let mut agent = Agent::new(group.config, outputs, cancel_registry.clone());
+                agent
+                    .run(&[Phase::Index], name.as_deref(), false, false)
+                    .await?;
+            }
         }
 
         Command::Search {
@@ -1664,6 +1746,307 @@ fn effective_region(explicit: Option<&str>, config: Option<&PathBuf>) -> String 
 ///
 /// For (1) and (2) the SSH key falls back to `--config`'s ssh_key if
 /// a config is also given, otherwise to ~/.ssh/id_ed25519.
+/// Forward `--comment` double-quoted for the remote `sh -c`. The whole run
+/// command is wrapped in single quotes for tmux, so a literal single quote
+/// cannot survive — swap it for a typographic one — and escape what the
+/// remote shell expands inside double quotes.
+fn remote_comment_flag(comment: Option<&str>) -> String {
+    comment
+        .map(|c| {
+            let safe = c
+                .replace('\\', "\\\\")
+                .replace('\'', "\u{2019}")
+                .replace('"', "\\\"")
+                .replace('$', "\\$")
+                .replace('`', "\\`");
+            format!(" --comment \"{safe}\"")
+        })
+        .unwrap_or_default()
+}
+
+/// A resolved remote benchmark instance: where to SSH and which PG port
+/// the box was provisioned with.
+struct RemoteTarget {
+    ip: String,
+    ssh_priv: String,
+    pg_port: u16,
+}
+
+impl RemoteTarget {
+    fn ssh_target(&self) -> String {
+        format!("ubuntu@{}", self.ip)
+    }
+
+    /// An `ssh` command pre-armed with this target's key and host.
+    fn ssh(&self, extra: &[&str]) -> std::process::Command {
+        let mut cmd = std::process::Command::new("ssh");
+        cmd.args([
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-i",
+            &self.ssh_priv,
+            &self.ssh_target(),
+        ]);
+        cmd.args(extra);
+        cmd
+    }
+}
+
+/// Resolve the instance to act on, by AWS-side lookup (--instance-id /
+/// --name) or via local state (--config / --suite).
+fn resolve_remote_target(
+    config: Option<&PathBuf>,
+    suite: Option<&String>,
+    instance_id: Option<&str>,
+    instance_name: Option<&str>,
+    region: &str,
+) -> anyhow::Result<RemoteTarget> {
+    let (ip, ssh_priv): (String, String) =
+        if let Some(ip) = aws_side_lookup_ip(region, instance_id, instance_name)? {
+            let cfg = if config.is_some() || suite.is_some() {
+                resolve_infra_config(config, suite).unwrap_or_default()
+            } else {
+                rekall_lib::infra::config::InfraConfig::default()
+            };
+            (ip, cfg.ssh_private_key_path())
+        } else {
+            let infra_cfg = resolve_infra_config(config, suite)?;
+            let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
+            let status = mgr.status()?;
+            if !status.running {
+                return Err(anyhow::anyhow!(
+                    "Instance not running. Run `rekall infra up` first."
+                ));
+            }
+            let ip = status
+                .public_ip
+                .ok_or_else(|| anyhow::anyhow!("No public IP for instance"))?;
+            let (_, sp) = infra_cfg
+                .require_ssh_key()
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            (ip, sp)
+        };
+
+    // The PG port the instance was provisioned with (default 5432); used to
+    // build the instance-side connection override.
+    let pg_port = resolve_infra_config(config, suite)
+        .map(|c| c.pg_port)
+        .unwrap_or(5432);
+
+    Ok(RemoteTarget {
+        ip,
+        ssh_priv,
+        pg_port,
+    })
+}
+
+/// Where uploaded benchmark configs live on the instance.
+const REMOTE_BENCH_DIR: &str = "~/benchmarks";
+
+/// Upload benchmark configs and everything they reference, point them at the
+/// instance's own PostgreSQL, and optionally stage the dataset from S3.
+///
+/// Returns the remote paths of the configs that were named on the command
+/// line, in argument order.
+///
+/// Shared by `infra run` and `infra load` so the two cannot drift: a config
+/// that uploads correctly for one must upload correctly for the other.
+fn upload_benchmarks(
+    target: &RemoteTarget,
+    benchmarks: &[PathBuf],
+    s3_dataset: Option<&str>,
+) -> anyhow::Result<Vec<String>> {
+    let remote_dir = REMOTE_BENCH_DIR;
+    let ssh_target = target.ssh_target();
+
+    let mkdir = target.ssh(&[&format!("mkdir -p {remote_dir}")]).status()?;
+    if !mkdir.success() {
+        return Err(anyhow::anyhow!(
+            "Failed to create remote benchmark directory"
+        ));
+    }
+
+    // Upload everything each config needs — following `extends` chains and
+    // suite dependencies — preserving their layout under a common root so
+    // relative references (extends, suite indexes/datasets) resolve on the
+    // remote. `.local.toml` files are NOT uploaded (local-machine
+    // overrides); the instance gets a generated connection below.
+    // Directories upload recursively as-is.
+    println!("Uploading benchmark configs...");
+    let mut remote_configs: Vec<String> = Vec::new();
+    for bench_path in benchmarks {
+        if bench_path.is_dir() {
+            let scp_status = std::process::Command::new("scp")
+                .args([
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-i",
+                    &target.ssh_priv,
+                    "-r",
+                    bench_path.to_str().unwrap(),
+                    &format!("{ssh_target}:{remote_dir}/"),
+                ])
+                .status()?;
+            if !scp_status.success() {
+                return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
+            }
+            let name = bench_path.file_name().unwrap_or_default().to_string_lossy();
+            remote_configs.push(format!("{remote_dir}/{name}"));
+            continue;
+        }
+
+        let deps = rekall_lib::config::config_dependencies(bench_path)
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+        let root = rekall_lib::config::common_ancestor(&deps);
+        let bench_abs = std::fs::canonicalize(bench_path).unwrap_or_else(|_| bench_path.clone());
+
+        let mut subdirs: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for dep in &deps {
+            if let Ok(rel) = dep.strip_prefix(&root) {
+                if let Some(parent) = rel.parent() {
+                    let s = parent.to_string_lossy().to_string();
+                    if !s.is_empty() {
+                        subdirs.insert(s);
+                    }
+                }
+            }
+        }
+        for sub in &subdirs {
+            let _ = target
+                .ssh(&[&format!("mkdir -p {remote_dir}/{sub}")])
+                .status();
+        }
+        for dep in &deps {
+            let rel = dep.strip_prefix(&root).unwrap_or(dep.as_path());
+            let remote_target = format!("{remote_dir}/{}", rel.display());
+            let scp_status = std::process::Command::new("scp")
+                .args([
+                    "-o",
+                    "StrictHostKeyChecking=no",
+                    "-i",
+                    &target.ssh_priv,
+                    dep.to_str().unwrap(),
+                    &format!("{ssh_target}:{remote_target}"),
+                ])
+                .status()?;
+            if !scp_status.success() {
+                return Err(anyhow::anyhow!("Failed to upload {}", dep.display()));
+            }
+        }
+        let bench_rel = bench_abs.strip_prefix(&root).unwrap_or(bench_abs.as_path());
+        remote_configs.push(format!("{remote_dir}/{}", bench_rel.display()));
+        println!(
+            "Uploaded {} file(s) for {}",
+            deps.len(),
+            bench_path.display()
+        );
+    }
+
+    // Point every uploaded config at the instance's own PostgreSQL by
+    // generating a `<stem>.local.toml` connection override next to each
+    // `*.toml` (recursively — the connection often lives in a dataset file
+    // under datasets/, not just base.toml/top-level). First drop any
+    // `*.local.toml` that rode along (e.g. via a directory upload): those
+    // are local-machine overrides and must not apply here. The generated
+    // overrides all carry the same instance DSN, so it wins regardless of
+    // which config the merge takes the connection from.
+    let pg_port = target.pg_port;
+    let dsn = format!("host=localhost port={pg_port} dbname=rekall user=rekall password=rekall");
+    let remote_local_setup = format!(
+        r#"find {remote_dir} -name '*.local.toml' -delete 2>/dev/null
+find {remote_dir} -name '*.toml' ! -name '*.local.toml' | while read -r cfg; do
+  dir=$(dirname "$cfg")
+  stem=$(basename "$cfg" .toml)
+  printf '[connection]\ndsn = "{dsn}"\n' > "$dir/$stem.local.toml"
+done"#
+    );
+    let _ = target.ssh(&[&remote_local_setup]).status();
+
+    // Download dataset from S3 if specified
+    if let Some(s3_path) = s3_dataset {
+        let filename = s3_path.rsplit('/').next().unwrap_or("dataset.hdf5");
+        println!("Ensuring dataset is on instance...");
+        let download_cmd = format!(
+            "mkdir -p ~/data && [ -f ~/data/{filename} ] && echo 'Dataset already present' || aws s3 cp {s3_path} ~/data/{filename}"
+        );
+        let dl_status = target.ssh(&[&download_cmd]).status()?;
+        if !dl_status.success() {
+            return Err(anyhow::anyhow!("Failed to download dataset from {s3_path}"));
+        }
+
+        let update_cmd = format!(
+            r#"find {remote_dir} -name '*.toml' -exec grep -l 'path.*=.*data/' {{}} \; | while read f; do
+  sed -i 's|path = ".*data/|path = "~/data/|' "$f"
+done"#
+        );
+        let _ = target.ssh(&[&update_cmd]).status();
+    }
+
+    Ok(remote_configs)
+}
+
+/// Start `inner` in a detached tmux session on the instance, tee'ing output
+/// to `log_name` under the remote benchmark dir.
+///
+/// `exec bash` afterwards keeps the pane alive: otherwise the window's
+/// process exits when rekall finishes/errors and tmux tears the session
+/// down, losing the on-screen output.
+fn launch_in_tmux(
+    target: &RemoteTarget,
+    session: &str,
+    inner: &str,
+    log_name: &str,
+) -> anyhow::Result<String> {
+    let remote_dir = REMOTE_BENCH_DIR;
+    let log_path = format!("{remote_dir}/{log_name}");
+    // `source ~/.cargo/env` ensures ~/.cargo/bin is on PATH — tmux inherits
+    // the non-interactive SSH shell's PATH, which doesn't include cargo bins
+    // by default. Without it, a user who ran `cargo install` to update their
+    // rekall would have that update silently ignored in favour of
+    // /usr/local/bin/rekall. `set -o pipefail` so the status reflects rekall,
+    // not tee.
+    let cmd = format!(
+        "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
+         {inner} 2>&1 | tee {log_path}; \
+         code=$?; echo; \
+         echo \"=== exited (status $code) — session kept open; full log: {log_path} ===\"; \
+         exec bash"
+    );
+
+    println!("Launching in tmux session '{session}'...");
+    println!("(Output also tee'd to {log_path} on the remote.)");
+    let tmux_cmd = format!(
+        "TERM=xterm-256color tmux new -d -s {session} '{cmd}' 2>/dev/null || \
+         TERM=xterm-256color tmux send-keys -t {session} '{cmd}' Enter"
+    );
+    let tmux_status = target.ssh(&["-t", &tmux_cmd]).status()?;
+    if !tmux_status.success() {
+        return Err(anyhow::anyhow!("Failed to start tmux session"));
+    }
+    Ok(log_path)
+}
+
+/// A `-c/--suite/--instance-id/--name` hint echoed back in follow-up
+/// command suggestions, matching whichever flag the user actually used.
+fn selector_hint(
+    config: Option<&PathBuf>,
+    suite: Option<&String>,
+    instance_id: Option<&str>,
+    instance_name: Option<&str>,
+) -> String {
+    if let Some(id) = instance_id {
+        format!("--instance-id {id}")
+    } else if let Some(n) = instance_name {
+        format!("--name {n}")
+    } else if let Some(p) = config {
+        format!("-c {}", p.display())
+    } else if let Some(s) = suite {
+        format!("--suite {s}")
+    } else {
+        String::new()
+    }
+}
+
 fn resolve_ssh_command(
     config: Option<&PathBuf>,
     suite: Option<&String>,
@@ -2214,264 +2597,98 @@ iam_instance_profile = "rekall-profile"
             comment,
         } => {
             let region = effective_region(region.as_deref(), config.as_ref());
-            let (ip, ssh_priv): (String, String) = if let Some(ip) =
-                aws_side_lookup_ip(&region, instance_id.as_deref(), instance_name.as_deref())?
-            {
-                // AWS-side lookup. SSH key from --config if provided, else default.
-                let cfg = if config.is_some() || suite.is_some() {
-                    resolve_infra_config(config.as_ref(), suite.as_ref()).unwrap_or_default()
-                } else {
-                    rekall_lib::infra::config::InfraConfig::default()
-                };
-                (ip, cfg.ssh_private_key_path())
-            } else {
-                let infra_cfg = resolve_infra_config(config.as_ref(), suite.as_ref())?;
-                let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-                let status = mgr.status()?;
-                if !status.running {
-                    return Err(anyhow::anyhow!(
-                        "Instance not running. Run `rekall infra up` first."
-                    ));
-                }
-                let ip = status
-                    .public_ip
-                    .ok_or_else(|| anyhow::anyhow!("No public IP for instance"))?;
-                let (_, sp) = infra_cfg
-                    .require_ssh_key()
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-                (ip, sp)
-            };
-            let ip = ip.as_str();
-            let ssh_priv = ssh_priv.as_str();
+            let target = resolve_remote_target(
+                config.as_ref(),
+                suite.as_ref(),
+                instance_id.as_deref(),
+                instance_name.as_deref(),
+                &region,
+            )?;
+            let remote_configs = upload_benchmarks(&target, &benchmarks, s3_dataset.as_deref())?;
 
-            // The PG port the instance was provisioned with (default 5432);
-            // used to build the instance-side connection override below.
-            let pg_port = resolve_infra_config(config.as_ref(), suite.as_ref())
-                .map(|c| c.pg_port)
-                .unwrap_or(5432);
-
-            let ssh_target = format!("ubuntu@{ip}");
-            let ssh_args = |extra: &[&str]| -> std::process::Command {
-                let mut cmd = std::process::Command::new("ssh");
-                cmd.args([
-                    "-o",
-                    "StrictHostKeyChecking=no",
-                    "-i",
-                    ssh_priv,
-                    &ssh_target,
-                ]);
-                cmd.args(extra);
-                cmd
-            };
-
-            // Create remote benchmark directory
-            let remote_dir = "~/benchmarks";
-            let run_status = ssh_args(&[&format!("mkdir -p {remote_dir}")]).status()?;
-            if !run_status.success() {
-                return Err(anyhow::anyhow!(
-                    "Failed to create remote benchmark directory"
-                ));
-            }
-
-            // Upload everything each config needs — following `extends` chains
-            // and suite dependencies — preserving their layout under a common
-            // root so relative references (extends, suite indexes/datasets)
-            // resolve on the remote. `.local.toml` files are NOT uploaded
-            // (local-machine overrides); the instance gets a generated
-            // connection below. Directories upload recursively as-is.
-            println!("Uploading benchmark configs...");
-            let mut remote_configs: Vec<String> = Vec::new();
-            for bench_path in &benchmarks {
-                if bench_path.is_dir() {
-                    let scp_status = std::process::Command::new("scp")
-                        .args([
-                            "-o",
-                            "StrictHostKeyChecking=no",
-                            "-i",
-                            ssh_priv,
-                            "-r",
-                            bench_path.to_str().unwrap(),
-                            &format!("{ssh_target}:{remote_dir}/"),
-                        ])
-                        .status()?;
-                    if !scp_status.success() {
-                        return Err(anyhow::anyhow!("Failed to upload {}", bench_path.display()));
-                    }
-                    let name = bench_path.file_name().unwrap_or_default().to_string_lossy();
-                    remote_configs.push(format!("{remote_dir}/{name}"));
-                    continue;
-                }
-
-                let deps = rekall_lib::config::config_dependencies(bench_path)
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-                let root = rekall_lib::config::common_ancestor(&deps);
-                let bench_abs =
-                    std::fs::canonicalize(bench_path).unwrap_or_else(|_| bench_path.clone());
-
-                let mut subdirs: std::collections::BTreeSet<String> =
-                    std::collections::BTreeSet::new();
-                for dep in &deps {
-                    if let Ok(rel) = dep.strip_prefix(&root) {
-                        if let Some(parent) = rel.parent() {
-                            let s = parent.to_string_lossy().to_string();
-                            if !s.is_empty() {
-                                subdirs.insert(s);
-                            }
-                        }
-                    }
-                }
-                for sub in &subdirs {
-                    let _ = ssh_args(&[&format!("mkdir -p {remote_dir}/{sub}")]).status();
-                }
-                for dep in &deps {
-                    let rel = dep.strip_prefix(&root).unwrap_or(dep.as_path());
-                    let remote_target = format!("{remote_dir}/{}", rel.display());
-                    let scp_status = std::process::Command::new("scp")
-                        .args([
-                            "-o",
-                            "StrictHostKeyChecking=no",
-                            "-i",
-                            ssh_priv,
-                            dep.to_str().unwrap(),
-                            &format!("{ssh_target}:{remote_target}"),
-                        ])
-                        .status()?;
-                    if !scp_status.success() {
-                        return Err(anyhow::anyhow!("Failed to upload {}", dep.display()));
-                    }
-                }
-                let bench_rel = bench_abs.strip_prefix(&root).unwrap_or(bench_abs.as_path());
-                remote_configs.push(format!("{remote_dir}/{}", bench_rel.display()));
-                println!(
-                    "Uploaded {} file(s) for {}",
-                    deps.len(),
-                    bench_path.display()
-                );
-            }
-
-            // Point every uploaded config at the instance's own PostgreSQL by
-            // generating a `<stem>.local.toml` connection override next to each
-            // `*.toml` (recursively — the connection often lives in a dataset
-            // file under datasets/, not just base.toml/top-level). First drop
-            // any `*.local.toml` that rode along (e.g. via a directory upload):
-            // those are local-machine overrides and must not apply here. The
-            // generated overrides all carry the same instance DSN, so it wins
-            // regardless of which config the merge takes the connection from.
-            let dsn =
-                format!("host=localhost port={pg_port} dbname=rekall user=rekall password=rekall");
-            let remote_local_setup = format!(
-                r#"find {remote_dir} -name '*.local.toml' -delete 2>/dev/null
-find {remote_dir} -name '*.toml' ! -name '*.local.toml' | while read -r cfg; do
-  dir=$(dirname "$cfg")
-  stem=$(basename "$cfg" .toml)
-  printf '[connection]\ndsn = "{dsn}"\n' > "$dir/$stem.local.toml"
-done"#
-            );
-            let _ = ssh_args(&[&remote_local_setup]).status();
-
-            // Download dataset from S3 if specified
-            if let Some(ref s3_path) = s3_dataset {
-                let filename = s3_path.rsplit('/').next().unwrap_or("dataset.hdf5");
-                println!("Ensuring dataset is on instance...");
-                let download_cmd = format!(
-                    "mkdir -p ~/data && [ -f ~/data/{filename} ] && echo 'Dataset already present' || aws s3 cp {s3_path} ~/data/{filename}"
-                );
-                let dl_status = ssh_args(&[&download_cmd]).status()?;
-                if !dl_status.success() {
-                    return Err(anyhow::anyhow!("Failed to download dataset from {s3_path}"));
-                }
-
-                // Update dataset path in uploaded configs
-                let update_cmd = format!(
-                    r#"find {remote_dir} -name '*.toml' -exec grep -l 'path.*=.*data/' {{}} \; | while read f; do
-  sed -i 's|path = ".*data/|path = "~/data/|' "$f"
-done"#
-                );
-                let _ = ssh_args(&[&update_cmd]).status();
-            }
-
-            // Build the remote rekall run command (remote_configs were
-            // recorded during upload, as paths relative to the common root).
             let configs_str = remote_configs.join(" ");
             let rebuild_flag = if rebuild { " --rebuild" } else { "" };
             // Publish is on by default for remote runs; --no-publish disables.
             let publish_flag = if no_publish { "" } else { " --publish" };
             let clean_run_flag = if clean_run { " --clean-run" } else { "" };
-            // Forward --comment double-quoted for the remote `sh -c`. The
-            // whole run command is wrapped in single quotes for tmux, so a
-            // literal single quote in the comment cannot survive — swap it
-            // for a typographic one — and escape the characters the remote
-            // shell expands inside double quotes.
-            let comment_flag = comment
-                .as_deref()
-                .map(|c| {
-                    let safe = c
-                        .replace('\\', "\\\\")
-                        .replace('\'', "\u{2019}")
-                        .replace('"', "\\\"")
-                        .replace('$', "\\$")
-                        .replace('`', "\\`");
-                    format!(" --comment \"{safe}\"")
-                })
-                .unwrap_or_default();
+            let comment_flag = remote_comment_flag(comment.as_deref());
 
-            // Pipe both stdout and stderr to a log file so it persists even
-            // after the run ends.
-            //
-            // `source ~/.cargo/env` ensures ~/.cargo/bin is on PATH — tmux
-            // inherits the non-interactive SSH shell's PATH, which doesn't
-            // include cargo bins by default. Without this, a user who runs
-            // `cargo install` to update their rekall would have their update
-            // silently ignored in favour of /usr/local/bin/rekall.
-            //
-            // `set -o pipefail` so the exit status reflects rekall (not tee),
-            // and `exec bash` after the run keeps the pane alive: otherwise the
-            // window's process exits when rekall finishes/errors and tmux tears
-            // the session down, losing the on-screen output. With the shell
-            // kept open you can `tmux attach` afterwards and scroll the output.
-            let log_path = format!("{remote_dir}/last-run.log");
-            let run_cmd = format!(
-                "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
-                 rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag}{comment_flag} 2>&1 | tee {log_path}; \
-                 code=$?; echo; \
-                 echo \"=== rekall run exited (status $code) — session kept open; full log: {log_path} ===\"; \
-                 exec bash"
+            let inner = format!(
+                "rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag}{comment_flag}"
             );
+            launch_in_tmux(&target, &session, &inner, "last-run.log")?;
 
-            // Launch in tmux
-            println!("Launching benchmark in tmux session '{session}'...");
-            println!("(Output also tee'd to {log_path} on the remote.)");
-            let tmux_cmd = format!(
-                "TERM=xterm-256color tmux new -d -s {session} '{run_cmd}' 2>/dev/null || \
-                 TERM=xterm-256color tmux send-keys -t {session} '{run_cmd}' Enter"
+            let hint = selector_hint(
+                config.as_ref(),
+                suite.as_ref(),
+                instance_id.as_deref(),
+                instance_name.as_deref(),
             );
-            let tmux_status = ssh_args(&["-t", &tmux_cmd]).status()?;
-            if !tmux_status.success() {
-                return Err(anyhow::anyhow!("Failed to start tmux session"));
-            }
-
-            // Build a selector hint for the follow-up commands, matching
-            // whichever flag the user actually used to find the instance.
-            let selector_hint = if let Some(ref id) = instance_id {
-                format!("--instance-id {id}")
-            } else if let Some(ref n) = instance_name {
-                format!("--name {n}")
-            } else if let Some(ref p) = config {
-                format!("-c {}", p.display())
-            } else if let Some(ref s) = suite {
-                format!("--suite {s}")
-            } else {
-                String::new()
-            };
-
             println!();
-            println!("Benchmark started on {} in tmux session '{session}'", ip);
+            println!(
+                "Benchmark started on {} in tmux session '{session}'",
+                target.ip
+            );
             println!();
             println!("To check progress:");
-            println!("  rekall infra attach {selector_hint}");
+            println!("  rekall infra attach {hint}");
             println!();
             println!("To view results later:");
-            println!("  rekall infra ssh {selector_hint} -- cat ~/benchmarks/results/*.json");
+            println!("  rekall infra ssh {hint} -- cat ~/benchmarks/results/*.json");
+        }
+
+        InfraCommand::RemoteLoad {
+            config,
+            suite,
+            instance_id,
+            instance_name,
+            region,
+            benchmarks,
+            session,
+            parallelism,
+            s3_dataset,
+        } => {
+            let region = effective_region(region.as_deref(), config.as_ref());
+            let target = resolve_remote_target(
+                config.as_ref(),
+                suite.as_ref(),
+                instance_id.as_deref(),
+                instance_name.as_deref(),
+                &region,
+            )?;
+            // Same upload path as `infra run` -- this exists precisely
+            // because the suite files are not on the instance, so a bare
+            // `rekall load` over SSH can only see whatever configs happen
+            // to be in the instance's checkout.
+            let remote_configs = upload_benchmarks(&target, &benchmarks, s3_dataset.as_deref())?;
+
+            let par_flag = parallelism
+                .map(|p| format!(" --parallelism {p}"))
+                .unwrap_or_default();
+            // `rekall load` takes one config, so chain them with && to stop
+            // at the first failure rather than loading on into a broken
+            // state.
+            let inner = remote_configs
+                .iter()
+                .map(|c| format!("rekall load {c}{par_flag}"))
+                .collect::<Vec<_>>()
+                .join(" && ");
+            launch_in_tmux(&target, &session, &inner, "last-load.log")?;
+
+            let hint = selector_hint(
+                config.as_ref(),
+                suite.as_ref(),
+                instance_id.as_deref(),
+                instance_name.as_deref(),
+            );
+            println!();
+            println!("Load started on {} in tmux session '{session}'", target.ip);
+            println!();
+            println!("To check progress:");
+            println!("  rekall infra attach {hint}");
+            println!();
+            println!("The load stops after the data is in; build indexes with:");
+            println!("  rekall infra run {hint} <suite.toml>");
         }
 
         InfraCommand::Attach {
