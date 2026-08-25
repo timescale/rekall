@@ -1,10 +1,14 @@
 # Pin the Rust toolchain so builds are reproducible across machines and CI.
 #
-# Why pinned: `aws-runtime 1.7.4` (pulled transitively by aws-config/aws-sdk-s3,
-# and the newest version compatible with the current SDK constraints) fails to
-# compile on the very latest stable rustc with E0282 in its sigv4 code
-# ("cannot infer type of the type parameter T"). 1.94.0 compiles it fine.
-# Bump this once aws-runtime ships a release that builds on newer rustc.
+# Kept at an exact patch version rather than "stable" on purpose: "stable"
+# silently changes under CI whenever upstream releases, which is what the
+# pin exists to prevent.
+#
+# History: this was held at 1.94.0 because aws-runtime 1.7.4 failed to
+# compile on then-current stable with E0282 in its sigv4 code. That is fixed
+# as of aws-runtime 1.9.1, and the whole aws-sdk family has since raised its
+# MSRV to 1.94.1 -- so 1.94.0 had become the thing blocking `cargo update`
+# rather than the thing protecting it.
 [toolchain]
-channel = "1.94.0"
+channel = "1.98.0"
 components = ["rustfmt", "clippy"]

@@ -1,6 +1,11 @@
 [workspace]
 members = ["rekall-lib", "rekall"]
-resolver = "2"
+# Resolver 3 is MSRV-aware: it will not select a dependency version whose
+# rust-version exceeds ours. Resolver 2 ignored rust-version entirely, so a
+# plain `cargo update` happily pulled crates the pinned toolchain could not
+# build (the aws-sdk family raising its MSRV to 1.94.1 against a 1.94.0 pin)
+# and the failure only surfaced at compile time. Requires cargo 1.84+.
+resolver = "3"
 
 [workspace.dependencies]
 tokio = { version = "1", features = ["full"] }
@@ -37,3 +42,7 @@ aws-sdk-s3 = "1"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
+# Resolver 3 needs a declared MSRV to resolve against; without this it has
+# nothing to compare dependency rust-versions to and degrades to resolver-2
+# behaviour. Keep in sync with rust-toolchain.toml.
+rust-version = "1.98"
