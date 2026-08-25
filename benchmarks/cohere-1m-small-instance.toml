@@ -1,0 +1,120 @@
+# Suite: cohere-1M -- cheapest Meerkat vs cheapest HNSW at equal performance.
+#
+# The question is NOT "which engine is faster on box X". It is: fix a
+# performance target (a recall and a QPS floor), then find the least
+# expensive instance on which each engine still clears it, and compare the
+# two dollar figures. That is a cost comparison at iso-performance.
+#
+# Consequently the target is deliberately NOT encoded here. This suite just
+# produces each engine's full recall/QPS frontier at every rung of the RAM
+# ladder; scripts/cost-frontier.py applies the target afterwards and reports
+# the cheapest qualifying rung per engine. Baking a target into the suite
+# would mean re-running the ladder every time the target changed.
+#
+# Nothing is rebuilt: `rekall run` skips any index that already exists, so
+# at every rung this reduces to a search over the indexes built once at
+# 8 GiB. Do NOT pass --rebuild -- that would rebuild HNSW on the very boxes
+# this experiment says cannot build it. The build half of the sizing
+# question is cohere-1m-build-floor.toml.
+#
+# The measurement
+# ---------------
+# At cohere-1M (1M x 768d) the on-disk footprints are, from published runs
+# (https://timescale.github.io/rekall/):
+#
+#     heap (`v` is STORAGE PLAIN -> 2 tuples/page)   ~4.1 GB
+#     hnsw-m24-halfvec                               ~2.0 GB   (measured 1.9 GiB)
+#     hnsw-halfvec (m=16)                            ~1.9 GB   (extrapolated;
+#                                                    at 768d the vector
+#                                                    payload dominates, so
+#                                                    m=16 is only ~2%
+#                                                    smaller than m=24)
+#     mkt-defaults                                   ~0.28 GB  (measured 267 MiB)
+#
+# HNSW keeps the halfvec inside the graph, so an unfiltered top-k query
+# never touches the heap -- its working set is the graph. Meerkat scans
+# compressed posting lists and then reranks against the heap, so its working
+# set is a small index plus a bounded random-read tail (auto rerank_pool =
+# 16*k = 160 tuples/query). The two degrade very differently once RAM runs
+# out, and that asymmetry -- not just the 7x size difference -- is what this
+# suite measures:
+#
+#   - An HNSW walk is a chain of DEPENDENT reads: hop N+1's address is only
+#     known once hop N has been read, so a cache miss cannot be prefetched
+#     and its latency lands directly on the query.
+#   - Meerkat's rerank fetches are INDEPENDENT: 160 TIDs known up front,
+#     issued concurrently under effective_io_concurrency.
+#
+# search.io_stats records the per-point read counters that show this.
+#
+# The ladder (infra/instances/, all Graviton4, all 100 GB gp3 at 16000 IOPS
+# / 1000 MiB/s so storage is constant AND fast enough that RAM is the
+# binding constraint):
+#
+#     m8g.large    2 vCPU    8 GiB   build box + top rung
+#     c8g.large    2 vCPU    4 GiB
+#     c8g.medium   1 vCPU    2 GiB   query only (see its config header)
+#
+# 16 GiB is deliberately not a rung. If both engines clear the target at
+# 8 GiB, nothing larger can be the cheapest answer, so it would be dead
+# weight for a cost question. infra/instances/r8g.large.toml remains
+# available as a full-fidelity reference box if you want one.
+#
+# Usage
+# -----
+# Every command below runs on your WORKSTATION. `rekall infra run` uploads
+# the configs and starts `rekall run` on the instance in tmux, so none of it
+# is typed over SSH. (`rekall load` / `index` / `search` ARE instance-side
+# commands -- reach for those only via `rekall infra ssh`.)
+#
+# Build once at 8 GiB, then walk down. `rekall run` skips any index that
+# already exists, so each smaller rung reuses that build instead of
+# rebuilding -- which is the point, since rebuilding HNSW on 4 GiB or 2 GiB
+# is what we are avoiding. `rekall infra resize` keeps the EBS volume and
+# re-tunes PostgreSQL for the new size.
+#
+#   rekall infra up  -c infra/instances/m8g.large.toml
+#   rekall infra run -c infra/instances/m8g.large.toml \
+#       benchmarks/cohere-1m-mkt-vs-hnsw.toml      # builds; warm reference
+#
+#   for rung in m8g.large c8g.large c8g.medium; do
+#     rekall infra resize -c "infra/instances/$rung.toml"
+#     rekall infra run    -c "infra/instances/$rung.toml" \
+#         benchmarks/cohere-1m-small-instance.toml --clean-run
+#   done
+#
+# --clean-run keeps each rung a separate published run rather than appending
+# to the previous rung's results directory; remote runs auto-publish, and the
+# catalog keys runs by instance type -- exactly this experiment's axis.
+#
+# Then apply the target, again on the workstation. cost-frontier.py accepts a
+# published run URL as well as a local path:
+#
+#   scripts/cost-frontier.py --recall 0.95 --qps 100 \
+#       m8g.large=<run url> c8g.large=<run url> c8g.medium=<run url>
+#
+# All four instance configs share name_prefix = "rekall-1m-ladder", which is
+# what lets -c <target> resolve the same box after a resize re-tags it.
+#
+# Do 8 GiB and 4 GiB first: ~25 min each, and that is probably where the
+# answer is. Run 2 GiB overnight. HNSW walking an uncached 2 GB graph can
+# fall to single-digit QPS at high ef_search, so that rung is slow by
+# nature; it is worth it only to find out whether Meerkat has an option
+# cheaper than 4 GiB. That is the result, not a misconfiguration -- do not
+# "fix" it by raising IOPS, which is held constant on purpose.
+#
+# Meerkat is swept over nprobe x rerank_pool rather than nprobe alone: on a
+# box that cannot cache the 4.10 GB heap, rerank_pool governs how many random
+# heap reads each query costs, so it is the knob that decides which instance
+# Meerkat fits on. mkt-defaults is not a separate arm -- rerank_pool = 0 in
+# the sweep IS that arm. Both HNSW M values are kept: m=16 barely shrinks the
+# graph at 768d (~2%) so it will not move HNSW to a smaller rung, but it is a
+# real speed/recall knob and the comparison should use HNSW's best point.
+indexes = [
+    "indexes/mkt-defaults-rerank-sweep.toml",
+    "indexes/hnsw-m24-halfvec.toml",
+    "indexes/hnsw-halfvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m-small.toml"

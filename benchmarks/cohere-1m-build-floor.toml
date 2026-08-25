@@ -1,0 +1,90 @@
+# Suite: cohere-1M -- how small a box can each engine BUILD its index on?
+#
+# The companion to cohere-1m-small-instance.toml (which asks the same
+# question about queries). Run it with --rebuild: the output that matters is
+# the build-sizes / build-times report, not a recall frontier, and without
+# --rebuild `rekall run` would skip every index that already exists.
+#
+# Requires `[phase_pg_config]` (commit acc62b8). See the header of
+# datasets/cohere-1m-build-floor.toml for what it does and why.
+#
+# The overrides wrap the whole index phase rather than each arm, so there is
+# exactly one PostgreSQL restart down to the build config and one back up
+# per invocation -- and every arm, Meerkat included, builds under
+# max_parallel_maintenance_workers = 0. Build times from this suite are
+# therefore NOT comparable with the reference suite's; only "did it fit"
+# and the relative HNSW-vs-Meerkat picture at each rung are.
+#
+# The setup
+# ---------
+# Build memory is where the two engines differ most sharply, and the
+# difference is structural rather than a matter of degree:
+#
+#   pgvector HNSW has a CLIFF. The graph must fit in maintenance_work_mem or
+#   the build falls back to an on-disk pass that inserts the remainder one
+#   tuple at a time, roughly an order of magnitude slower. At 1M x 768d that
+#   graph is ~2.05 GB and no HNSW parameter shrinks it -- m=16 is only ~2%
+#   smaller than m=24, because at this dimensionality the vector payload
+#   dominates the node and the neighbour lists do not.
+#
+#   Meerkat has NO CLIFF. Its k-means sample buffer is explicitly bounded by
+#   maintenance_work_mem (sample_for_build() in src/pg/mktann_build.c): the
+#   ideal sample is nlist*256 vectors, and when that does not fit the build
+#   subsamples and recovers accuracy with a later page-backed refine pass
+#   over the full table. Less memory costs some centroid quality, not a 10x
+#   build time.
+#
+# So the experiment is asymmetric on purpose. The dataset config hands HNSW
+# every advantage available on a small box -- shared_buffers collapsed to
+# 128MB for the duration of the build, all of it redirected into
+# maintenance_work_mem, and the build forced serial to escape the /dev/shm
+# ceiling on pgvector's parallel-build DSM segment. Meerkat gets the same
+# settings, which is if anything a handicap for it (a serial build on a box
+# that has 2 cores, and a sample buffer bounded well below the ideal). If
+# HNSW still cannot build, that is a real floor and not a tuning oversight.
+#
+# How to run it
+# -------------
+# Workstation commands -- `rekall infra run` executes on the instance for
+# you; `rekall load` / `index` / `search` would need `rekall infra ssh`.
+#
+# Unlike the query ladder, this suite must REBUILD at every rung, so pass
+# --rebuild: `rekall run` otherwise skips an index that already exists, and
+# the run would silently measure nothing.
+#
+#   rekall infra up  -c infra/instances/m8g.large.toml
+#   for rung in m8g.large c8g.large c8g.medium; do
+#     rekall infra resize -c "infra/instances/$rung.toml"
+#     rekall infra run    -c "infra/instances/$rung.toml" \
+#         benchmarks/cohere-1m-build-floor.toml --rebuild --clean-run
+#   done
+#
+# The heap survives resizes and the load phase is resumable, so only the
+# index phase actually repeats. The 2 GiB rung cannot be provisioned from
+# scratch (provision.sh compiles meerkat from source) -- resize into it.
+#
+# What to record at each rung, per arm: did the build complete, how long it
+# took, and -- for HNSW -- whether the server log contains
+#
+#     hnsw graph no longer fits into maintenance_work_mem after N tuples
+#
+# That warning is the cliff being hit, and the rung where it first appears
+# is the answer. The build phase will happily "succeed" on the spill path
+# after running for hours, so build_time_secs alone does not distinguish
+# "fit" from "did not fit"; the log line does.
+#
+# Note the 2 GiB rung cannot be provisioned from scratch (provision.sh
+# compiles meerkat from source, which does not fit) -- resize into it.
+#
+# Expected: HNSW builds in memory down to 4 GiB and hits the cliff at 2 GiB;
+# Meerkat builds at every rung, with only the sample size shrinking.
+
+indexes = [
+    "indexes/mkt-defaults.toml",
+    "indexes/mkt-n4000-cctrue-fs16-soar-cfs.toml",
+    "indexes/hnsw-m24-halfvec.toml",
+    "indexes/hnsw-halfvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m-build-floor.toml"

@@ -140,3 +140,31 @@ index = "hnsw-m32"
 [search.sweep.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 120, 200, 400, 800, 1000]
 ```
+
+## Instance Sizing
+
+`cohere-1m-sizing.md` works out how much RAM Meerkat and pgvector HNSW each
+need for cohere-1M — separately for the build and for queries — from the
+index sizes published at <https://timescale.github.io/rekall/>. It backs two
+suites:
+
+- `cohere-1m-mkt-vs-hnsw.toml` — loads, builds, and measures the warm
+  reference frontier on `infra/instances/m8g.large.toml` (8 GiB, the rung
+  where HNSW still builds in memory under stock tuning).
+- `cohere-1m-small-instance.toml` — the same physical indexes re-queried
+  down an 8 / 4 / 2 GiB ladder via `rekall infra resize`, disk-cold with
+  `io_stats` on. Both suites must list identical arms: an index is named
+  after its arm, so a mismatch means the search phase finds nothing.
+- `scripts/cost-frontier.py` — applies a (recall, QPS) target to the ladder
+  results and reports the cheapest qualifying instance per engine, costing
+  instance + EBS. The target is applied here, not baked into the suites.
+  Accepts a local results directory or a published run URL.
+
+All of these are driven from the workstation via `rekall infra run`, which
+uploads the configs and runs `rekall run` on the instance in tmux.
+`rekall load` / `index` / `search` are instance-side commands — use
+`rekall infra ssh` first if you want manual phase control.
+- `cohere-1m-build-floor.toml` — rebuilds at every rung with the build
+  phase's `shared_buffers` traded for `maintenance_work_mem`, to find the
+  smallest box each engine can *build* on (as opposed to query on). Uses
+  `[phase_pg_config]`.

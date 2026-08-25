@@ -1,0 +1,82 @@
+# Suite: cohere-1M -- Meerkat vs pgvector HNSW (halfvec), optimal settings.
+#
+# The reference run: build both engines' indexes once and measure the full
+# recall/QPS frontier, index size and build time with everything resident in
+# RAM. It is the control for the small-instance ladder in
+# cohere-1m-small-instance.toml, which re-queries these same physical indexes
+# on progressively smaller boxes -- so run this one FIRST, on the ladder's
+# top rung (infra/instances/m8g.large.toml, 8 GiB), and leave it up.
+#
+# 8 GiB is the entry point because its stock-tuned maintenance_work_mem
+# (2*RAM/5 = 3 GB) already exceeds the ~2.05 GB HNSW graph. HNSW builds in
+# memory, in parallel, with no per-phase retuning -- so the artifact both
+# suites then measure is HNSW's best graph, not one handicapped by a serial
+# small-box build. (Building in place on 4 GiB is possible via
+# cohere-1m-build-floor.toml, but a serial build yields a different graph;
+# that is a separate question, not this comparison.)
+#
+# Arms
+# ----
+# mkt-defaults-rerank-sweep
+#     Meerkat exactly as shipped -- no index params -- swept over BOTH query
+#     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
+#     already sit on the measured optimum (auto nlist = rows/256 = 3906,
+#     auto nprobe = 32, fastscan + centroid fastscan, SOAR 1.0, boundary
+#     0.35), so the index needs no tuning; the sweep is over query time.
+#     rerank_pool = 0 is the shipped automatic value (16*k), so the plain
+#     defaults arm is a point inside this sweep rather than a separate arm.
+#     Warm, this measures rerank_pool's pure CPU cost -- the control for the
+#     ladder, where the same knob is paying for random heap I/O instead.
+#
+# hnsw-m24-halfvec
+#     pgvector's recommended default per the pg-aiguide tuning guide, and
+#     the arm every other rekall cohere suite uses. Highest HNSW recall.
+#     Built on the `v::halfvec(768)` expression -- no materialized column,
+#     no table rewrite, so `v` stays available for Meerkat's exact rerank.
+#
+# hnsw-halfvec
+#     The same thing at m=16. Not a tuning arm: it is the *smallest*
+#     HNSW graph anyone would deploy here, and the sizing question ("can
+#     HNSW fit on a small box at all?") has to be answered against that,
+#     not just against the recommended M.
+#
+#     The published runs say it will barely help. At 768d the vector
+#     payload dominates an HNSW node and the neighbour lists do not:
+#     m=16 fullvec measures 3.74 GB/M rows (laion-5M) against m=24
+#     fullvec's 3.81 GB/M (cohere), i.e. ~2% smaller. So m=16 halfvec
+#     should land near ~1.9 GB, essentially the same as m=24 -- lowering
+#     M is not an escape route from HNSW's footprint at this
+#     dimensionality. This arm is here to demonstrate that, and the
+#     ladder should confirm both HNSW arms hit the same memory wall.
+#
+# Full-precision HNSW is dropped -- halfvec supersedes it. Binary
+# quantization is dropped too: at 1M the BQ graph is small (~0.5 GB) but the
+# 80x-oversampled rerank turns every query into ~800 random heap fetches,
+# which is a strictly worse memory profile than Meerkat's 160 for a lower
+# recall ceiling. IVFFlat is covered by cohere-1m-ivfflat.toml.
+#
+# Usage (from your WORKSTATION -- infra run executes it on the instance):
+#
+#   rekall infra up  -c infra/instances/m8g.large.toml
+#   rekall infra run -c infra/instances/m8g.large.toml \
+#       benchmarks/cohere-1m-mkt-vs-hnsw.toml
+#
+# This is the run that BUILDS; the ladder in cohere-1m-small-instance.toml
+# then reuses these indexes at every rung. Remote runs auto-publish.
+#
+# `rekall load` / `index` / `search` are instance-side commands and are only
+# needed if you want manual phase control -- get a shell with
+# `rekall infra ssh -c infra/instances/m8g.large.toml` first.
+#
+# MUST stay identical to cohere-1m-small-instance.toml's list. An arm's
+# on-disk index is named after the arm, so building `mkt-defaults` here and
+# searching `mkt-defaults-rerank-sweep` there would simply not find it.
+# One build, both suites.
+indexes = [
+    "indexes/mkt-defaults-rerank-sweep.toml",
+    "indexes/hnsw-m24-halfvec.toml",
+    "indexes/hnsw-halfvec.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-1m.toml"

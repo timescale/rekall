@@ -1,0 +1,39 @@
+# Meerkat shipped defaults, swept over BOTH query knobs: mkt.nprobe and
+# mkt.rerank_pool.
+#
+# Why rerank_pool is swept here and nowhere else
+# ----------------------------------------------
+# Meerkat scans compressed posting lists out of a small index and then
+# reranks the survivors with exact distances fetched from the HEAP. At
+# cohere-1M the index is ~0.28 GB but the heap is ~4.10 GB (`v` is STORAGE
+# PLAIN, 2 tuples/page), and the default rerank pool is 16*k = 160 tuples
+# per query. Those 160 TIDs are effectively random over 500k heap pages, so
+# across a query stream the rerank path touches essentially the whole heap.
+#
+# On a box that can cache the heap this is free. On a box that cannot, it is
+# the dominant cost: ~160*(1-hit_rate) random reads per query, which turns
+# straight into an IOPS ceiling. rerank_pool is the knob that buys that back
+# -- fewer exact fetches for some recall -- so on a memory-constrained box
+# it is at least as important as nprobe, and the two trade against each
+# other (a higher nprobe produces better candidates, so a smaller pool
+# suffices for the same recall).
+#
+# Sweeping only nprobe, as the other Meerkat arms do, therefore measures a
+# single slice through a 2-D surface and will understate what Meerkat can do
+# per dollar on a small instance.
+#
+# 0 = the shipped automatic value (16*k), included as the baseline. The
+# effective cap is never below k, so rerank_pool = 10 at k = 10 means "one
+# exact fetch per returned row" -- the floor.
+[[index]]
+type = "meerkat"
+name = "mkt-defaults-rerank-sweep"
+table_parallel_workers = 32
+# No [index.params]: identical on-disk index to mkt-defaults, so this arm
+# can reuse a physical index built under that name if you prefer.
+
+[[search.sweep]]
+index = "mkt-defaults-rerank-sweep"
+[search.sweep.params]
+"mkt.nprobe"      = [10, 20, 40, 80, 160]
+"mkt.rerank_pool" = [0, 10, 20, 40, 80, 160]

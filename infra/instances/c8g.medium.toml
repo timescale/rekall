@@ -1,0 +1,106 @@
+# Rekall benchmark instance: c8g.medium (Graviton4, 1 vCPU, 2 GiB RAM).
+#
+# The floor rung of the cohere-1M small-instance ladder (see
+# benchmarks/cohere-1m-sizing.md) — the smallest non-burstable EC2 instance
+# worth benchmarking on. (t4g.small is also 2 GiB but is burstable; its CPU
+# credit accounting makes QPS numbers meaningless.)
+#
+# Do not provision from scratch here: provision.sh compiles meerkat (and
+# optionally rekall) from source and 2 GiB is not enough headroom. Resize
+# into it instead — `rekall infra resize -c infra/instances/c8g.medium.toml`
+# brings the EBS volume and both built indexes along.
+#
+# Meerkat builds fine at this size (its k-means sample buffer is bounded by
+# maintenance_work_mem and it subsamples rather than failing). pgvector HNSW
+# does not: the ~2.05 GB graph exceeds anything 2 GiB of RAM can hand to
+# maintenance_work_mem, even with shared_buffers collapsed for the build
+# phase, so it can only complete via the on-disk spill pass. That asymmetry
+# is the point of benchmarks/cohere-1m-build-floor.toml, and this is the
+# rung where it is expected to show up.
+#
+# What this rung tests: 2 GiB holds Meerkat's ~0.28 GB index with room to
+# spare, and holds essentially none of HNSW's ~1.9-2.0 GB halfvec graph (m=16
+# and m=24 are within ~2% of each other at 768d). If Meerkat serves cohere-1M
+# at a usable QPS here and HNSW does not, this is the instance size that
+# proves it.
+#
+# Note that the 1 vCPU breaks the ladder's constant-core-count property —
+# compare it to the other rungs on per-query latency and I/O counters
+# (search.io_stats), not on raw QPS.
+#
+# Personal overrides go in `c8g.medium.local.toml` (gitignored).
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "c8g.medium"
+
+# Held constant across the whole ladder so RAM is the only variable, and
+# provisioned to the gp3 maximum (16000 IOPS / 1000 MiB/s) on purpose.
+#
+# That is a correction of an earlier choice to leave it at the gp3 defaults
+# "so as not to mask the memory effect". Under-provisioning storage does not
+# reveal the memory effect, it replaces it: Meerkat reranks 160 random heap
+# pages per query, so an uncached heap needs ~65 reads/query at the 4 GiB
+# rung and ~124 at 2 GiB. At 3000 IOPS that alone caps the box at ~46 and
+# ~24 QPS -- the ladder would be measuring the volume, not the box's RAM.
+# Maxing IOPS keeps RAM the binding constraint, which is the point.
+#
+# Instance-store NVMe would be better still, but it is incompatible with
+# this workflow: `rekall infra resize` stops and starts the instance, and
+# instance-store volumes are wiped by a stop. PGDATA has to be on EBS for
+# the built indexes to survive the walk down the ladder.
+disk_size_gb    = 100
+disk_iops       = 16000
+disk_throughput = 1000
+
+name_prefix = "rekall-1m-ladder"
+
+# ----- OS image ----------------------------------------------------------
+
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat"]
+
+# The auto-tuner derives shared_buffers as RAM/4 in whole GB, which is
+# 0GB at 2 GiB of RAM — PostgreSQL will not start with that. Every memory
+# GUC is therefore set explicitly here.
+#
+# 512MB of shared_buffers is chosen so Meerkat's ~0.28 GB index fits inside
+# it outright; the remaining ~1.4 GiB is left to the OS page cache and the
+# backends. maintenance_work_mem is kept small on purpose: it bounds
+# Meerkat's k-means sample buffer (a palloc'd
+# maintenance_work_mem/(4*dim)-vector array), so a large value would OOM the
+# box if someone does try to build here. Meerkat degrades by subsampling and
+# recovers with its page-backed refine pass; it has no build-memory cliff.
+[pg_config]
+shared_buffers       = "512MB"
+effective_cache_size = "1500MB"
+maintenance_work_mem = "384MB"
+work_mem             = "16MB"
+max_wal_size         = "4GB"
+min_wal_size         = "512MB"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED

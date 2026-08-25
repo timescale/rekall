@@ -1,0 +1,96 @@
+# Rekall benchmark instance: c8g.large (Graviton4, 2 vCPU, 4 GiB RAM).
+#
+# Rung 3 of the cohere-1M small-instance ladder (see
+# benchmarks/cohere-1m-sizing.md). This is the rung where the two engines
+# are expected to separate:
+#
+#   - Meerkat's index is ~0.28 GB. It fits in shared_buffers with room left
+#     over; only the exact-rerank heap fetches (auto rerank_pool = 16*k =
+#     160 tuples/query) miss cache. Those are INDEPENDENT random reads, so
+#     PG can issue them concurrently (effective_io_concurrency 200).
+#   - HNSW m24 halfvec's graph is ~2.0 GB against 1 GB of shared_buffers and
+#     ~4 GiB total RAM. The graph no longer stays resident, and an HNSW walk
+#     is a chain of DEPENDENT random reads — each hop's target is only known
+#     after the previous hop is read, so nothing can be prefetched and the
+#     latency is serialized. Dropping to m=16 does not rescue it: at 768d
+#     the halfvec payload dominates an HNSW node, so the m16 graph is only
+#     ~2% smaller (~1.9 GB).
+#   - maintenance_work_mem auto-computes to 1 GB, below the graph, so an
+#     HNSW build under the stock config falls into pgvector's on-disk pass.
+#     For the query ladder, build on r8g.large and `rekall infra resize`
+#     down instead.
+#
+#     That is a tuning artifact rather than a real floor, though: this is
+#     also the rung where benchmarks/cohere-1m-build-floor.toml expects HNSW
+#     to build successfully *in memory*, by collapsing shared_buffers to
+#     128MB for the build phase, pushing maintenance_work_mem to 2560MB, and
+#     forcing the build serial so the graph lands in backend-local memory
+#     instead of a /dev/shm-capped DSM segment.
+#
+# Same 2 vCPU and same 100 GB gp3 as the other ladder rungs.
+#
+#   rekall infra resize -c infra/instances/c8g.large.toml
+#
+# Personal overrides go in `c8g.large.local.toml` (gitignored).
+
+# ----- Provider & region -------------------------------------------------
+
+provider     = "aws"
+region       = "us-east-1"
+
+# ----- Instance ----------------------------------------------------------
+
+instance_type = "c8g.large"
+
+# Held constant across the whole ladder so RAM is the only variable, and
+# provisioned to the gp3 maximum (16000 IOPS / 1000 MiB/s) on purpose.
+#
+# That is a correction of an earlier choice to leave it at the gp3 defaults
+# "so as not to mask the memory effect". Under-provisioning storage does not
+# reveal the memory effect, it replaces it: Meerkat reranks 160 random heap
+# pages per query, so an uncached heap needs ~65 reads/query at the 4 GiB
+# rung and ~124 at 2 GiB. At 3000 IOPS that alone caps the box at ~46 and
+# ~24 QPS -- the ladder would be measuring the volume, not the box's RAM.
+# Maxing IOPS keeps RAM the binding constraint, which is the point.
+#
+# Instance-store NVMe would be better still, but it is incompatible with
+# this workflow: `rekall infra resize` stops and starts the instance, and
+# instance-store volumes are wiped by a stop. PGDATA has to be on EBS for
+# the built indexes to survive the walk down the ladder.
+disk_size_gb    = 100
+disk_iops       = 16000
+disk_throughput = 1000
+
+name_prefix = "rekall-1m-ladder"
+
+# ----- OS image ----------------------------------------------------------
+
+# ubuntu_version = "24.04"
+
+# ----- PostgreSQL --------------------------------------------------------
+
+pg_version = 18
+
+extensions = ["pgvector", "meerkat"]
+
+# Auto-computed for 4 GiB: shared_buffers 1GB, maintenance_work_mem 1GB,
+# effective_cache_size 3GB. work_mem's auto value (256MB) is far too large a
+# slice of 4 GiB once several backends sort concurrently.
+[pg_config]
+work_mem = "32MB"
+
+# ----- Extension version pins -------------------------------------------
+
+[pgvector]
+version = "v0.8.2"
+
+# ----- Private-repo builds (set git_url in .local.toml) ----------------
+
+#   [meerkat]
+#   git_url = "git@github.com:timescale/meerkat.git"
+#   git_ref = "main"
+
+# ----- Required local-only fields (set in .local.toml) -----------------
+
+# ssh_key              = "~/.ssh/id_ed25519.pub"   # REQUIRED
+# iam_instance_profile = "rekall-profile"          # REQUIRED
