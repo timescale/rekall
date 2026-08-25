@@ -259,6 +259,28 @@ impl Agent {
                 false
             };
 
+        // Init is DROP TABLE ... CASCADE then CREATE, so running it against
+        // a table that is already there destroys it -- including a table the
+        // user created themselves, or one whose data is mid-load. Init is
+        // therefore "ensure the table exists", not "recreate it": skip it
+        // whenever the table is present. --reload is the explicit opt-in to
+        // recreate, and skip_data_phases above still short-circuits both
+        // phases when the data is already fully loaded.
+        //
+        // A pre-existing table with the wrong shape now fails at COPY rather
+        // than being silently replaced, which is the better failure: it is
+        // the user's table.
+        let skip_init_only =
+            !reload_data && !skip_data_phases && phases.contains(&Phase::Init) && {
+                let pg = backend::postgres::PgConnection::new(
+                    &self.config.connection,
+                    &self.config.table_name(),
+                    self.config.dataset.dimension,
+                    self.config.dataset.metric,
+                );
+                matches!(pg.table_exists().await, Ok(true))
+            };
+
         for &phase in phases {
             // With interleave, Index and Search run together after this loop
             // (run_index_search_interleaved) and the report runs after them.
@@ -267,6 +289,18 @@ impl Agent {
             if interleave
                 && (phase == Phase::Index || phase == Phase::Search || phase == Phase::Report)
             {
+                continue;
+            }
+
+            if skip_init_only && phase == Phase::Init {
+                for output in self.outputs.iter_mut() {
+                    output.on_progress(&ProgressEvent::Message {
+                        text: format!(
+                            "Table '{}' already exists, skipping init",
+                            self.config.table_name(),
+                        ),
+                    });
+                }
                 continue;
             }
 
