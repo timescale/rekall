@@ -239,7 +239,7 @@ impl Agent {
                                     output.on_progress(&ProgressEvent::Message {
                                         text: format!(
                                             "Table '{}' has {row_count} rows but dataset has \
-                                         {expected} vectors. Use --reload to reload.",
+                                         {expected} vectors — recreating and reloading it.",
                                             self.config.table_name(),
                                         ),
                                     });

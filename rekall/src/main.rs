@@ -1157,7 +1157,20 @@ async fn main() -> anyhow::Result<()> {
                 }
                 let outputs = build_outputs(&cfg);
                 let mut agent = Agent::new(cfg, outputs, cancel_registry.clone());
-                agent.run(&[Phase::Load], None, false, false).await?;
+                // Init as well as Load: the table has to exist before data
+                // can go into it, and requiring a separate `rekall init`
+                // first is a papercut locally and unreachable remotely
+                // (`infra load` runs only this command on the instance).
+                //
+                // Running Init unconditionally would be destructive -- it is
+                // DROP TABLE ... CASCADE then CREATE -- but Agent::run's
+                // skip_data_phases guard already handles that: when the table
+                // exists and its row count matches the dataset, both phases
+                // are skipped, so a repeat `rekall load` is a no-op rather
+                // than a wipe. Same guard `rekall run` relies on.
+                agent
+                    .run(&[Phase::Init, Phase::Load], None, false, false)
+                    .await?;
             }
         }
 
