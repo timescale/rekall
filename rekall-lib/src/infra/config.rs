@@ -58,6 +58,37 @@ fn parse_size_bytes(s: &str) -> Option<u64> {
     num_part.trim().parse::<u64>().ok().map(|n| n * mult)
 }
 
+/// Path to the machine-wide infra defaults (`~/.config/rekall/infra.toml`).
+///
+/// Same flat format as a committed instance file, so a field can be moved
+/// between the two by copy-paste. Kept separate from `config.toml` (which
+/// configures benchmark runs) because these settings describe the AWS
+/// account and SSH identity, not a workload.
+pub fn global_infra_config_path() -> std::path::PathBuf {
+    dirs::config_dir()
+        .map(|d| d.join("rekall/infra.toml"))
+        .unwrap_or_else(|| std::path::PathBuf::from("~/.config/rekall/infra.toml"))
+}
+
+/// Machine-wide infra defaults as a raw TOML table, empty when absent.
+///
+/// A malformed file warns rather than failing: these are defaults, and a
+/// stray character in an optional file should not make every instance
+/// config unloadable.
+fn global_infra_defaults() -> toml::Value {
+    let path = global_infra_config_path();
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return toml::Value::Table(toml::map::Map::new());
+    };
+    match toml::from_str::<toml::Value>(&content) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("Ignoring malformed {}: {e}", path.display());
+            toml::Value::Table(toml::map::Map::new())
+        }
+    }
+}
+
 fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
     match (base.as_table_mut(), overlay) {
         (Some(base_table), toml::Value::Table(overlay_table)) => {
@@ -229,10 +260,20 @@ impl InfraConfig {
             ));
         }
 
+        // Merge order: global infra defaults -> committed instance file ->
+        // sibling .local.toml. The global layer exists so the values that
+        // are identical for every box on a machine (iam_instance_profile,
+        // ssh_key, the meerkat/rekall git URLs) are stated once instead of
+        // copied into a .local.toml per instance. A .local.toml is then
+        // only needed where a box genuinely differs -- benchmarking a
+        // meerkat feature branch, a bigger disk, a different profile.
+        let mut base = global_infra_defaults();
+
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read '{}': {e}", path.display()))?;
-        let mut base: toml::Value = toml::from_str(&content)
+        let committed: toml::Value = toml::from_str(&content)
             .map_err(|e| format!("Invalid TOML '{}': {e}", path.display()))?;
+        deep_merge(&mut base, committed);
 
         // Check for .local.toml override
         let stem = path.file_stem().unwrap_or_default().to_string_lossy();
@@ -573,6 +614,37 @@ mod tests {
         .unwrap_err();
         assert!(err.contains("local override file"));
         assert!(err.contains("infra/instances/r8i.12xlarge.toml"));
+    }
+
+    #[test]
+    fn global_infra_defaults_are_ignored_when_absent() {
+        // The global layer is optional: a committed file with no sibling
+        // .local.toml and no ~/.config/rekall/infra.toml must still load.
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("box.toml");
+        std::fs::write(&f, "instance_type = \"c8g.large\"\n").unwrap();
+        let cfg = InfraConfig::from_file(&f).unwrap();
+        assert_eq!(cfg.instance_type, "c8g.large");
+    }
+
+    #[test]
+    fn local_toml_wins_over_committed_which_wins_over_defaults() {
+        // Merge order is global -> committed -> .local.toml. The global
+        // layer cannot be written from a test without touching the user's
+        // real config dir, so this pins the two layers that can be: a
+        // .local.toml overrides the committed file it sits beside.
+        let dir = tempfile::tempdir().unwrap();
+        let f = dir.path().join("box.toml");
+        std::fs::write(&f, "instance_type = \"c8g.large\"\ndisk_size_gb = 100\n").unwrap();
+        std::fs::write(
+            dir.path().join("box.local.toml"),
+            "disk_size_gb = 500\n[meerkat]\ngit_url = \"git@x:y.git\"\ngit_ref = \"feat/z\"\n",
+        )
+        .unwrap();
+        let cfg = InfraConfig::from_file(&f).unwrap();
+        assert_eq!(cfg.instance_type, "c8g.large", "committed value survives");
+        assert_eq!(cfg.disk_size_gb, 500, "local overrides committed");
+        assert_eq!(cfg.meerkat.unwrap().git_ref, "feat/z");
     }
 
     #[test]

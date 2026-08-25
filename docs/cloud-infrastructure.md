@@ -72,15 +72,17 @@ This generates:
    public key is printed. Add it to your GitHub repos as a read-only
    deploy key.
 
-3. **Local config** (`.local.toml`) — a stub with placeholders for
-   `ssh_key`, `iam_instance_profile`, and private git URLs. This file
-   is gitignored.
+3. **Machine defaults** (`~/.config/rekall/infra.toml`) — where
+   `ssh_key`, `iam_instance_profile`, and the private git URLs belong.
+   Written once per machine; every instance config inherits it, so a
+   per-instance `.local.toml` is only needed for genuine deviations.
 
 After running `init`, follow the numbered instructions it prints:
 
 1. Have an admin apply the IAM template in your AWS account (one-time)
 2. Add the deploy key to GitHub repos (if using private repos)
-3. Fill in the `.local.toml` with your SSH key and the instance profile name
+3. Fill in `~/.config/rekall/infra.toml` with your SSH key and the
+   instance profile name (once per machine, not once per instance)
 4. Run `rekall infra up`
 
 ### IAM Setup (One-Time)
@@ -128,10 +130,31 @@ No IAM create permissions are needed since the role is pre-created.
 ## Configuration
 
 Infra configs are standalone TOML files (no `[infra]` wrapper) under
-`infra/instances/<instance-type>.toml`. The committed file is canonical;
-personal/machine-specific values (SSH key, IAM profile, private repo
-URLs) go in a gitignored `<instance-type>.local.toml` next to it and
-are deep-merged on top.
+`infra/instances/<instance-type>.toml`. Three layers are deep-merged, each
+overriding the one before:
+
+| Layer | File | Holds |
+|---|---|---|
+| 1. Machine defaults | `~/.config/rekall/infra.toml` | Values identical for every box here: `ssh_key`, `iam_instance_profile`, `s3_bucket`, the meerkat/rekall git URLs |
+| 2. Committed config | `infra/instances/<type>.toml` | The box itself: `instance_type`, disk, `extensions`, `pg_config` |
+| 3. Local override | `<type>.local.toml` (gitignored) | Only what makes THIS box different |
+
+Layer 1 is why most instances need no `.local.toml` at all. Reach for one
+when a single box must deviate — the canonical case being a meerkat feature
+branch, where `git_url` is inherited and only the ref is restated:
+
+```toml
+# infra/instances/m8g.large.local.toml
+[meerkat]
+git_ref = "feat/my-branch"
+```
+
+All three layers use the same flat format, so a field can be moved between
+them by copy-paste. `InfraConfig` sets `deny_unknown_fields`, so a typo in
+any layer fails the load with the offending key named rather than being
+silently ignored. A malformed `~/.config/rekall/infra.toml` is the one
+exception: it warns and is skipped, since optional defaults should not make
+every instance config unloadable.
 
 ### Base config (committed — `infra/instances/r7g.2xlarge.toml`)
 
@@ -431,7 +454,7 @@ https://developer.hashicorp.com/terraform/install
 **IAM instance profile missing**: Run `rekall infra init` and follow the
 instructions to apply the IAM template.
 
-**SSH key not found**: Default is `~/.ssh/id_ed25519.pub`. Override `ssh_key` in your `.local.toml` to point at the
+**SSH key not found**: Default is `~/.ssh/id_ed25519.pub`. Set `ssh_key` in `~/.config/rekall/infra.toml` to point at the
 path of your SSH public key (e.g., `~/.ssh/id_ed25519.pub`).
 
 **Deploy key not generated**: Run `rekall infra init` or

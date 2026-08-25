@@ -1,7 +1,17 @@
-# Personal overrides for an instance config — gitignored, never committed.
+# Personal overrides for ONE instance config — gitignored, never committed.
+#
+# You probably do not need this file. Merge order is:
+#
+#     ~/.config/rekall/infra.toml  ->  <instance>.toml  ->  <instance>.local.toml
+#
+# The machine-wide values — ssh_key, iam_instance_profile, s3_bucket, the
+# meerkat/rekall git URLs — belong in ~/.config/rekall/infra.toml, where
+# they are stated once for every box. A .local.toml is for the cases where
+# ONE box must differ: benchmarking a meerkat feature branch, a bigger disk
+# for a bigger dataset, a different IAM profile.
 #
 # To use: copy this file to `<instance-name>.local.toml` next to its
-# base TOML (e.g. `r7g.2xlarge.local.toml`) and fill in your values.
+# base TOML (e.g. `r7g.2xlarge.local.toml`) and set only what differs.
 # Any field from the base TOML can be overridden here.
 #
 # TOML gotcha: top-level fields (ssh_key, iam_instance_profile,
@@ -15,25 +25,20 @@
 # attach) are derived from this single path.
 # ssh_key = "~/.ssh/id_ed25519.pub"
 
-# Name of the IAM instance profile created by `rekall infra iam-policy`.
-# Required so the launcher doesn't need iam:CreateRole.
-iam_instance_profile = "rekall-profile"
+# Machine-wide values below are better placed in
+# ~/.config/rekall/infra.toml. Set them here only to override that file
+# for this one box.
+# iam_instance_profile = "rekall-profile"
 
 # S3 bucket for datasets. Used to scope the IAM policy template when
 # you regenerate it; not strictly required at launch time.
 # s3_bucket = "my-datasets-bucket"
 
-# Build meerkat from source on the instance. The provisioning script
-# uses the per-repo deploy key in ~/.rekall/infra/deploy-keys/meerkat.
-[meerkat]
-git_url = "git@github.com:timescale/meerkat.git"
-git_ref = "main"
-
-# Build rekall from source on the instance (otherwise the local binary
-# is used). Same deploy-key handling as meerkat.
-[rekall]
-git_url = "git@github.com:timescale/rekall.git"
-git_ref = "main"
+# The canonical reason to have this file: benchmark ONE box against a
+# meerkat feature branch. git_url is inherited from the global file, so
+# only the ref needs restating.
+# [meerkat]
+# git_ref = "feat/my-branch"
 
 # Common overrides — uncomment as needed.
 
