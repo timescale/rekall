@@ -109,7 +109,10 @@ pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64>
         );
         let client = pg.open_connection().await?;
         client
-            .execute(&format!("TRUNCATE {} RESTART IDENTITY", pg.table_name), &[])
+            // Plain TRUNCATE: the table owns no sequences now that `id` is
+            // a plain bigint, so RESTART IDENTITY would only have been a
+            // no-op that implied otherwise.
+            .execute(&format!("TRUNCATE {}", pg.table_name), &[])
             .await?;
     }
 

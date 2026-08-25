@@ -820,8 +820,33 @@ impl DataLoader for PgConnection {
         client
             .execute(
                 &format!(
+                    // No PRIMARY KEY on `id`, and no IDENTITY.
+                    //
+                    // Nothing ever fetches a row by id: the loader writes it
+                    // with `COPY (id, v)` and searches only ever SELECT it,
+                    // to match results against ground-truth indices. So the
+                    // btree was pure overhead: 21 MB per million rows of
+                    // page cache nothing reads -- 2.1 GB at cohere-100M,
+                    // which is real on a memory-constrained box.
+                    //
+                    // It also cost write work during the bulk load. A
+                    // controlled INSERT..SELECT of 1M rows measured 29.0s
+                    // with the index maintained against 13.4s without, for
+                    // an index that takes 0.5s to build post-hoc. That
+                    // delta does NOT show up end-to-end in `rekall load`
+                    // at 1M, where the COPY is bound by HDF5 read
+                    // throughput and the VACUUM (FREEZE, ANALYZE) that
+                    // follows dominates the clock -- but it is write work
+                    // that buys nothing, and it grows with the table.
+                    //
+                    // Uniqueness is guaranteed by construction anyway: ids
+                    // come from a monotonic counter (chunk.start_index + i).
+                    // The IDENTITY went with it -- the loader always supplies
+                    // id, so its sequence never advanced past its initial
+                    // value and would have collided immediately had anything
+                    // ever inserted without one.
                     "CREATE TABLE {} (\
-                        id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY, \
+                        id bigint NOT NULL, \
                         v vector({}))",
                     self.table_name, self.dimension
                 ),
