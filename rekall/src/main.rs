@@ -990,6 +990,12 @@ enum DatasetCommand {
         #[arg(long)]
         with_vectors: bool,
 
+        /// Also print the query vector these neighbours answer. The ids are
+        /// only meaningful relative to a query, so this is what makes the
+        /// output stand on its own.
+        #[arg(long)]
+        with_query: bool,
+
         /// ids (one per line, pipeable), table, or json.
         #[arg(long, default_value = "ids")]
         format: String,
@@ -1532,6 +1538,7 @@ async fn main() -> anyhow::Result<()> {
                 k,
                 with_distances,
                 with_vectors,
+                with_query,
                 format,
             } => {
                 use rekall_lib::dataset::DatasetReader;
@@ -1561,6 +1568,11 @@ async fn main() -> anyhow::Result<()> {
                     Hdf5Reader::open(&path, rekall_lib::config::Metric::Angular, info.dimension)?;
                 let gt = reader.ground_truth()?;
                 let dists = reader.ground_truth_distances()?;
+                let query_vec: Option<Vec<f32>> = if with_query {
+                    Some(reader.queries()?.row(query).to_vec())
+                } else {
+                    None
+                };
                 let ids: Vec<i64> = gt.row(query).iter().take(k).copied().collect();
                 let ds: Option<Vec<f32>> = dists
                     .as_ref()
@@ -1595,6 +1607,12 @@ async fn main() -> anyhow::Result<()> {
                     "# ids are 0-based row indices into `train` \u{2014} the same values \
                      rekall loads as `id`"
                 );
+                if let Some(q) = &query_vec {
+                    eprintln!(
+                        "# query vector: {}",
+                        rekall_lib::dataset::emit::vector_literal(q)
+                    );
+                }
 
                 match format.as_str() {
                     "ids" => {
@@ -1632,9 +1650,36 @@ async fn main() -> anyhow::Result<()> {
                             }
                             rows.push(o);
                         }
-                        println!("{}", serde_json::to_string_pretty(&rows)?);
+                        // An envelope, not a bare array: neighbour ids mean
+                        // nothing without the query they answer, so the query
+                        // identity travels with the data instead of sitting in
+                        // a comment beside it.
+                        let mut out = serde_json::json!({
+                            "file": path.file_name().unwrap_or_default().to_string_lossy(),
+                            "query": query,
+                            "k": k,
+                            "ground_truth_k": gt_k,
+                            "id_space": "row index into `train`; equals rekall's `id` column",
+                            "neighbors": rows,
+                        });
+                        if let Some(q) = &query_vec {
+                            out["query_vector"] = serde_json::json!(q);
+                        }
+                        println!("{}", serde_json::to_string_pretty(&out)?);
                     }
                     "table" => {
+                        println!(
+                            "query {query} of {}  \u{2014}  its {k} nearest of {gt_k} \
+                             ground-truth neighbours",
+                            path.file_name().unwrap_or_default().to_string_lossy(),
+                        );
+                        if let Some(q) = &query_vec {
+                            println!(
+                                "query vector: {}",
+                                rekall_lib::dataset::emit::vector_literal(q)
+                            );
+                        }
+                        println!();
                         println!(
                             "rank  id          {}",
                             if with_distances { "distance" } else { "" }
