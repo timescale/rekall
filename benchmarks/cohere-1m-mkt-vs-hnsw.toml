@@ -29,17 +29,26 @@
 #   rekall infra load -c infra/instances/m8g.large.toml \
 #       benchmarks/cohere-1m-mkt-vs-hnsw.toml          # load only
 #
-#   for rung in m8g.large c8g.large c8g.medium; do
-#     rekall infra resize -c "infra/instances/$rung.toml"   # no-op on the first
+#   # Rung 1: builds the indexes AND measures them. Not in the loop below --
+#   # `infra resize` to the type a box already is still stops, modifies and
+#   # starts it, so looping from the first rung reboots the box between
+#   # loading and building for no reason, and changes its public IP.
+#   rekall infra run -c infra/instances/m8g.large.toml \
+#       benchmarks/cohere-1m-mkt-vs-hnsw.toml \
+#       --clean-run --comment "cohere-1m ladder: m8g.large 8 GiB"
+#
+#   for rung in c8g.large c8g.medium; do
+#     rekall infra resize -c "infra/instances/$rung.toml"
 #     rekall infra run    -c "infra/instances/$rung.toml" \
 #         benchmarks/cohere-1m-mkt-vs-hnsw.toml \
 #         --clean-run --comment "cohere-1m ladder: $rung"
 #   done
 #
-# The first `run` builds the indexes (8 GiB is the smallest rung whose stock
-# maintenance_work_mem exceeds the ~2 GB HNSW graph, so it builds in memory,
-# in parallel, and every rung then measures HNSW's best graph). --clean-run
-# keeps each rung a separate published run.
+# 8 GiB is the rung that builds because it is the smallest whose stock
+# maintenance_work_mem exceeds the ~2 GB HNSW graph, so the graph is built in
+# memory and in parallel and every rung then measures HNSW's best artifact.
+# At the lower rungs init, load and index all skip. --clean-run keeps each
+# rung a separate published run.
 #
 # Then apply the target on the workstation:
 #

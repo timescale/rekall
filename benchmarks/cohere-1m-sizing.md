@@ -212,19 +212,26 @@ index.
 # --- LOCAL: provision the 8 GiB box and build both engines' indexes -------
 rekall infra up  -c infra/instances/m8g.large.toml
 
-# Warm reference frontier. This is the run that BUILDS; the ladder reuses
-# its indexes. Auto-publishes (remote runs publish by default).
+# Rung 1 (8 GiB). This run BUILDS the indexes and measures them; every later
+# rung reuses them. Deliberately OUTSIDE the loop below: `infra resize` is
+# not a no-op when the target type equals the current one -- it stops,
+# modifies and starts the instance regardless -- so looping from the first
+# rung would reboot the box between loading it and building on it, for
+# nothing, and reassign its public IP on the way.
 rekall infra run -c infra/instances/m8g.large.toml \
     benchmarks/cohere-1m-mkt-vs-hnsw.toml \
-    --comment "cohere-1m warm reference, builds the indexes"
+    --clean-run --comment "cohere-1m ladder: m8g.large 8 GiB"
 
 rekall infra attach -c infra/instances/m8g.large.toml   # watch it; C-b d to detach
 
-# --- LOCAL: walk the ladder, search-only at each rung --------------------
+# --- LOCAL: walk down, search-only at each rung --------------------------
+# init, load and index all skip at these rungs: the table has the right row
+# count and the indexes already exist. Never pass --rebuild -- it would
+# rebuild HNSW on the very boxes this experiment says cannot build it.
 # --clean-run keeps each rung a separate published run instead of appending
 # to the previous rung's results directory.
-for rung in m8g.large c8g.large c8g.medium; do
-  rekall infra resize -c "infra/instances/$rung.toml"   # no-op on the first
+for rung in c8g.large c8g.medium; do
+  rekall infra resize -c "infra/instances/$rung.toml"
   rekall infra run    -c "infra/instances/$rung.toml" \
       benchmarks/cohere-1m-mkt-vs-hnsw.toml \
       --clean-run --comment "cohere-1m ladder: $rung"
