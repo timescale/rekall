@@ -960,11 +960,158 @@ enum DatasetCommand {
         path: PathBuf,
     },
 
+    /// Print a query's ground-truth neighbours from the dataset file.
+    ///
+    /// Offline: reads `neighbors` (and `distances` when present) straight
+    /// from the HDF5. The values are row indices into `train`, which is
+    /// exactly what rekall writes as `id`, so they compare directly against
+    /// what a query returns.
+    ///
+    /// Fails when the file carries no ground truth -- use `dataset sql` to
+    /// generate an exact query and compute it yourself.
+    Truth {
+        /// Path to HDF5 file
+        path: PathBuf,
+
+        /// Query row from the `test` set.
+        #[arg(long, default_value_t = 0)]
+        query: usize,
+
+        /// Neighbours to show. Capped at the file's ground-truth k.
+        #[arg(long, default_value_t = 10)]
+        k: usize,
+
+        /// Include the stored distance for each neighbour.
+        #[arg(long)]
+        with_distances: bool,
+
+        /// Also print each neighbour's vector, read from `train`. One HDF5
+        /// read per neighbour -- fine at k=10, not at k=1000.
+        #[arg(long)]
+        with_vectors: bool,
+
+        /// ids (one per line, pipeable), table, or json.
+        #[arg(long, default_value = "ids")]
+        format: String,
+    },
+
     /// Validate HDF5 dataset structure
     Validate {
         /// Path to HDF5 file
         path: PathBuf,
     },
+
+    /// Emit the SQL for a dataset's query, for running by hand.
+    ///
+    /// Offline: reads the file and prints SQL. No database is contacted and
+    /// no table need exist. Defaults mirror a real rekall load — table
+    /// `<dataset>` with `-` as `_`, columns `id`/`v`, operator from the
+    /// metric — so the output runs unmodified against a rekall-loaded table.
+    ///
+    /// Ground truth is not required; only `test` and the dimension are read.
+    Sql {
+        /// Path to HDF5 file
+        path: PathBuf,
+
+        /// Query row(s) from the `test` set: `0`, or a range like `0-99`
+        /// to emit a batch (one statement is one sample; a batch is a
+        /// benchmark).
+        #[arg(long, default_value = "0")]
+        query: String,
+
+        /// Neighbours to return. Defaults to rekall's search.k.
+        #[arg(long, default_value_t = 10)]
+        k: usize,
+
+        /// Target table. Defaults to the filename stem with `-` as `_`,
+        /// which will NOT match a suite-loaded table — the suite names the
+        /// dataset and the file cannot recover that. Pass --config for the
+        /// exact name.
+        #[arg(long)]
+        table: Option<String>,
+
+        /// ORDER BY operand (the vector column).
+        #[arg(long, default_value = "v")]
+        column: String,
+
+        /// Projected id column.
+        #[arg(long, default_value = "id")]
+        id_column: String,
+
+        /// Distance metric. Inferred from the file's `distance` attribute,
+        /// then the filename; a wrong operator silently returns wrong rows,
+        /// so inference failure is an error rather than a guess.
+        #[arg(long)]
+        metric: Option<String>,
+
+        /// Project the distance alongside the id.
+        #[arg(long)]
+        with_distance: bool,
+
+        /// Wrap each statement in EXPLAIN (ANALYZE, BUFFERS).
+        #[arg(long)]
+        explain: bool,
+
+        /// Emit `SET <name> = <value>;` before the statements. Repeatable.
+        #[arg(long = "set", value_name = "NAME=VALUE")]
+        sets: Vec<String>,
+    },
+}
+
+/// Resolve the metric for an offline emit: explicit flag, then the file's
+/// ann-benchmarks `distance` attribute, then the filename. Errors rather
+/// than defaulting -- the metric picks the distance operator, and the wrong
+/// operator produces SQL that runs fine and returns the wrong rows.
+fn resolve_emit_metric(
+    explicit: Option<&str>,
+    info: &rekall_lib::dataset::hdf5::DatasetInfo,
+    path: &std::path::Path,
+) -> anyhow::Result<(rekall_lib::config::Metric, &'static str)> {
+    use rekall_lib::dataset::emit::{metric_from_attr, metric_from_filename};
+
+    if let Some(m) = explicit {
+        let parsed = metric_from_attr(m).ok_or_else(|| {
+            anyhow::anyhow!("Unknown --metric '{m}' (expected angular or euclidean)")
+        })?;
+        return Ok((parsed, "--metric"));
+    }
+    if let Some(attr) = info.distance_attr.as_deref() {
+        if let Some(m) = metric_from_attr(attr) {
+            return Ok((m, "the file's `distance` attribute"));
+        }
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    if let Some(m) = metric_from_filename(&name) {
+        return Ok((m, "the filename"));
+    }
+    Err(anyhow::anyhow!(
+        "Cannot determine the distance metric for {}: no usable `distance` attribute \
+         and nothing recognizable in the filename. Pass --metric angular|euclidean. \
+         Guessing is not safe here -- the metric picks the distance operator, and the \
+         wrong one returns wrong rows without erroring.",
+        path.display()
+    ))
+}
+
+/// Parse `N` or `N-M` into an inclusive row range over the `test` set.
+fn parse_query_range(spec: &str, num_test: u64) -> anyhow::Result<(usize, usize)> {
+    let (lo, hi) = match spec.split_once('-') {
+        Some((a, b)) => (a.trim().parse::<usize>()?, b.trim().parse::<usize>()?),
+        None => {
+            let n = spec.trim().parse::<usize>()?;
+            (n, n)
+        }
+    };
+    if lo > hi {
+        anyhow::bail!("--query range '{spec}' is inverted");
+    }
+    if hi as u64 >= num_test {
+        anyhow::bail!(
+            "--query {hi} is out of range: the file has {num_test} query rows (0-{})",
+            num_test.saturating_sub(1)
+        );
+    }
+    Ok((lo, hi))
 }
 
 #[tokio::main]
@@ -1255,6 +1402,194 @@ async fn main() -> anyhow::Result<()> {
                 println!("Dataset: {}", path.display());
                 println!("{info}");
             }
+            DatasetCommand::Sql {
+                path,
+                query,
+                k,
+                table,
+                column,
+                id_column,
+                metric,
+                with_distance,
+                explain,
+                sets,
+            } => {
+                use rekall_lib::dataset::emit::{table_from_stem, SqlTarget};
+                use rekall_lib::dataset::DatasetReader;
+
+                let info = Hdf5Reader::info(&path)?;
+                let (metric, metric_src) = resolve_emit_metric(metric.as_deref(), &info, &path)?;
+                let (lo, hi) = parse_query_range(&query, info.num_test)?;
+
+                let stem = path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let (table, table_src) = match table {
+                    Some(t) => (t, "--table"),
+                    None => (table_from_stem(&stem), "the filename"),
+                };
+
+                let reader = Hdf5Reader::open(&path, metric, info.dimension)?;
+                let queries = reader.queries()?;
+
+                let mut target = SqlTarget::defaults(table, info.dimension, metric);
+                target.operand = column;
+                target.id_column = id_column;
+
+                // Provenance up front: the two fields that cannot be read
+                // from the file are the two most likely to be wrong.
+                println!(
+                    "-- rekall dataset sql \u{2014} generated from {}",
+                    path.display()
+                );
+                println!("-- table `{}` from {table_src}", target.table);
+                println!("-- metric {metric} from {metric_src}");
+                println!(
+                    "-- dim {} \u{b7} k {k} \u{b7} query rows {lo}-{hi}",
+                    info.dimension
+                );
+                println!();
+
+                for set in &sets {
+                    let (name, value) = set
+                        .split_once('=')
+                        .ok_or_else(|| anyhow::anyhow!("--set expects NAME=VALUE, got '{set}'"))?;
+                    println!("SET {name} = {value};");
+                }
+                if !sets.is_empty() {
+                    println!();
+                }
+
+                for qi in lo..=hi {
+                    let row = queries.row(qi);
+                    let q = row
+                        .as_slice()
+                        .ok_or_else(|| anyhow::anyhow!("query row {qi} is not contiguous"))?;
+                    let stmt = if with_distance {
+                        target.select_with_distance(q, k)
+                    } else {
+                        target.select(q, k)
+                    };
+                    if hi > lo {
+                        println!("-- query {qi}");
+                    }
+                    if explain {
+                        println!("EXPLAIN (ANALYZE, BUFFERS)\n{stmt};");
+                    } else {
+                        println!("{stmt};");
+                    }
+                }
+            }
+            DatasetCommand::Truth {
+                path,
+                query,
+                k,
+                with_distances,
+                with_vectors,
+                format,
+            } => {
+                use rekall_lib::dataset::DatasetReader;
+
+                let info = Hdf5Reader::info(&path)?;
+                if !info.has_neighbors {
+                    anyhow::bail!(
+                        "{} carries no ground truth (`neighbors` is absent). Use \
+                         `rekall dataset sql` to emit an exact query and compute it \
+                         from the table instead.",
+                        path.display()
+                    );
+                }
+                if query as u64 >= info.num_test {
+                    anyhow::bail!(
+                        "--query {query} is out of range: the file has {} query rows (0-{})",
+                        info.num_test,
+                        info.num_test.saturating_sub(1)
+                    );
+                }
+                let gt_k = info.ground_truth_k.unwrap_or(k as u32) as usize;
+                let k = k.min(gt_k);
+
+                // The metric is irrelevant to reading ground truth, but the
+                // reader wants one; angular is inert here.
+                let reader =
+                    Hdf5Reader::open(&path, rekall_lib::config::Metric::Angular, info.dimension)?;
+                let gt = reader.ground_truth()?;
+                let dists = reader.ground_truth_distances()?;
+                let ids: Vec<i64> = gt.row(query).iter().take(k).copied().collect();
+                let ds: Option<Vec<f32>> = dists
+                    .as_ref()
+                    .map(|d| d.row(query).iter().take(k).copied().collect());
+
+                let vecs: Option<Vec<Vec<f32>>> = if with_vectors {
+                    let mut out = Vec::with_capacity(ids.len());
+                    for id in &ids {
+                        // train_range takes (start, end, chunk_size) and
+                        // yields Results; one row is start..start+1.
+                        let start = *id as u64;
+                        let chunk = reader
+                            .train_range(start, start + 1, 1)
+                            .next()
+                            .ok_or_else(|| anyhow::anyhow!("train row {id} not readable"))??;
+                        out.push(chunk.vectors.row(0).to_vec());
+                    }
+                    Some(out)
+                } else {
+                    None
+                };
+
+                match format.as_str() {
+                    "ids" => {
+                        for id in &ids {
+                            println!("{id}");
+                        }
+                    }
+                    "json" => {
+                        let mut rows = Vec::new();
+                        for (i, id) in ids.iter().enumerate() {
+                            let mut o = serde_json::json!({ "rank": i + 1, "id": id });
+                            if with_distances {
+                                if let Some(d) = &ds {
+                                    o["distance"] = serde_json::json!(d[i]);
+                                }
+                            }
+                            if let Some(v) = &vecs {
+                                o["vector"] = serde_json::json!(v[i]);
+                            }
+                            rows.push(o);
+                        }
+                        println!("{}", serde_json::to_string_pretty(&rows)?);
+                    }
+                    "table" => {
+                        println!(
+                            "rank  id          {}",
+                            if with_distances { "distance" } else { "" }
+                        );
+                        for (i, id) in ids.iter().enumerate() {
+                            match (&ds, with_distances) {
+                                (Some(d), true) => println!("{:<5} {:<11} {}", i + 1, id, d[i]),
+                                _ => println!("{:<5} {}", i + 1, id),
+                            }
+                            if let Some(v) = &vecs {
+                                println!(
+                                    "      {}",
+                                    rekall_lib::dataset::emit::vector_literal(&v[i])
+                                );
+                            }
+                        }
+                    }
+                    other => anyhow::bail!("Unknown --format '{other}' (ids, table, json)"),
+                }
+
+                if with_distances && ds.is_none() {
+                    eprintln!(
+                        "note: --with-distances requested but {} has no `distances` dataset",
+                        path.display()
+                    );
+                }
+            }
+
             DatasetCommand::Validate { path } => match Hdf5Reader::info(&path) {
                 Ok(info) => {
                     println!("Dataset: {} (valid)", path.display());
