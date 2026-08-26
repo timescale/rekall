@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-08-26/m8g.large-192139",
+  "dataset": "cohere-1m",
+  "date": "2026-08-26",
+  "time": "19:21:39",
+  "timestamp": "2026-08-26T19:21:39+0000",
+  "instance_type": "m8g.large",
+  "hostname": "ip-172-31-11-119",
+  "cpu_model": "unknown",
+  "cpu_count": 2,
+  "memory_gb": 7.6,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "1834b41",
+  "extensions": {
+    "meerkat": "0.1.0 (12d8109)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.997219999999995,
+  "qps_at_peak": 38.51734387077477,
+  "num_indexes": 3,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-08-26/m8g.large-192139/",
+  "comment": "cohere-1m ladder: m8g.large 8 GiB"
+}
