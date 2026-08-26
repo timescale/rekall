@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-08-26/m8g.large-124333",
+  "dataset": "cohere-1m",
+  "date": "2026-08-26",
+  "time": "12:43:33",
+  "timestamp": "2026-08-26T12:43:33+0000",
+  "instance_type": "m8g.large",
+  "hostname": "ip-172-31-0-116",
+  "cpu_model": "unknown",
+  "cpu_count": 2,
+  "memory_gb": 7.6,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "739ae7a",
+  "extensions": {
+    "meerkat": "0.1.0 (12d8109)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.9972299999999952,
+  "qps_at_peak": 36.29572613614443,
+  "num_indexes": 3,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-08-26/m8g.large-124333/",
+  "comment": "cohere-1m warm reference, builds the indexes"
+}
