@@ -300,9 +300,19 @@ impl AwsNativeBackend {
             "ResourceType=instance,Tags=[{{Key=Name,Value={instance_name}}},{{Key=rekall:suite,Value={}}}]",
             self.config.name_prefix
         );
-        let block_device = format!(
-            "DeviceName=/dev/sda1,Ebs={{VolumeSize={},VolumeType=gp3}}",
-            self.config.disk_size_gb
+        // Honour disk_iops / disk_throughput. They used to be dropped here:
+        // the spec carried only VolumeSize and VolumeType, so a config asking
+        // for 16000 IOPS launched on the gp3 3000 baseline and nothing said
+        // so. A whole benchmark rung was measured against a volume nobody
+        // knew was the bottleneck.
+        //
+        // Omitted rather than defaulted when unset, so the volume keeps gp3's
+        // included baseline (3000 IOPS / 125 MiB/s) instead of being billed
+        // for provisioned values the config never asked for.
+        let block_device = block_device_mapping(
+            self.config.disk_size_gb,
+            self.config.disk_iops,
+            self.config.disk_throughput,
         );
         let profile_arg = self
             .config
@@ -442,6 +452,68 @@ impl AwsNativeBackend {
     /// Re-point the `rekall:suite` tag at this backend's configured
     /// name_prefix, so a box that changed instance type (and thus target
     /// config) is discoverable under the new config.
+    /// Bring the attached root volume in line with the config's
+    /// `disk_iops` / `disk_throughput`.
+    ///
+    /// Resizing an instance without this leaves the volume as launched, so a
+    /// rung is not a coherent deployment: you downsize the box to save money
+    /// and keep paying for -- or silently keep relying on -- the previous
+    /// rung's storage. Provisioned IOPS above the gp3 baseline can cost more
+    /// than these instances do, so it has to move with them.
+    ///
+    /// `modify-volume` is an online operation: no stop, no detach, no data
+    /// loss. AWS applies it asynchronously (the volume enters `optimizing`
+    /// and serves I/O throughout), so this does not wait for completion.
+    /// Returns Ok(false) when the config asks for nothing, or when the
+    /// volume already matches.
+    pub fn sync_root_volume_perf(&self, instance_id: &str) -> Result<bool> {
+        let (Some(iops), tp) = (self.config.disk_iops, self.config.disk_throughput) else {
+            return Ok(false);
+        };
+
+        let v = self.run_aws_json(&[
+            "ec2",
+            "describe-volumes",
+            "--filters",
+            &format!("Name=attachment.instance-id,Values={instance_id}"),
+            "--query",
+            "Volumes[0].[VolumeId,Iops,Throughput]",
+        ])?;
+        let arr = v.as_array().map(|a| a.as_slice()).unwrap_or_default();
+        let Some(vol_id) = arr.first().and_then(|x| x.as_str()) else {
+            return Ok(false);
+        };
+        let cur_iops = arr.get(1).and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+        let cur_tp = arr.get(2).and_then(|x| x.as_u64()).unwrap_or(0) as u32;
+
+        if cur_iops == iops && tp.is_none_or(|t| t == cur_tp) {
+            return Ok(false);
+        }
+
+        let iops_s = iops.to_string();
+        let mut args: Vec<&str> = vec![
+            "ec2",
+            "modify-volume",
+            "--volume-id",
+            vol_id,
+            "--iops",
+            &iops_s,
+        ];
+        let tp_s = tp.map(|t| t.to_string());
+        if let Some(ref t) = tp_s {
+            args.push("--throughput");
+            args.push(t);
+        }
+        self.run_aws_json(&args)?;
+        info!(
+            "Volume {vol_id}: {cur_iops} -> {iops} IOPS{} (modify-volume is \
+             online; AWS optimizes in the background)",
+            tp.map(|t| format!(", {cur_tp} -> {t} MiB/s"))
+                .unwrap_or_default(),
+        );
+        Ok(true)
+    }
+
     pub fn retag_suite(&self, instance_id: &str) -> Result<()> {
         self.tag_resource(instance_id, &self.config.name_prefix)
     }
@@ -898,5 +970,55 @@ impl std::io::Write for Base64Encoder<'_> {
 
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
+    }
+}
+
+/// The `--block-device-mappings` spec for `run-instances`.
+///
+/// Split out so a test can pin it: `disk_iops` and `disk_throughput` used to
+/// be absent here, which is not a visible failure -- the instance launches
+/// fine and quietly serves the gp3 baseline. That cost a benchmark rung.
+///
+/// Unset values are omitted rather than defaulted, so the volume keeps gp3's
+/// included 3000 IOPS / 125 MiB/s instead of being billed for provisioned
+/// figures nobody asked for.
+fn block_device_mapping(size_gb: u32, iops: Option<u32>, throughput: Option<u32>) -> String {
+    let mut ebs = format!("VolumeSize={size_gb},VolumeType=gp3");
+    if let Some(i) = iops {
+        ebs.push_str(&format!(",Iops={i}"));
+    }
+    if let Some(t) = throughput {
+        ebs.push_str(&format!(",Throughput={t}"));
+    }
+    format!("DeviceName=/dev/sda1,Ebs={{{ebs}}}")
+}
+
+#[cfg(test)]
+mod block_device_tests {
+    use super::block_device_mapping;
+
+    #[test]
+    fn provisioned_values_reach_the_launch_spec() {
+        assert_eq!(
+            block_device_mapping(100, Some(16000), Some(1000)),
+            "DeviceName=/dev/sda1,Ebs={VolumeSize=100,VolumeType=gp3,Iops=16000,Throughput=1000}"
+        );
+    }
+
+    #[test]
+    fn unset_values_are_omitted_not_defaulted() {
+        // Omission is what keeps the volume on gp3's included baseline.
+        assert_eq!(
+            block_device_mapping(100, None, None),
+            "DeviceName=/dev/sda1,Ebs={VolumeSize=100,VolumeType=gp3}"
+        );
+    }
+
+    #[test]
+    fn iops_without_throughput_is_valid() {
+        assert_eq!(
+            block_device_mapping(60, Some(6000), None),
+            "DeviceName=/dev/sda1,Ebs={VolumeSize=60,VolumeType=gp3,Iops=6000}"
+        );
     }
 }

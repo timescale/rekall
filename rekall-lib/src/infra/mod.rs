@@ -739,12 +739,24 @@ pub fn resize_instance_to(
     let backend = AwsNativeBackend::new(state.base_dir().to_path_buf(), target);
     let new_ip = backend.resize_instance(instance_id, &target.instance_type)?;
 
-    // 3. Adopt the box under the target config: re-tag the suite and
+    // 3. Bring the volume in line with the target's disk spec, so a rung is
+    //    a coherent deployment rather than a new instance size bolted onto
+    //    the previous rung's storage. Online; a failure here is logged and
+    //    not fatal, since the resize itself has already succeeded.
+    if let Err(e) = backend.sync_root_volume_perf(instance_id) {
+        tracing::warn!(
+            "Could not apply the target's disk_iops/disk_throughput: {e}. The \
+             volume keeps its previous settings -- the run will record what it \
+             actually used."
+        );
+    }
+
+    // 4. Adopt the box under the target config: re-tag the suite and
     //    persist local state so `-c <target>` resolves it afterward.
     let _ = backend.retag_suite(instance_id);
     let _ = backend.adopt(instance_id, &new_ip, &target.instance_type, instance_name);
 
-    // 4. Wait for SSH + PostgreSQL on the new IP.
+    // 5. Wait for SSH + PostgreSQL on the new IP.
     ssh_wait(&new_ip, &ssh_priv)?;
     info!("Waiting for PostgreSQL to accept connections on the resized instance...");
     let key_path = Path::new(&ssh_priv);
