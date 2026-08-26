@@ -1585,8 +1585,24 @@ async fn main() -> anyhow::Result<()> {
 
                 match format.as_str() {
                     "ids" => {
-                        for id in &ids {
-                            println!("{id}");
+                        // Tab-separated when extra columns are asked for, so
+                        // the output stays pipeable (`cut -f1` still yields
+                        // bare ids). Silently dropping the flags here -- the
+                        // previous behaviour -- was the worst option: json
+                        // honoured them and ids did not, with no warning.
+                        for (i, id) in ids.iter().enumerate() {
+                            let mut line = id.to_string();
+                            if with_distances {
+                                if let Some(d) = &ds {
+                                    line.push('\t');
+                                    line.push_str(&d[i].to_string());
+                                }
+                            }
+                            if let Some(v) = &vecs {
+                                line.push('\t');
+                                line.push_str(&rekall_lib::dataset::emit::vector_literal(&v[i]));
+                            }
+                            println!("{line}");
                         }
                     }
                     "json" => {
