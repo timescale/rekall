@@ -1583,6 +1583,19 @@ async fn main() -> anyhow::Result<()> {
                     None
                 };
 
+                // Provenance on stderr, not stdout: the ids format exists to
+                // be piped, and a bare column of large integers carries no
+                // hint of what it is. stderr keeps `| cut` and `| jq` clean
+                // while still explaining the output when run by hand.
+                eprintln!(
+                    "# {}: ground truth for test query {query}, top {k} of {gt_k}",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                );
+                eprintln!(
+                    "# ids are 0-based row indices into `train` \u{2014} the same values \
+                     rekall loads as `id`"
+                );
+
                 match format.as_str() {
                     "ids" => {
                         // Tab-separated when extra columns are asked for, so
