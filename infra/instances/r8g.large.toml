@@ -24,28 +24,39 @@ region       = "us-east-1"
 
 instance_type = "r8g.large"
 
-# Held constant across the whole ladder so RAM is the only variable, and
-# provisioned to the gp3 maximum (16000 IOPS / 1000 MiB/s) on purpose.
-#
-# That is a correction of an earlier choice to leave it at the gp3 defaults
-# "so as not to mask the memory effect". Under-provisioning storage does not
-# reveal the memory effect, it replaces it: Meerkat reranks 160 random heap
-# pages per query, so an uncached heap needs ~65 reads/query at the 4 GiB
-# rung and ~124 at 2 GiB. At 3000 IOPS that alone caps the box at ~46 and
-# ~24 QPS -- the ladder would be measuring the volume, not the box's RAM.
-# Maxing IOPS keeps RAM the binding constraint, which is the point.
-#
-# Instance-store NVMe would be better still, but it is incompatible with
-# this workflow: `rekall infra resize` stops and starts the instance, and
-# instance-store volumes are wiped by a stop. PGDATA has to be on EBS for
-# the built indexes to survive the walk down the ladder.
+# Instance-store NVMe is not an option here: `rekall infra resize` stops and
+# starts the instance, and instance-store volumes are wiped by a stop, so
+# PGDATA has to be on EBS for the built indexes to survive the walk down the
+# ladder. (The run records what the storage actually was, so a box that
+# silently landed elsewhere shows up on the results page.)
 #
 # Disk budget: cohere-1M hdf5 (~3.1 GB) + heap (~4.1 GB) + two HNSW
 # halfvec graphs (~2.0 GB each) + meerkat (~0.3 GB) + max_wal_size + the
 # OS/PG install. 100 GB fits with room to spare.
-disk_size_gb    = 100
-disk_iops       = 16000
-disk_throughput = 1000
+# gp3 at its included baseline: 3000 IOPS / 125 MiB/s, no provisioned
+# extra. Held constant across every rung.
+#
+# This is a deliberate reversal. These configs asked for 16000/1000 on the
+# theory that under-provisioning storage would replace the memory effect
+# rather than reveal it. Two things overturned that:
+#
+#   1. Provisioning it costs ~$108/mo for 100 GB -- more than any instance
+#      on this ladder ($37-$74). The comparison is "cheapest box that hits
+#      the target", so storage nobody would actually buy would dominate the
+#      very number being measured. A real deployment on a $66/mo box runs
+#      gp3 defaults, and the baseline is included in the per-GB price, so
+#      there is nothing cheaper to drop to.
+#
+#   2. It does not distort the measurement anyway, as long as the runs are
+#      warm. The 8 GiB rung recorded zero disk reads on every sweep point
+#      once its cache settled -- the volume never entered the measurement.
+#      Storage only starts to matter at the rung where the working set stops
+#      fitting, and there its effect is part of the answer rather than noise.
+#
+# If you want the provisioned-IOPS variant, make it a separate arm of the
+# frontier rather than a constant -- it is a different price point, not a
+# better-controlled version of this one.
+disk_size_gb = 100
 
 name_prefix = "rekall-1m-ladder"
 

@@ -129,9 +129,12 @@ either confirm or refute this.
 
 ## The ladder
 
-All Graviton4, all 100 GB gp3 at **default** IOPS/throughput (deliberately
-not over-provisioned — over-provisioning the storage would hide exactly the
-effect being measured). The three `.large` rungs are all 2 vCPU, so RAM is
+All Graviton4, all 100 GB gp3 at its included baseline (3000 IOPS /
+125 MiB/s), held constant. Provisioning more would cost ~$108/mo — more than
+any instance on the ladder — and would dominate the cost figure being
+measured; a real deployment on a $66/mo box runs gp3 defaults. Warm runs are
+insensitive to it anyway wherever the working set fits: the 8 GiB rung
+recorded zero disk reads per sweep point once its cache settled. The three `.large` rungs are all 2 vCPU, so RAM is
 the only variable between them.
 
 | Config | vCPU | RAM | `shared_buffers` | `maintenance_work_mem` |
