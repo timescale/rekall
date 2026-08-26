@@ -995,6 +995,50 @@ enum DatasetCommand {
         format: String,
     },
 
+    /// Emit one statement that compares a query's results against the
+    /// file's ground truth.
+    ///
+    /// The composite of `sql` and `truth`: the truth is inlined as a VALUES
+    /// list and full-outer-joined against what the table returns, so a
+    /// single paste into psql gives a per-rank verdict. Still offline --
+    /// only the emitted statement needs a database.
+    ///
+    /// Distance ties count as correct, matching the tolerance the published
+    /// recall uses; without that a correct index looks broken at the tail
+    /// wherever the data clusters.
+    Compare {
+        /// Path to HDF5 file
+        path: PathBuf,
+
+        /// Query row from the `test` set.
+        #[arg(long, default_value_t = 0)]
+        query: usize,
+
+        /// Neighbours to compare. Capped at the file's ground-truth k.
+        #[arg(long, default_value_t = 10)]
+        k: usize,
+
+        /// Target table. Defaults to the filename stem with `-` as `_`.
+        #[arg(long)]
+        table: Option<String>,
+
+        /// ORDER BY operand (the vector column).
+        #[arg(long, default_value = "v")]
+        column: String,
+
+        /// Projected id column.
+        #[arg(long, default_value = "id")]
+        id_column: String,
+
+        /// Distance metric; inferred from the file when omitted.
+        #[arg(long)]
+        metric: Option<String>,
+
+        /// Tie tolerance. Defaults to the value the published recall uses.
+        #[arg(long, default_value_t = 1e-3)]
+        epsilon: f64,
+    },
+
     /// Validate HDF5 dataset structure
     Validate {
         /// Path to HDF5 file
@@ -1588,6 +1632,83 @@ async fn main() -> anyhow::Result<()> {
                         path.display()
                     );
                 }
+            }
+
+            DatasetCommand::Compare {
+                path,
+                query,
+                k,
+                table,
+                column,
+                id_column,
+                metric,
+                epsilon,
+            } => {
+                use rekall_lib::dataset::emit::{compare_sql, table_from_stem, SqlTarget};
+                use rekall_lib::dataset::DatasetReader;
+
+                let info = Hdf5Reader::info(&path)?;
+                if !info.has_neighbors {
+                    anyhow::bail!(
+                        "{} carries no ground truth (`neighbors` is absent), so there is \
+                         nothing to compare against. `rekall dataset sql` emits the exact \
+                         query if you want to compute the truth yourself.",
+                        path.display()
+                    );
+                }
+                if query as u64 >= info.num_test {
+                    anyhow::bail!(
+                        "--query {query} is out of range: the file has {} query rows (0-{})",
+                        info.num_test,
+                        info.num_test.saturating_sub(1)
+                    );
+                }
+                let (metric, metric_src) = resolve_emit_metric(metric.as_deref(), &info, &path)?;
+                let k = k.min(info.ground_truth_k.unwrap_or(k as u32) as usize);
+
+                let stem = path
+                    .file_stem()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
+                let (table, table_src) = match table {
+                    Some(t) => (t, "--table"),
+                    None => (table_from_stem(&stem), "the filename"),
+                };
+
+                let reader = Hdf5Reader::open(&path, metric, info.dimension)?;
+                let queries = reader.queries()?;
+                let gt = reader.ground_truth()?;
+                let dists = reader.ground_truth_distances()?;
+
+                let row = queries.row(query);
+                let q = row
+                    .as_slice()
+                    .ok_or_else(|| anyhow::anyhow!("query row {query} is not contiguous"))?;
+                let ids: Vec<i64> = gt.row(query).iter().take(k).copied().collect();
+                let ds: Option<Vec<f32>> = dists
+                    .as_ref()
+                    .map(|d| d.row(query).iter().take(k).copied().collect());
+
+                let mut target = SqlTarget::defaults(table, info.dimension, metric);
+                target.operand = column;
+                target.id_column = id_column;
+
+                println!(
+                    "-- rekall dataset compare \u{2014} generated from {}",
+                    path.display()
+                );
+                println!("-- table `{}` from {table_src}", target.table);
+                println!("-- metric {metric} from {metric_src}");
+                println!("-- query {query} \u{b7} k {k} \u{b7} tie epsilon {epsilon}");
+                if ds.is_none() {
+                    println!("-- note: file has no `distances`; ties cannot be detected");
+                }
+                println!();
+                println!(
+                    "{};",
+                    compare_sql(&target, q, &ids, ds.as_deref(), k, epsilon)
+                );
             }
 
             DatasetCommand::Validate { path } => match Hdf5Reader::info(&path) {

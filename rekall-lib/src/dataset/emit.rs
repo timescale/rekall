@@ -151,9 +151,80 @@ pub fn table_from_stem(stem: &str) -> String {
     stem.replace('-', "_")
 }
 
+/// A self-contained statement that joins the file's ground truth against
+/// what the table actually returns.
+///
+/// The truth is inlined as a VALUES list, so the result needs nothing but
+/// the table -- paste it into psql and read the verdict per neighbour.
+///
+/// The join is on **id**, not rank. Joining on rank only shows positional
+/// agreement and leaves `missed`/`extra` unreachable, because a full outer
+/// join over 1..k always pairs up. Joining on id answers the question that
+/// matters -- which true neighbours came back -- so every status is live:
+///
+///   ok      a true neighbour was returned
+///   missed  a true neighbour was not returned
+///   tie     a returned row is not in the truth list but is at least as
+///           good as the k-th true neighbour, within `epsilon`. This is the
+///           same tolerance `recall_distance_based` applies; without it a
+///           correct index looks broken wherever the data clusters.
+///   extra   a returned row that is genuinely worse than the k-th
+pub fn compare_sql(
+    target: &SqlTarget,
+    query: &[f32],
+    truth_ids: &[i64],
+    truth_dists: Option<&[f32]>,
+    k: usize,
+    epsilon: f64,
+) -> String {
+    let bound = target.bind(&vector_literal(query));
+    let n = truth_ids.len().min(k);
+
+    let values: Vec<String> = (0..n)
+        .map(|i| match truth_dists {
+            Some(d) => format!("({}, {}::bigint, {}::float8)", i + 1, truth_ids[i], d[i]),
+            None => format!("({}, {}::bigint, NULL::float8)", i + 1, truth_ids[i]),
+        })
+        .collect();
+
+    format!(
+        "WITH truth(rank, id, distance) AS (\n  VALUES {values}\n),\n         got AS (\n  SELECT {id} AS id,\n         {operand} {op} {bound} AS distance,\n                  row_number() OVER (ORDER BY {operand} {op} {bound}) AS rank\n             FROM {table}\n   ORDER BY 2\n   LIMIT {k}\n),\n         kth AS (SELECT max(distance) AS d FROM truth)\n         SELECT t.rank AS truth_rank,\n       g.rank AS got_rank,\n                coalesce(t.id, g.id) AS id,\n                t.distance AS truth_distance,\n       g.distance AS got_distance,\n                CASE WHEN t.id IS NOT NULL AND g.id IS NOT NULL THEN 'ok'\n                     WHEN g.id IS NULL THEN 'missed'\n                     WHEN g.distance <= (SELECT d FROM kth) + {epsilon} THEN 'tie'\n                     ELSE 'extra' END AS status\n           FROM truth t FULL OUTER JOIN got g ON t.id = g.id\n          ORDER BY coalesce(t.rank, 2147483647), g.rank",
+        values = values.join(",\n         "),
+        id = target.id_column,
+        operand = target.operand,
+        op = target.order_op,
+        bound = bound,
+        table = target.table,
+        k = k,
+        epsilon = epsilon,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compare_sql_inlines_truth_and_marks_ties() {
+        let t = SqlTarget::defaults("tbl", 2, Metric::Angular);
+        let sql = compare_sql(&t, &[1.0, 0.0], &[7, 8], Some(&[0.1, 0.2]), 2, 1e-3);
+        assert!(sql.contains("(1, 7::bigint, 0.1::float8)"));
+        assert!(sql.contains("(2, 8::bigint, 0.2::float8)"));
+        assert!(sql.contains("FROM tbl"));
+        assert!(sql.contains("FULL OUTER JOIN got g ON t.id = g.id"));
+        assert!(sql.contains("'missed'"));
+        assert!(sql.contains("'extra'"));
+        assert!(sql.contains("'tie'"));
+        assert!(sql.contains("LIMIT 2"));
+    }
+
+    #[test]
+    fn compare_sql_without_distances_emits_nulls() {
+        let t = SqlTarget::defaults("tbl", 2, Metric::Euclidean);
+        let sql = compare_sql(&t, &[1.0, 0.0], &[7], None, 1, 1e-3);
+        assert!(sql.contains("(1, 7::bigint, NULL::float8)"));
+        assert!(sql.contains(" <-> "));
+    }
 
     #[test]
     fn vector_literal_round_trips() {
