@@ -1,19 +1,50 @@
-# Suite: cohere-1M -- Meerkat vs pgvector HNSW (halfvec), optimal settings.
+# Suite: cohere-1M -- cheapest Meerkat vs cheapest HNSW at equal performance.
 #
-# The reference run: build both engines' indexes once and measure the full
-# recall/QPS frontier, index size and build time with everything resident in
-# RAM. It is the control for the small-instance ladder in
-# cohere-1m-small-instance.toml, which re-queries these same physical indexes
-# on progressively smaller boxes -- so run this one FIRST, on the ladder's
-# top rung (infra/instances/m8g.large.toml, 8 GiB), and leave it up.
+# ONE suite, run at EVERY rung of the RAM ladder. There used to be a second
+# "small-instance" suite for the lower rungs; it had the same three arms and
+# differed only in its dataset config, which set cache = "disk-cold" while
+# this one is warm. That made the rungs incomparable -- 8 GiB warm against
+# 4 GiB disk-cold measures two different things -- so the two were collapsed
+# into this file. Whatever settings a comparison needs, every rung must
+# share them, and the cheapest way to guarantee that is one suite.
 #
-# 8 GiB is the entry point because its stock-tuned maintenance_work_mem
-# (2*RAM/5 = 3 GB) already exceeds the ~2.05 GB HNSW graph. HNSW builds in
-# memory, in parallel, with no per-phase retuning -- so the artifact both
-# suites then measure is HNSW's best graph, not one handicapped by a serial
-# small-box build. (Building in place on 4 GiB is possible via
-# cohere-1m-build-floor.toml, but a serial build yields a different graph;
-# that is a separate question, not this comparison.)
+# Warm is the right policy here. The question is the least expensive box that
+# still serves at a target recall and QPS, which is a steady-state serving
+# question: a real server's cache holds whatever fits. Warm mode runs
+# `warmup` queries before each sweep point, so the cache settles at the
+# natural equilibrium for that box and working set -- exactly the variable
+# the ladder is varying. Dropping caches per point instead prevents the box
+# from using its RAM at all, which makes a big box and a small box look
+# artificially alike (and silently skips the warmup entirely: see the
+# `Skip warmup to measure cold-cache performance` branch in phase/search.rs).
+#
+# The build happens once, on the top rung, and every later rung reuses it --
+# `rekall run` skips an index that already exists. Do NOT pass --rebuild:
+# that would rebuild HNSW on the very boxes this experiment says cannot
+# build it.
+#
+# Usage (from your WORKSTATION; infra run executes on the instance):
+#
+#   rekall infra up  -c infra/instances/m8g.large.toml
+#   rekall infra load -c infra/instances/m8g.large.toml \
+#       benchmarks/cohere-1m-mkt-vs-hnsw.toml          # load only
+#
+#   for rung in m8g.large c8g.large c8g.medium; do
+#     rekall infra resize -c "infra/instances/$rung.toml"   # no-op on the first
+#     rekall infra run    -c "infra/instances/$rung.toml" \
+#         benchmarks/cohere-1m-mkt-vs-hnsw.toml \
+#         --clean-run --comment "cohere-1m ladder: $rung"
+#   done
+#
+# The first `run` builds the indexes (8 GiB is the smallest rung whose stock
+# maintenance_work_mem exceeds the ~2 GB HNSW graph, so it builds in memory,
+# in parallel, and every rung then measures HNSW's best graph). --clean-run
+# keeps each rung a separate published run.
+#
+# Then apply the target on the workstation:
+#
+#   scripts/cost-frontier.py --recall 0.95 --qps 100 \
+#       m8g.large=<run url> c8g.large=<run url> c8g.medium=<run url>
 #
 # Arms
 # ----
@@ -61,17 +92,15 @@
 #   rekall infra run -c infra/instances/m8g.large.toml \
 #       benchmarks/cohere-1m-mkt-vs-hnsw.toml
 #
-# This is the run that BUILDS; the ladder in cohere-1m-small-instance.toml
-# then reuses these indexes at every rung. Remote runs auto-publish.
+# The first invocation BUILDS; every later rung reuses these indexes.
+# Remote runs auto-publish.
 #
 # `rekall load` / `index` / `search` are instance-side commands and are only
 # needed if you want manual phase control -- get a shell with
 # `rekall infra ssh -c infra/instances/m8g.large.toml` first.
 #
-# MUST stay identical to cohere-1m-small-instance.toml's list. An arm's
-# on-disk index is named after the arm, so building `mkt-defaults` here and
-# searching `mkt-defaults-rerank-sweep` there would simply not find it.
-# One build, both suites.
+# One suite at every rung, so the arm list -- and hence the on-disk index
+# names, which are derived from it -- cannot drift between build and search.
 indexes = [
     "indexes/mkt-defaults-rerank-sweep.toml",
     "indexes/hnsw-m24-halfvec.toml",

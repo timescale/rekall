@@ -151,10 +151,9 @@ suites:
 - `cohere-1m-mkt-vs-hnsw.toml` — loads, builds, and measures the warm
   reference frontier on `infra/instances/m8g.large.toml` (8 GiB, the rung
   where HNSW still builds in memory under stock tuning).
-- `cohere-1m-small-instance.toml` — the same physical indexes re-queried
-  down an 8 / 4 / 2 GiB ladder via `rekall infra resize`, disk-cold with
-  `io_stats` on. Both suites must list identical arms: an index is named
-  after its arm, so a mismatch means the search phase finds nothing.
+  The same suite runs at every rung of the 8 / 4 / 2 GiB ladder via
+  `rekall infra resize` — one file, so every rung shares its cache policy
+  and query count by construction.
 - `scripts/cost-frontier.py` — applies a (recall, QPS) target to the ladder
   results and reports the cheapest qualifying instance per engine, costing
   instance + EBS. The target is applied here, not baked into the suites.

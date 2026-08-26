@@ -1,7 +1,7 @@
 # Cohere-1M: what is the smallest instance Meerkat and HNSW can run on?
 
 This is the sizing analysis behind `cohere-1m-mkt-vs-hnsw.toml` (the
-reference run) and `cohere-1m-small-instance.toml` (the memory ladder).
+reference run) and `cohere-1m-mkt-vs-hnsw.toml` (the memory ladder).
 
 Every number labelled *measured* comes from the published rekall runs at
 <https://timescale.github.io/rekall/> (each run exposes a `summary.json`
@@ -223,7 +223,7 @@ rekall infra attach -c infra/instances/m8g.large.toml   # watch it; C-b d to det
 for rung in m8g.large c8g.large c8g.medium; do
   rekall infra resize -c "infra/instances/$rung.toml"   # no-op on the first
   rekall infra run    -c "infra/instances/$rung.toml" \
-      benchmarks/cohere-1m-small-instance.toml \
+      benchmarks/cohere-1m-mkt-vs-hnsw.toml \
       --clean-run --comment "cohere-1m ladder: $rung"
 done
 
@@ -259,7 +259,7 @@ are instance-side commands:
 ```bash
 rekall infra ssh -c infra/instances/m8g.large.toml
 # then, on the instance:
-cd ~/rekall && rekall search benchmarks/cohere-1m-small-instance.toml
+cd ~/rekall && rekall search benchmarks/cohere-1m-mkt-vs-hnsw.toml
 ```
 
 `cohere-1m-build-floor.toml` is **not** part of this. It answers a separate

@@ -1,7 +1,7 @@
 # Suite: cohere-1M -- how small a box can each engine BUILD its index on?
 #
-# The companion to cohere-1m-small-instance.toml (which asks the same
-# question about queries). Run it with --rebuild: the output that matters is
+# The companion to cohere-1m-mkt-vs-hnsw.toml (which asks the same question
+# about queries). Run it with --rebuild: the output that matters is
 # the build-sizes / build-times report, not a recall frontier, and without
 # --rebuild `rekall run` would skip every index that already exists.
 #
