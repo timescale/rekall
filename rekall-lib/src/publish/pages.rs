@@ -878,6 +878,85 @@ fn render_run_page(
         b.push_str("</pre></details>");
     }
 
+    // Observed instance settings, collapsible. Sits beside the index
+    // parameters and PG settings because it answers the same kind of
+    // question -- what was this measured on -- and because a config file
+    // cannot answer it: `disk_iops = 16000` was silently dropped by the
+    // native launch path and every such run used the gp3 3000 baseline with
+    // nothing on the page to say so.
+    if let Some(env) = &summary.environment {
+        let h = &env.host;
+        b.push_str("<details><summary>Instance settings (observed)</summary><pre>");
+        if let Some(t) = &h.instance_type {
+            b.push_str(&esc(&format!("instance type          {t}\n")));
+        }
+        b.push_str(&esc(&format!("vCPU (observed)        {}\n", h.cpu_count)));
+        b.push_str(&esc(&format!(
+            "memory (observed)      {:.1} GiB\n",
+            h.memory_gb
+        )));
+        b.push_str(&esc(&format!("cpu model              {}\n", h.cpu_model)));
+        b.push_str(&esc(&format!("kernel                 {}\n", h.kernel)));
+        if let Some(st) = &h.storage {
+            b.push_str(&esc(&format!(
+                "data directory         {}\n",
+                st.data_directory
+                    .as_deref()
+                    .unwrap_or("(unknown; root volume assumed)")
+            )));
+            if let Some(m) = &st.mount_point {
+                b.push_str(&esc(&format!("mount point            {m}\n")));
+            }
+            if let Some(f) = &st.filesystem {
+                b.push_str(&esc(&format!("filesystem             {f}\n")));
+            }
+            b.push_str(&esc(&format!("media                  {}\n", st.media)));
+            b.push_str(&esc(&format!(
+                "device                 {}{}\n",
+                st.device,
+                if st.device_resolved_from_pgdata {
+                    ""
+                } else {
+                    " (whole-disk guess)"
+                }
+            )));
+            if let Some(g) = st.size_gb {
+                b.push_str(&esc(&format!("device size            {g:.0} GB\n")));
+            }
+            if let Some(v) = &st.ebs_volume_id {
+                b.push_str(&esc(&format!("ebs volume             {v}\n")));
+            }
+            if let Some(t) = &st.ebs_volume_type {
+                b.push_str(&esc(&format!("ebs volume type        {t}\n")));
+            }
+            // Provisioned, not achieved -- the achieved rate is in the
+            // per-point disk samples. Absence is printed as the reason it is
+            // absent, so a missing number is never read as a default one.
+            match st.ebs_provisioned_iops {
+                Some(i) => b.push_str(&esc(&format!("provisioned IOPS       {i}\n"))),
+                None => b.push_str(&esc(&format!(
+                    "provisioned IOPS       — {}\n",
+                    st.ebs_source
+                ))),
+            }
+            if let Some(t) = st.ebs_provisioned_throughput_mbs {
+                b.push_str(&esc(&format!("provisioned throughput {t} MB/s\n")));
+            }
+            if let Some(sc) = &st.scheduler {
+                b.push_str(&esc(&format!("io scheduler           {sc}\n")));
+            }
+            if let Some(n) = st.nr_requests {
+                b.push_str(&esc(&format!("nr_requests            {n}\n")));
+            }
+            if let Some(r) = st.read_ahead_kb {
+                b.push_str(&esc(&format!("read_ahead_kb          {r}\n")));
+            }
+        } else {
+            b.push_str(&esc("storage                — not observed\n"));
+        }
+        b.push_str("</pre></details>");
+    }
+
     // Full PG settings, collapsible.
     if let Some(pg) = &summary.pg_runtime {
         b.push_str("<details><summary>PostgreSQL settings</summary><pre>");
@@ -1304,6 +1383,7 @@ mod tests {
                     memory_gb: meta.memory_gb,
                     ip_address: None,
                     instance_type: meta.instance_type.clone(),
+                    storage: None,
                 },
                 rekall: RekallInfo {
                     version: "0.1.0".into(),

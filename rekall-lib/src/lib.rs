@@ -135,6 +135,34 @@ impl Agent {
         pg.runtime_info().await.ok()
     }
 
+    /// Observe the storage PG is actually running on, using the server's own
+    /// `data_directory` to find the device. Deliberately separate from
+    /// `collect_host_info()`, which has no DB connection: resolving the real
+    /// device needs to ask PG where its data lives rather than assume the
+    /// root volume.
+    async fn capture_storage(&self) -> Option<crate::metrics::StorageInfo> {
+        let mut pg = backend::postgres::PgConnection::new(
+            &self.config.connection,
+            &self.config.table_name(),
+            self.config.dataset.dimension,
+            self.config.dataset.metric,
+        );
+        if pg.connect().await.is_err() {
+            // Still worth recording the root volume: knowing the media and
+            // provisioned IOPS beats knowing nothing.
+            return environment::collect_storage_info(None);
+        }
+        // data_directory is superuser / pg_read_all_settings only; fall back
+        // to the root volume when the benchmark user cannot read it.
+        let data_dir = pg
+            .client()
+            .query_one("SHOW data_directory", &[])
+            .await
+            .ok()
+            .map(|r| r.get::<_, String>(0));
+        environment::collect_storage_info(data_dir.as_deref())
+    }
+
     /// If the dataset file doesn't exist locally and a URI is configured,
     /// download it before running phases that need it.
     async fn ensure_dataset(&mut self, phases: &[Phase]) -> Result<()> {
@@ -184,7 +212,7 @@ impl Agent {
     ) -> Result<()> {
         self.ensure_dataset(phases).await?;
 
-        let run_env = environment::collect(self.comment.clone());
+        let mut run_env = environment::collect(self.comment.clone());
 
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
         let mut search_results: Vec<SearchResult> = Vec::new();
@@ -198,6 +226,27 @@ impl Agent {
             if let Some(ref info) = pg_runtime {
                 for output in self.outputs.iter_mut() {
                     output.on_pg_runtime(info);
+                }
+            }
+            // Observe the storage the benchmark is about to run on. Recorded
+            // whatever the config claimed: a config is a request, the device
+            // is the fact.
+            run_env.host.storage = self.capture_storage().await;
+            if let Some(ref st) = run_env.host.storage {
+                let iops = st
+                    .ebs_provisioned_iops
+                    .map(|i| i.to_string())
+                    .unwrap_or_else(|| st.ebs_source.clone());
+                for output in self.outputs.iter_mut() {
+                    output.on_progress(&ProgressEvent::Message {
+                        text: format!(
+                            "Storage: {} on {} ({}), provisioned IOPS {}",
+                            st.data_directory.as_deref().unwrap_or("(root volume)"),
+                            st.device,
+                            st.media,
+                            iops,
+                        ),
+                    });
                 }
             }
         }

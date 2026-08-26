@@ -661,6 +661,7 @@ mod tests {
                     memory_gb: 61.8,
                     ip_address: None,
                     instance_type: instance_type.map(str::to_string),
+                    storage: None,
                 },
                 rekall: RekallInfo {
                     version: "0.1.0".into(),

@@ -277,7 +277,10 @@ impl PgConnection {
                      'maintenance_work_mem', 'max_parallel_workers', \
                      'max_parallel_maintenance_workers', 'random_page_cost', \
                      'effective_io_concurrency', 'wal_level', \
-                     'max_connections', 'huge_pages'\
+                     'max_connections', 'huge_pages', \
+                     'data_directory', 'cluster_name', 'server_version', \
+                     'maintenance_io_concurrency', 'checkpoint_completion_target', \
+                     'max_wal_size', 'jit'\
                  ) ORDER BY name",
                 &[],
             )

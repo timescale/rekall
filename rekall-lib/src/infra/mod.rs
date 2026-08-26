@@ -894,6 +894,13 @@ resource "aws_iam_role_policy" "rekall_s3" {{
       Resource = [
 {s3_resources}
       ]
+    }}, {{
+      # See the CloudFormation template: the run records the provisioned
+      # IOPS/throughput of the volume backing PGDATA, which the guest cannot
+      # see for itself. Read-only describe.
+      Effect = "Allow"
+      Action = ["ec2:DescribeVolumes"]
+      Resource = "*"
     }}]
   }})
 }}
@@ -1031,6 +1038,21 @@ Resources:
                   - "s3:PutObject"
                   - "s3:CreateBucket"
 {s3_resources}
+        # Lets a benchmark record the storage it actually ran on. The
+        # provisioned IOPS/throughput of the volume backing PGDATA is not
+        # visible from inside the guest -- sysfs exposes the device but not
+        # what EBS was configured to deliver -- so the run asks EC2. Read
+        # only, and scoped to describe: without it every published run shows
+        # "provisioned IOPS unavailable", which is how a benchmark ends up
+        # silently measuring a 3000-IOPS baseline it believed was 16000.
+        - PolicyName: rekall-ec2-describe-volumes
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "ec2:DescribeVolumes"
+                Resource: "*"
 
   RekallInstanceProfile:
     Type: AWS::IAM::InstanceProfile

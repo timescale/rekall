@@ -37,6 +37,68 @@ pub struct HostInfo {
     /// present, so plots show them alongside the instance type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub instance_type: Option<String>,
+    /// Observed storage backing the PG data directory. Absent on older
+    /// result files and where the device could not be identified.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub storage: Option<StorageInfo>,
+}
+
+/// What the benchmark actually ran on, storage-wise, read from the machine
+/// rather than from any config file.
+///
+/// This exists because a config is a request, not a fact. `disk_iops = 16000`
+/// in an instance config was silently dropped by the native AWS launch path
+/// and every such box ran on the gp3 3000-IOPS baseline; nothing in the
+/// published results said so, and a whole benchmark rung was measured against
+/// a volume nobody knew was the bottleneck. Every field here is observed on
+/// the running instance at benchmark time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StorageInfo {
+    /// PG's own `data_directory`, as reported by the server.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data_directory: Option<String>,
+    /// Mount point the data directory resolves to, and the filesystem on it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mount_point: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub filesystem: Option<String>,
+    /// What kind of storage this actually IS, determined by inspecting the
+    /// device -- never assumed from what was provisioned. One of
+    /// "ebs", "instance-store-nvme", "local-nvme", "local-disk",
+    /// "rotational", or "unknown". A run configured for instance-store NVMe
+    /// that silently landed on the EBS root volume (or the reverse) is
+    /// exactly the mistake this field exists to catch.
+    pub media: String,
+    /// Block device backing the PG data directory (e.g. "nvme0n1").
+    pub device: String,
+    /// Whether `device` was resolved from PG's own data_directory (true) or
+    /// guessed from the whole-disk list (false).
+    pub device_resolved_from_pgdata: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub size_gb: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rotational: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scheduler: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nr_requests: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_ahead_kb: Option<u32>,
+    /// EBS volume id, decoded from the NVMe device serial -- readable from
+    /// inside the instance with no AWS API call.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ebs_volume_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ebs_volume_type: Option<String>,
+    /// PROVISIONED IOPS, not achieved. The achieved rate is in the per-point
+    /// disk samples; this is the ceiling the volume was configured with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ebs_provisioned_iops: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ebs_provisioned_throughput_mbs: Option<u32>,
+    /// Where the ebs_* values came from, or why they are absent. Recorded so
+    /// a missing IOPS number is never mistaken for a default one.
+    pub ebs_source: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
