@@ -37,11 +37,13 @@
 #       benchmarks/cohere-1m-mkt-vs-hnsw.toml \
 #       --clean-run --comment "cohere-1m ladder: m8g.large 8 GiB"
 #
+#   # --wait is required in a loop: `infra run` is otherwise
+#   # fire-and-forget, and the next resize would stop the box mid-benchmark.
 #   for rung in c8g.large c8g.medium; do
 #     rekall infra resize -c "infra/instances/$rung.toml"
 #     rekall infra run    -c "infra/instances/$rung.toml" \
 #         benchmarks/cohere-1m-mkt-vs-hnsw.toml \
-#         --clean-run --comment "cohere-1m ladder: $rung"
+#         --clean-run --wait --comment "cohere-1m ladder: $rung" || break
 #   done
 #
 # 8 GiB is the rung that builds because it is the smallest whose stock

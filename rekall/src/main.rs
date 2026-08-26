@@ -537,6 +537,19 @@ enum InfraCommand {
         #[arg(long)]
         clean_run: bool,
 
+        /// Block until the remote run finishes, exiting with its status.
+        ///
+        /// Without this the command starts tmux and returns in seconds, so
+        /// scripting several rungs in a shell loop is unsafe: the next
+        /// `infra resize` would stop the instance out from under a benchmark
+        /// still in flight and destroy it.
+        #[arg(long)]
+        wait: bool,
+
+        /// Seconds between polls when --wait is set.
+        #[arg(long, default_value_t = 60)]
+        poll_secs: u64,
+
         /// S3 path for the dataset (downloaded on instance if not present)
         #[arg(long)]
         s3_dataset: Option<String>,
@@ -2307,6 +2320,50 @@ fn remote_comment_flag(comment: Option<&str>) -> String {
         .unwrap_or_default()
 }
 
+/// Marker the tmux wrapper echoes when the remote command finishes. The
+/// session itself outlives the run (`exec bash` keeps the pane alive so the
+/// output can be scrolled), so session existence is not a completion signal
+/// and this is.
+const REMOTE_DONE_MARKER: &str = "=== exited (status";
+
+/// Block until the remote run finishes, returning its exit status.
+///
+/// `infra run` is otherwise fire-and-forget: it starts tmux and returns in
+/// seconds. That makes a shell loop over several rungs actively dangerous --
+/// the next `infra resize` would stop the instance out from under a
+/// benchmark still in flight and destroy it -- so sequencing rungs
+/// unattended needs a real wait. Polls rather than holding an SSH session
+/// open for hours.
+fn wait_for_remote_run(
+    target: &RemoteTarget,
+    log_path: &str,
+    poll_secs: u64,
+) -> anyhow::Result<i32> {
+    println!("Waiting for the remote run to finish (polling every {poll_secs}s)...");
+    loop {
+        std::thread::sleep(std::time::Duration::from_secs(poll_secs));
+        let out = target
+            .ssh(&[&format!(
+                "grep -h '{REMOTE_DONE_MARKER}' {log_path} 2>/dev/null | tail -1"
+            )])
+            .output()?;
+        let line = String::from_utf8_lossy(&out.stdout);
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        // "=== exited (status 0) — session kept open; ..."
+        let status = line
+            .split("status")
+            .nth(1)
+            .and_then(|s| s.trim().trim_start_matches('(').split(')').next())
+            .and_then(|s| s.trim().parse::<i32>().ok())
+            .unwrap_or(-1);
+        println!("Remote run finished with status {status}.");
+        return Ok(status);
+    }
+}
+
 /// A resolved remote benchmark instance: where to SSH and which PG port
 /// the box was provisioned with.
 struct RemoteTarget {
@@ -2550,6 +2607,7 @@ fn launch_in_tmux(
     // not tee.
     let cmd = format!(
         "cd ~ && source ~/.cargo/env 2>/dev/null; set -o pipefail; \
+         rm -f {log_path}; \
          {inner} 2>&1 | tee {log_path}; \
          code=$?; echo; \
          echo \"=== exited (status $code) — session kept open; full log: {log_path} ===\"; \
@@ -3136,6 +3194,8 @@ iam_instance_profile = "rekall-profile"
             rebuild,
             no_publish,
             clean_run,
+            wait,
+            poll_secs,
             s3_dataset,
             comment,
         } => {
@@ -3159,7 +3219,19 @@ iam_instance_profile = "rekall-profile"
             let inner = format!(
                 "rekall run {configs_str}{rebuild_flag}{publish_flag}{clean_run_flag}{comment_flag}"
             );
-            launch_in_tmux(&target, &session, &inner, "last-run.log")?;
+            let log_path = launch_in_tmux(&target, &session, &inner, "last-run.log")?;
+
+            if wait {
+                let status = wait_for_remote_run(&target, &log_path, poll_secs)?;
+                if status != 0 {
+                    // Non-zero exit so a shell loop stops rather than
+                    // resizing the box out from under a failed rung and
+                    // carrying on as though it had succeeded.
+                    anyhow::bail!(
+                        "Remote run exited with status {status}. See {log_path} on the instance."
+                    );
+                }
+            }
 
             let hint = selector_hint(
                 config.as_ref(),

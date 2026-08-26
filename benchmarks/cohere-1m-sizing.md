@@ -230,11 +230,15 @@ rekall infra attach -c infra/instances/m8g.large.toml   # watch it; C-b d to det
 # rebuild HNSW on the very boxes this experiment says cannot build it.
 # --clean-run keeps each rung a separate published run instead of appending
 # to the previous rung's results directory.
+# --wait is not optional in a loop: without it `infra run` starts tmux and
+# returns in seconds, so the next `infra resize` would stop the instance out
+# from under a benchmark still in flight and destroy it. It also exits
+# non-zero on a failed rung, so the loop stops instead of carrying on.
 for rung in c8g.large c8g.medium; do
   rekall infra resize -c "infra/instances/$rung.toml"
   rekall infra run    -c "infra/instances/$rung.toml" \
       benchmarks/cohere-1m-mkt-vs-hnsw.toml \
-      --clean-run --comment "cohere-1m ladder: $rung"
+      --clean-run --wait --comment "cohere-1m ladder: $rung" || break
 done
 
 # --- LOCAL: apply the target to the published runs -----------------------

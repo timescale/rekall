@@ -236,12 +236,21 @@ pub fn collect_storage_info(data_dir: Option<&str>) -> Option<crate::metrics::St
         .and_then(|d| mount_for_path(d, &mounts))
         .or_else(|| mount_for_path("/", &mounts))?;
 
-    // Canonicalize through mapper/LVM symlinks, then strip partition digits
-    // to reach the parent block device that /sys/block describes.
-    let real = std::fs::canonicalize(&dev_path)
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| dev_path.clone());
-    let leaf = real.strip_prefix("/dev/").unwrap_or(&real).to_string();
+    // Resolve the block device from the directory's st_dev rather than from
+    // the device name in /proc/mounts. Ubuntu cloud images report the root
+    // filesystem as `/dev/root`, which is not a real device node: it cannot
+    // be canonicalized and leaves nothing /sys/block knows about, so name
+    // parsing yielded a bogus device called "root" and every field below it
+    // came back unknown. The major:minor pair is always right, and
+    // /sys/dev/block maps it straight to the kernel's own name.
+    let leaf = device_name_from_st_dev(data_dir.unwrap_or(&mount_point))
+        .or_else(|| {
+            let real = std::fs::canonicalize(&dev_path)
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| dev_path.clone());
+            real.strip_prefix("/dev/").map(str::to_string)
+        })
+        .unwrap_or_else(|| dev_path.clone());
     let device = parent_block_device(&leaf);
 
     let sysfs = |f: &str| -> Option<String> {
@@ -305,6 +314,28 @@ pub fn collect_storage_info(data_dir: Option<&str>) -> Option<crate::metrics::St
         ebs_provisioned_throughput_mbs,
         ebs_source,
     })
+}
+
+/// Kernel block-device name for whatever `path` lives on, via its st_dev.
+///
+/// Immune to the names in /proc/mounts: `/dev/root`, LVM mapper symlinks and
+/// bind mounts all resolve correctly because major:minor identifies the
+/// device unambiguously and /sys/dev/block/<maj>:<min> is a symlink into the
+/// device tree. Returns the leaf (e.g. "nvme0n1p1"); the caller walks up to
+/// the parent device.
+fn device_name_from_st_dev(path: &str) -> Option<String> {
+    // linux::fs::MetadataExt, not unix::fs::MetadataExt: st_dev lives on the
+    // Linux-specific trait.
+    use std::os::linux::fs::MetadataExt;
+    let dev = std::fs::metadata(path).ok()?.st_dev();
+    // glibc dev_t packing: the major and minor are each split across two
+    // ranges, so neither can be read with a single shift. nvme's major (259)
+    // overflows the low 8-bit field, which is exactly the case a naive
+    // `dev >> 8` gets wrong.
+    let major = ((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfffu64);
+    let minor = (dev & 0xff) | ((dev >> 12) & !0xffu64);
+    let link = std::fs::canonicalize(format!("/sys/dev/block/{major}:{minor}")).ok()?;
+    Some(link.file_name()?.to_string_lossy().into_owned())
 }
 
 /// Longest-prefix mount lookup: (mount point, device path, fstype).
@@ -415,6 +446,26 @@ mod storage_tests {
 /dev/nvme1n1 /mnt/nvme xfs rw,relatime 0 0
 tmpfs /run tmpfs rw 0 0
 ";
+
+    #[test]
+    fn st_dev_decoding_handles_majors_above_255() {
+        // glibc splits both major and minor across two bit ranges, so a
+        // single shift is wrong. nvme's major is 259, which overflows the
+        // low 12-bit field -- the case that matters here, since PGDATA on
+        // EC2 sits on an nvme device.
+        let decode = |dev: u64| {
+            let major = ((dev >> 8) & 0xfff) | ((dev >> 32) & !0xfffu64);
+            let minor = (dev & 0xff) | ((dev >> 12) & !0xffu64);
+            (major, minor)
+        };
+        // nvme0n1p1 is 259:1 -> glibc packs that as 0x10301.
+        assert_eq!(decode(0x10301), (259, 1));
+        // sda1 is 8:1.
+        assert_eq!(decode(0x801), (8, 1));
+        // An anonymous device (btrfs/zfs/overlay) has major 0; /sys/dev/block
+        // has no entry, so the caller falls back to /proc/mounts.
+        assert_eq!(decode(0x1f).0, 0);
+    }
 
     #[test]
     fn mount_lookup_prefers_the_longest_prefix() {
