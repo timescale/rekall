@@ -59,16 +59,22 @@
 #
 # Arms
 # ----
-# mkt-defaults-rerank-sweep
+# mkt-defaults-rerank-sweep  (five query series: mkt-nprobe{10,20,40,80,160})
 #     Meerkat exactly as shipped -- no index params -- swept over BOTH query
 #     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
 #     already sit on the measured optimum (auto nlist = rows/256 = 3906,
 #     auto nprobe = 32, fastscan + centroid fastscan, SOAR 1.0, boundary
 #     0.35), so the index needs no tuning; the sweep is over query time.
-#     rerank_pool = 0 is the shipped automatic value (16*k), so the plain
-#     defaults arm is a point inside this sweep rather than a separate arm.
-#     Warm, this measures rerank_pool's pure CPU cost -- the control for the
-#     ladder, where the same knob is paying for random heap I/O instead.
+#
+#     Emitted as five named query series, one per nprobe, all against the
+#     one built index. Collapsed into a single series the 2-D sweep renders
+#     as a staircase -- each nprobe's recall ceiling as a plateau, joined by
+#     vertical drops as rerank_pool rises past usefulness -- which reads like
+#     a Pareto frontier even on the per-config plot, whose purpose is to show
+#     configurations apart. Five names give five curves there; the Pareto
+#     plot groups by index family and still collapses them, correctly.
+#     See indexes/mkt-defaults-rerank-sweep.toml for the grid and why
+#     rerank_pool 0/10/160 were dropped.
 #
 # hnsw-m24-halfvec
 #     pgvector's recommended default per the pg-aiguide tuning guide, and
