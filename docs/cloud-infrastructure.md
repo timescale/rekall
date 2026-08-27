@@ -201,15 +201,19 @@ git_ref = "main"
 
 PG settings are computed automatically from the instance type:
 
-| Setting | Formula |
-|---------|---------|
-| `shared_buffers` | 40% of RAM |
-| `maintenance_work_mem` | 10% of RAM |
-| `effective_cache_size` | 75% of RAM |
-| `work_mem` | 256 MB |
-| `max_wal_size` | 16 GB |
-| `min_wal_size` | 2 GB |
-| `max_parallel_maintenance_workers` | 8 |
+| Setting | Formula | Why |
+|---------|---------|-----|
+| `shared_buffers` | 25% of RAM | pgvector's own recommendation ("`shared_buffers` should typically be 25% of the server's memory", via PgTune) |
+| `effective_cache_size` | 75% of RAM | pgtune |
+| `maintenance_work_mem` | 40% of RAM, floored at 256 MB | pgvector builds HNSW far faster when the graph fits here. 40% is also a *ceiling*: the parallel build puts the graph in a DSM segment out of `/dev/shm`, which is 50% of RAM, so going higher reintroduces "could not resize shared memory segment" |
+| `work_mem` | 256 MB | |
+| `max_wal_size` / `min_wal_size` | 16 GB / 2 GB | fewer, larger checkpoints during bulk load |
+| `max_parallel_maintenance_workers` | physical cores, capped at 32 | pgvector uses this directly as its HNSW build worker count; pinned to physical cores because SMT siblings contend on the shared graph |
+
+These are computed in `InfraConfig::effective_pg_config`. The table above was
+wrong for a long time — it claimed 40% `shared_buffers` and 10%
+`maintenance_work_mem`, neither of which the code has ever done since
+`eea882e`/`6bc1c41`. If you change the formulas, change this table.
 
 Override any setting explicitly in `[pg_config]`:
 

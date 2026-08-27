@@ -38,6 +38,16 @@ fn default_git_ref() -> String {
     "main".to_string()
 }
 
+/// `maintenance_work_mem` in MB: 40% of RAM, floored at 256 MB.
+///
+/// The 40% is a ceiling as much as a target -- pgvector's parallel HNSW build
+/// places its graph in a DSM segment, and DSM comes out of /dev/shm, which is
+/// 50% of RAM. Going above 2*RAM/5 reintroduced "could not resize shared
+/// memory segment: No space left on device".
+fn maintenance_work_mem_mb(ram_gb: u32) -> u32 {
+    ((ram_gb as u64 * 1024 * 2 / 5) as u32).max(256)
+}
+
 /// Parse a PG memory-size string (e.g. "8GB", "256MB", "1024kB") into bytes.
 /// PG accepts kB/MB/GB/TB suffixes, case-insensitive. Bare numbers are treated
 /// as bytes per PG convention.
@@ -445,9 +455,16 @@ impl InfraConfig {
             // but safely under the 50% /dev/shm ceiling with headroom.
             set("shared_buffers", format!("{}GB", ram_gb / 4));
             set("effective_cache_size", format!("{}GB", ram_gb * 3 / 4));
+            // Computed in MB, not GB. `(ram_gb * 2 / 5)` is integer division,
+            // so it truncated toward zero and lost up to 0.8 GB -- a 4 GiB box
+            // got 1 GB instead of 1.6 GB. Worse, `.max(1)` pushed a 2 GiB box
+            // UP to 1 GB, i.e. 50% of RAM, defeating the very ceiling this
+            // formula exists to respect: the cap is 2*RAM/5 precisely so
+            // pgvector's parallel-build DSM segment fits under /dev/shm, which
+            // is 50% of RAM. Truncating in MB keeps the intent at every size.
             set(
                 "maintenance_work_mem",
-                format!("{}GB", (ram_gb * 2 / 5).max(1)),
+                format!("{}MB", maintenance_work_mem_mb(ram_gb)),
             );
             set("work_mem", "256MB".to_string());
 
@@ -505,17 +522,20 @@ impl InfraConfig {
         // (40%) so nothing — a future formula tweak or a user override — can
         // reintroduce the "could not resize shared memory segment" failure.
         if let Some(ram_gb) = self.instance_ram_gb() {
-            let ceiling_gb = (ram_gb * 2 / 5).max(1);
-            let ceiling_bytes = ceiling_gb as u64 * 1024u64.pow(3);
+            // Same formula as the auto-computed value, so an explicit
+            // override is checked against the real ceiling rather than a
+            // truncated one.
+            let ceiling_mb = maintenance_work_mem_mb(ram_gb);
+            let ceiling_bytes = ceiling_mb as u64 * 1024u64.pow(2);
             if let Some(mwm) = config.get("maintenance_work_mem") {
                 if parse_size_bytes(mwm).is_some_and(|b| b > ceiling_bytes) {
                     tracing::warn!(
-                        "maintenance_work_mem={mwm} exceeds 2·RAM/5 ({ceiling_gb}GB); \
+                        "maintenance_work_mem={mwm} exceeds 2·RAM/5 ({ceiling_mb}MB); \
                          capping to keep pgvector parallel builds within /dev/shm"
                     );
                     config.insert(
                         "maintenance_work_mem".to_string(),
-                        format!("{ceiling_gb}GB"),
+                        format!("{ceiling_mb}MB"),
                     );
                 }
             }
@@ -753,7 +773,7 @@ git_ref = "feat/parallel-build"
         let pg = cfg.effective_pg_config();
         // 64 GB / 8 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "16GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "25GB"); // 2·RAM/5 (40%)
+        assert_eq!(pg["maintenance_work_mem"], "26214MB"); // 2·RAM/5 (40%)
         assert_eq!(pg["effective_cache_size"], "48GB"); // 3·RAM/4
         assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers"], "8");
@@ -772,7 +792,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = small.effective_pg_config();
         assert_eq!(pg["max_parallel_maintenance_workers"], "4"); // 8/2
-        assert_eq!(pg["maintenance_work_mem"], "25GB"); // 2·RAM/5
+        assert_eq!(pg["maintenance_work_mem"], "26214MB"); // 2·RAM/5
 
         let big = InfraConfig {
             instance_type: "r8i.24xlarge".to_string(), // 96 vCPU / 768 GB
@@ -780,7 +800,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = big.effective_pg_config();
         assert_eq!(pg["max_parallel_maintenance_workers"], "32"); // 96/2 → cap 32
-        assert_eq!(pg["maintenance_work_mem"], "307GB"); // 2·RAM/5
+        assert_eq!(pg["maintenance_work_mem"], "314572MB"); // 2·RAM/5
     }
 
     #[test]
@@ -827,7 +847,7 @@ git_ref = "feat/parallel-build"
         let pg = cfg.effective_pg_config();
         // 128 GB / 16 vCPU, Graviton (no SMT).
         assert_eq!(pg["shared_buffers"], "32GB"); // RAM/4
-        assert_eq!(pg["maintenance_work_mem"], "51GB"); // 2·RAM/5
+        assert_eq!(pg["maintenance_work_mem"], "52428MB"); // 2·RAM/5
         assert_eq!(pg["effective_cache_size"], "96GB"); // 3·RAM/4
         assert_eq!(pg["max_parallel_maintenance_workers"], "15"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers_per_gather"], "8"); // ceil(vCPU/2)
@@ -846,7 +866,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = cfg.effective_pg_config();
         assert_eq!(pg["shared_buffers"], "8GB"); // explicit override wins
-        assert_eq!(pg["maintenance_work_mem"], "25GB"); // auto 2·RAM/5
+        assert_eq!(pg["maintenance_work_mem"], "26214MB"); // auto 2·RAM/5
         assert_eq!(pg["huge_pages"], "try");
     }
 
@@ -862,7 +882,7 @@ git_ref = "feat/parallel-build"
             ..Default::default()
         };
         // 128·2/5 = 51 GB ceiling.
-        assert_eq!(cfg.effective_pg_config()["maintenance_work_mem"], "51GB");
+        assert_eq!(cfg.effective_pg_config()["maintenance_work_mem"], "52428MB");
 
         // A below-ceiling override is left untouched.
         let mut pg_config = HashMap::new();
