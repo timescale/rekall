@@ -59,7 +59,7 @@
 #
 # Arms
 # ----
-# mkt-defaults-rerank-sweep  (three query series: mkt-rerank{20,40,80})
+# mkt-defaults-rerank-sweep  (four series: mkt-rerank{20,40,80}, mkt-norerank)
 #     Meerkat exactly as shipped -- no index params -- swept over BOTH query
 #     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
 #     already sit on the measured optimum (auto nlist = rows/256 = 3906,
@@ -78,6 +78,13 @@
 #     even on the per-config plot. Fixing rerank_pool and sweeping nprobe is
 #     monotone in both axes -- see indexes/mkt-defaults-rerank-sweep.toml for
 #     the measurements and why rerank_pool 0/10/160 were dropped.
+#
+#     mkt-norerank (mkt.rerank = off) is the frontier's floor: no
+#     exact-distance stage at all, so the query never touches the heap
+#     beyond the k rows PostgreSQL fetches for visibility. It cannot reach
+#     0.95 -- 1-bit code precision caps it near 0.83 -- but it costs ~19s of
+#     runtime and it is the one Meerkat setting guaranteed not to be I/O
+#     bound on a box that cannot cache the heap.
 #
 # hnsw-m24-halfvec
 #     pgvector's recommended default per the pg-aiguide tuning guide, and

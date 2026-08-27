@@ -25,7 +25,30 @@
 #   - 0 is auto, resolving to 16*k = 160 -- a duplicate (both measured
 #     0.9941 / 85 QPS at nprobe=160).
 #
-# All three series share the one physical index; they differ only in
+# mkt-norerank is the floor of the frontier: mkt.rerank = off skips the
+# exact-distance stage entirely, so results come straight from the
+# compressed RaBitQ codes and the query touches the heap zero times beyond
+# the k rows PostgreSQL fetches for visibility anyway. On a box that cannot
+# cache the heap it is the one setting guaranteed not to be I/O bound.
+#
+# It cannot reach this ladder's 0.95 bar. Recall is capped by 1-bit code
+# precision, not by how many clusters are scanned, so it plateaus around
+# 0.83 -- measured (via rerank_pool = k, which is recall-equivalent because
+# recall@k is a set measure and reranking only the top k can reorder them
+# but not change which k they are):
+#
+#   nprobe    10      20      40      80     160
+#   recall  0.756   0.788   0.808   0.820   0.825
+#   QPS      3456    2057    1150     632     324
+#
+# 0.076 recall for a 16x increase in nprobe. Included anyway because it
+# costs ~19s of runtime (0.3% of this arm), it makes the frontier's lower
+# bound explicit rather than implied, and it is the baseline that
+# multi-bit RaBitQ has to beat -- if no-rerank ever reached 0.95, Meerkat
+# would need only its 0.26 GiB index resident and never touch the 4.10 GB
+# heap at all.
+#
+# All four series share the one physical index; they differ only in
 # query-time GUCs, so there is no extra build cost.
 
 [[index]]
@@ -53,4 +76,11 @@ name = "mkt-rerank80"
 index = "mkt-defaults-rerank-sweep"
 [query.params]
 "mkt.rerank_pool" = [80]
+"mkt.nprobe" = [10, 20, 40, 80, 160]
+
+[[query]]
+name = "mkt-norerank"
+index = "mkt-defaults-rerank-sweep"
+[query.params]
+"mkt.rerank" = [false]
 "mkt.nprobe" = [10, 20, 40, 80, 160]
