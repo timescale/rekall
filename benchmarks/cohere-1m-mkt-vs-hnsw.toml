@@ -67,9 +67,10 @@
 #     Its nprobe list keeps the auto point the rerank-sweep grid drops:
 #     `0` resolves to ~0.5*sqrt(nlist) = 32 here, self-adjusting with the
 #     data (32 at 1M, ~99 at 10M, ~313 at 100M) where a hardcoded 32 would
-#     not. Runs the full nprobe tail to 2560: a 16x increase in nprobe costs
-#     only 1.5-2x in QPS here, because the scan is in-memory over a resident
-#     0.26 GiB index and rerank_pool does not grow with nprobe.
+#     not. The nprobe tail stops at 320: the targets here are recall
+#     0.90/0.95/0.99 and nprobe=160 already measures 0.9941, so beyond 320
+#     it is 0.999+ recall nobody targets. Runtime is not the reason -- a 16x
+#     increase in nprobe costs only 1.5-2x in QPS here.
 #
 #     Note this is the only series where BOTH auto settings are in play.
 #     Auto nprobe combined with an explicit rerank_pool is a hybrid, not the
