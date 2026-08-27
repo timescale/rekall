@@ -1,39 +1,71 @@
-# Meerkat shipped defaults, swept over BOTH query knobs: mkt.nprobe and
-# mkt.rerank_pool.
+# Meerkat shipped defaults, swept over BOTH query knobs -- but as one named
+# query series per mkt.nprobe rather than a single 30-point blob.
 #
-# Why rerank_pool is swept here and nowhere else
-# ----------------------------------------------
-# Meerkat scans compressed posting lists out of a small index and then
-# reranks the survivors with exact distances fetched from the HEAP. At
-# cohere-1M the index is ~0.28 GB but the heap is ~4.10 GB (`v` is STORAGE
-# PLAIN, 2 tuples/page), and the default rerank pool is 16*k = 160 tuples
-# per query. Those 160 TIDs are effectively random over 500k heap pages, so
-# across a query stream the rerank path touches essentially the whole heap.
+# Why the split. nprobe bounds the candidate pool and therefore caps
+# achievable recall; rerank_pool decides how many of those candidates get
+# exact distances. So within one nprobe, raising rerank_pool climbs to that
+# nprobe's ceiling and then flatlines while QPS keeps falling:
 #
-# On a box that can cache the heap this is free. On a box that cannot, it is
-# the dominant cost: ~160*(1-hit_rate) random reads per query, which turns
-# straight into an IOPS ceiling. rerank_pool is the knob that buys that back
-# -- fewer exact fetches for some recall -- so on a memory-constrained box
-# it is at least as important as nprobe, and the two trade against each
-# other (a higher nprobe produces better candidates, so a smaller pool
-# suffices for the same recall).
+#   nprobe=40   rerank=10 -> 0.8079     rerank=80  -> 0.9617
+#               rerank=20 -> 0.9414     rerank=160 -> 0.9619  (ceiling)
+#               rerank=40 -> 0.9593
 #
-# Sweeping only nprobe, as the other Meerkat arms do, therefore measures a
-# single slice through a 2-D surface and will understate what Meerkat can do
-# per dollar on a small instance.
+# Collapsed into one series that renders as a staircase -- five plateaus
+# joined by vertical drops -- which reads like a Pareto frontier even on the
+# per-config plot, whose whole job is to show configurations separately.
+# `group_label` keys the per-config plot on the query name, so one name per
+# nprobe gives five honest curves there, while the Pareto plot still groups
+# by index family and collapses them, which is what it should do.
 #
-# 0 = the shipped automatic value (16*k), included as the baseline. The
-# effective cap is never below k, so rerank_pool = 10 at k = 10 means "one
-# exact fetch per returned row" -- the floor.
+# rerank_pool grid is [20, 40, 80]. Dropped from the previous
+# [0, 10, 20, 40, 80, 160]:
+#   - 10 is degenerate: rerank_pool = k means only k candidates get exact
+#     distances, so recall collapses to 0.76-0.83 at every nprobe. Nobody
+#     would deploy it.
+#   - 160 buys <= 0.0004 recall over 80 while costing 10-25% of the QPS.
+#   - 0 is auto, which resolves to 16*k = 160 -- a duplicate of 160 (both
+#     measured 0.9941 / 85 QPS at nprobe=160).
+# 5 x 3 = 15 points instead of 30, keeping every ceiling and every useful
+# transition.
+
 [[index]]
 type = "meerkat"
 name = "mkt-defaults-rerank-sweep"
 table_parallel_workers = 32
-# No [index.params]: identical on-disk index to mkt-defaults, so this arm
-# can reuse a physical index built under that name if you prefer.
+# No [index.params]: the shipped defaults. All series below share this one
+# physical index -- they differ only in query-time GUCs.
 
-[[search.sweep]]
+[[query]]
+name = "mkt-nprobe10"
 index = "mkt-defaults-rerank-sweep"
-[search.sweep.params]
-"mkt.nprobe"      = [10, 20, 40, 80, 160]
-"mkt.rerank_pool" = [0, 10, 20, 40, 80, 160]
+[query.params]
+"mkt.nprobe" = [10]
+"mkt.rerank_pool" = [20, 40, 80]
+
+[[query]]
+name = "mkt-nprobe20"
+index = "mkt-defaults-rerank-sweep"
+[query.params]
+"mkt.nprobe" = [20]
+"mkt.rerank_pool" = [20, 40, 80]
+
+[[query]]
+name = "mkt-nprobe40"
+index = "mkt-defaults-rerank-sweep"
+[query.params]
+"mkt.nprobe" = [40]
+"mkt.rerank_pool" = [20, 40, 80]
+
+[[query]]
+name = "mkt-nprobe80"
+index = "mkt-defaults-rerank-sweep"
+[query.params]
+"mkt.nprobe" = [80]
+"mkt.rerank_pool" = [20, 40, 80]
+
+[[query]]
+name = "mkt-nprobe160"
+index = "mkt-defaults-rerank-sweep"
+[query.params]
+"mkt.nprobe" = [160]
+"mkt.rerank_pool" = [20, 40, 80]
