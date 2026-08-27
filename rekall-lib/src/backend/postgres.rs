@@ -7,7 +7,7 @@ use postgres_types::Type;
 use tokio_postgres::{CancelToken, Client, NoTls, Statement};
 use tracing::{debug, info};
 
-use crate::config::{ConnectionConfig, Metric};
+use crate::config::{ConnectionConfig, Metric, StorageKind};
 use crate::error::{Error, Result};
 use crate::metrics::{ExtensionInfo, PgRuntimeInfo};
 use crate::progress::{ProgressEvent, ProgressTx};
@@ -30,6 +30,10 @@ pub struct PgConnection {
     /// GUCs applied on the build session before CREATE INDEX (e.g.
     /// `max_parallel_maintenance_workers`). Distinct from search GUCs.
     pub(crate) build_gucs: HashMap<String, toml::Value>,
+    /// Heap storage for the vector column. Defaults to `Vector`; the
+    /// phases that do DDL or COPY set it from the config, since only they
+    /// need it -- a read-only probe does not care.
+    pub storage: StorageKind,
     /// When set, this arm reuses another config's physical index:
     /// `index_sql_name` resolves to the referenced config's index so one
     /// built index can be swept under several query-time configurations.
@@ -49,8 +53,14 @@ impl PgConnection {
             cancel_registry: None,
             progress: None,
             build_gucs: HashMap::new(),
+            storage: StorageKind::default(),
             physical_index: None,
         }
+    }
+
+    /// Set the heap storage kind for DDL and COPY encoding.
+    pub fn set_storage(&mut self, storage: StorageKind) {
+        self.storage = storage;
     }
 
     /// Point this arm at another config's physical index (see
@@ -739,21 +749,43 @@ fn toml_value_to_sql(v: &toml::Value) -> String {
 
 /// Encode a single row in COPY BINARY format.
 /// Format: field_count (i16) + for each field: len (i32) + data
-fn encode_copy_row(buf: &mut Vec<u8>, id: i64, vector: &[f32]) {
+/// Encode one COPY BINARY row for the column's actual type.
+///
+/// COPY BINARY does not apply casts -- the bytes have to already be in the
+/// target type's `recv` format -- so pgvector's `vector::halfvec` cast is no
+/// help here and the loader has to emit f16 itself. `half::f16::from_f32`
+/// rounds to nearest, ties to even, which is what pgvector's own input path
+/// does; `halfvec_copy_matches_cast` in the tests below pins that agreement
+/// against a live server rather than assuming it.
+fn encode_copy_row(buf: &mut Vec<u8>, id: i64, vector: &[f32], storage: StorageKind) {
     buf.write_i16::<BigEndian>(2).unwrap(); // 2 fields
 
     // Field 1: id (int8)
     buf.write_i32::<BigEndian>(8).unwrap();
     buf.write_i64::<BigEndian>(id).unwrap();
 
-    // Field 2: vector (pgvector binary format)
-    // pgvector binary: 2-byte dim + 2-byte unused + dim * 4-byte floats
-    let vec_len = 2 + 2 + vector.len() * 4;
+    // Field 2: the vector. Both pgvector types share the same header --
+    // 2-byte dim + 2-byte unused -- and differ only in element width.
+    let elem_bytes = match storage {
+        StorageKind::Vector => 4,
+        StorageKind::Halfvec => 2,
+    };
+    let vec_len = 2 + 2 + vector.len() * elem_bytes;
     buf.write_i32::<BigEndian>(vec_len as i32).unwrap();
     buf.write_u16::<BigEndian>(vector.len() as u16).unwrap();
     buf.write_u16::<BigEndian>(0).unwrap(); // unused, must be 0
-    for &val in vector {
-        buf.write_f32::<BigEndian>(val).unwrap();
+    match storage {
+        StorageKind::Vector => {
+            for &val in vector {
+                buf.write_f32::<BigEndian>(val).unwrap();
+            }
+        }
+        StorageKind::Halfvec => {
+            for &val in vector {
+                buf.write_u16::<BigEndian>(half::f16::from_f32(val).to_bits())
+                    .unwrap();
+            }
+        }
     }
 }
 
@@ -850,8 +882,9 @@ impl DataLoader for PgConnection {
                     // ever inserted without one.
                     "CREATE TABLE {} (\
                         id bigint NOT NULL, \
-                        v vector({}))",
-                    self.table_name, self.dimension
+                        v {})",
+                    self.table_name,
+                    self.storage.sql_type(self.dimension)
                 ),
                 &[],
             )
@@ -936,7 +969,7 @@ impl DataLoader for PgConnection {
             for i in 0..n_rows {
                 let id = (chunk.start_index + i as u64) as i64;
                 let row = chunk.vectors.row(i);
-                encode_copy_row(&mut buf, id, row.as_slice().unwrap());
+                encode_copy_row(&mut buf, id, row.as_slice().unwrap(), self.storage);
             }
 
             sink.as_mut()
@@ -996,7 +1029,7 @@ mod tests {
     #[test]
     fn encode_row_field_count() {
         let mut buf = Vec::new();
-        encode_copy_row(&mut buf, 42, &[1.0, 2.0, 3.0]);
+        encode_copy_row(&mut buf, 42, &[1.0, 2.0, 3.0], StorageKind::Vector);
         // First 2 bytes: field count = 2
         assert_eq!(&buf[..2], &[0, 2]);
     }
@@ -1004,7 +1037,7 @@ mod tests {
     #[test]
     fn encode_row_id_field() {
         let mut buf = Vec::new();
-        encode_copy_row(&mut buf, 12345, &[1.0]);
+        encode_copy_row(&mut buf, 12345, &[1.0], StorageKind::Vector);
         // After field_count(2): id field len(4) = 8, then id(8)
         let id_len = i32::from_be_bytes(buf[2..6].try_into().unwrap());
         assert_eq!(id_len, 8);
@@ -1016,7 +1049,7 @@ mod tests {
     fn encode_row_vector_field() {
         let vec = [1.5_f32, -2.5, 3.0];
         let mut buf = Vec::new();
-        encode_copy_row(&mut buf, 0, &vec);
+        encode_copy_row(&mut buf, 0, &vec, StorageKind::Vector);
 
         // Vector field starts at offset 14 (2+4+8)
         let vec_offset = 14;
@@ -1041,9 +1074,71 @@ mod tests {
         let dim = 768;
         let vector = vec![0.0_f32; dim];
         let mut buf = Vec::new();
-        encode_copy_row(&mut buf, 0, &vector);
+        encode_copy_row(&mut buf, 0, &vector, StorageKind::Vector);
         let expected = 2 + (4 + 8) + (4 + 2 + 2 + dim * 4);
         assert_eq!(buf.len(), expected);
+    }
+
+    #[test]
+    fn halfvec_encoding_matches_pgvector_rounding() {
+        // COPY BINARY applies no casts, so the loader has to do the f32->f16
+        // conversion itself and its rounding must match what pgvector's own
+        // `vector::halfvec` cast produces -- otherwise a halfvec table loaded
+        // by rekall would hold different values than the same data inserted
+        // through SQL, and recall would differ for reasons nothing records.
+        //
+        // The expected values were read off a live pgvector 0.8.6:
+        //   SELECT ('[...]'::vector(10)::halfvec(10))::text
+        // They agree bit-for-bit with half::f16::from_f32, including the
+        // ties-to-even case (2049 -> 2048) and a near-subnormal (6.1e-5).
+        // The literals are exactly what was typed into psql to obtain the
+        // expected column, so they must not be shortened -- 1.0009765625 is
+        // 1 + 2^-10, the smallest value above 1.0 that f16 holds exactly,
+        // which is the point of including it.
+        #[allow(clippy::excessive_precision)]
+        let input: [f32; 10] = [
+            0.255478,
+            -0.280852,
+            0.305302,
+            0.501733,
+            0.109043,
+            1.0009765625,
+            2049.0,
+            6.1e-5,
+            0.1,
+            0.3333333,
+        ];
+        let pgvector: [f32; 10] = [
+            0.2553711,
+            -0.28076172,
+            0.30541992,
+            0.5019531,
+            0.109069824,
+            1.0009766,
+            2048.0,
+            6.097555e-05,
+            0.099975586,
+            0.33325195,
+        ];
+        for (i, (&x, &want)) in input.iter().zip(pgvector.iter()).enumerate() {
+            let got = f32::from(half::f16::from_f32(x));
+            assert_eq!(
+                got.to_bits(),
+                want.to_bits(),
+                "element {i}: {x} -> {got}, pgvector gives {want}"
+            );
+        }
+    }
+
+    #[test]
+    fn halfvec_copy_row_is_half_the_width() {
+        // Same header, 2-byte elements instead of 4.
+        let v = [1.0f32, 2.0, 3.0, 4.0];
+        let mut full = Vec::new();
+        encode_copy_row(&mut full, 1, &v, StorageKind::Vector);
+        let mut half_ = Vec::new();
+        encode_copy_row(&mut half_, 1, &v, StorageKind::Halfvec);
+        assert_eq!(full.len() - half_.len(), v.len() * 2);
     }
 
     #[test]

@@ -73,12 +73,14 @@ async fn settle_after_load(pg: &PgConnection, progress: &ProgressTx) -> Result<(
 }
 
 pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64> {
-    let pg = PgConnection::new(
+    let mut pg = PgConnection::new(
         &config.connection,
         &config.table_name(),
         config.dataset.dimension,
         config.dataset.metric,
     );
+    // DDL and COPY both depend on the column's actual type.
+    pg.set_storage(config.load.storage);
 
     if !pg.table_exists().await? {
         return Err(Error::TableNotFound {

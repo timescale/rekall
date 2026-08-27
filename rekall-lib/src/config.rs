@@ -5,6 +5,45 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
 
+/// Heap storage type for the vector column.
+///
+/// Only the table's own storage: an index arm's `encoding` is independent of
+/// this, and a pgvector halfvec expression index over a `halfvec` heap just
+/// becomes a no-op cast.
+///
+/// The point of the option is the size of the heap, which is what a rerank
+/// reads: at 768d a `vector` row is 3080 bytes and fits 2 to an 8 kB page,
+/// a `halfvec` row is 1544 and fits 5. So halving it halves both the heap a
+/// scan competes with for cache and the pages a rerank touches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageKind {
+    #[default]
+    Vector,
+    Halfvec,
+}
+
+impl StorageKind {
+    /// SQL type for the column, given the dimension.
+    pub fn sql_type(self, dim: u32) -> String {
+        match self {
+            StorageKind::Vector => format!("vector({dim})"),
+            StorageKind::Halfvec => format!("halfvec({dim})"),
+        }
+    }
+
+    /// Suffix appended to the table name so the two storage kinds can live
+    /// side by side on one instance -- comparing them means loading both,
+    /// and sharing a name would silently make the second load truncate the
+    /// first (or fail on the type mismatch).
+    pub fn table_suffix(self) -> &'static str {
+        match self {
+            StorageKind::Vector => "",
+            StorageKind::Halfvec => "_halfvec",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Metric {
@@ -92,6 +131,11 @@ impl Default for ConnectionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadConfig {
     pub table: Option<String>,
+    /// Heap storage for the vector column: `vector` (default, f32) or
+    /// `halfvec` (f16). Halfvec gets its own table name so both can be
+    /// loaded on one instance and compared.
+    #[serde(default)]
+    pub storage: StorageKind,
     #[serde(default = "default_parallelism")]
     pub parallelism: usize,
     #[serde(default = "default_chunk_size")]
@@ -114,6 +158,7 @@ impl Default for LoadConfig {
     fn default() -> Self {
         Self {
             table: None,
+            storage: StorageKind::default(),
             parallelism: default_parallelism(),
             chunk_size: default_chunk_size(),
         }
@@ -631,10 +676,15 @@ impl BenchmarkConfig {
     }
 
     pub fn table_name(&self) -> String {
-        self.load
+        let base = self
+            .load
             .table
             .clone()
-            .unwrap_or_else(|| self.dataset.name.replace('-', "_"))
+            .unwrap_or_else(|| self.dataset.name.replace('-', "_"));
+        // Suffixed even when `table` is set explicitly: the two storage
+        // kinds must never share a name, and silently loading f16 rows into
+        // a table someone else filled with f32 is the failure this prevents.
+        format!("{base}{}", self.load.storage.table_suffix())
     }
 
     /// Load a dataset config and merge index fragments from separate paths.
