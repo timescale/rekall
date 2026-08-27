@@ -16,6 +16,7 @@ dsn = "host=/tmp port=5432 dbname=postgres"
 
 [load]
 table = "cohere_1m"      # defaults to dataset name with - replaced by _
+storage = "auto"          # heap column type: auto | vector | halfvec
 parallelism = 1           # COPY streams (Phase 2)
 chunk_size = 50000        # vectors per HDF5 read
 
@@ -313,3 +314,56 @@ rekall infra dsn [-c config] [-n N]   # print connection string
 rekall infra deploy-key [-c config]   # generate deploy key for GitHub
 rekall infra iam-policy [-c config]   # print IAM template
 ```
+
+## Heap storage precision (`[load] storage`)
+
+The type of the table's `v` column, independent of any index arm's own
+`encoding` (a pgvector halfvec expression index over a `halfvec` heap is just
+a no-op cast).
+
+| value | column |
+| --- | --- |
+| `auto` (default) | matches the source file: `halfvec` for an f16 dataset, `vector` otherwise |
+| `vector` | `vector(N)`, f32 |
+| `halfvec` | `halfvec(N)`, f16 |
+
+**Why it matters.** The heap is what an exact rerank reads. At 768d a `vector`
+row is 3080 bytes and fits 2 to an 8 kB page; a `halfvec` row is 1544 and fits
+5. Halving the heap halves both the bytes competing with the index for cache
+and the pages a rerank touches — which is the whole difference between
+graceful degradation and a cliff on a memory-constrained box. For cohere-1M
+the Meerkat working set is index 0.26 GiB + heap 3.81 GiB; a halfvec heap
+takes that to ~2.2 GiB, against HNSW-halfvec's 1.91 GiB index.
+
+**Why `auto` exists.** HDF5 converts inside `H5Dread`, so rekall always
+receives `f32` whatever the file holds — the file's own precision is invisible
+to the loader unless it is asked for. Widening an f16 source into a `vector`
+column therefore happened silently, storing bit-identical values in twice the
+space: identical recall, twice the heap. `auto` reads the `train` dataset's
+element type from the HDF5 header and matches it.
+
+`auto` never *narrows*: an f64 source (glove) already loses precision reaching
+f32, and going on to f16 is a real tradeoff, so it stays an explicit opt-in.
+`rekall dataset info` prints the detected precision, and every run records it
+in `DatasetMeta.source_precision`.
+
+As of this writing every cohere file in `ann-benchmarks/data/` is
+`H5T_IEEE_F32LE` and glove is `H5T_IEEE_F64LE` — none are f16 — so `auto`
+resolves to `vector` for all of them and the setting only takes effect when
+written explicitly.
+
+**Table naming.** An explicit `halfvec` gets its own table (`cohere_1m_halfvec`)
+so f32 and f16 can be loaded side by side on one instance and compared;
+sharing a name would make the second load truncate the first. The suffix is
+keyed to the *declared* setting, not the resolved type, so a table name never
+depends on opening the dataset file — which is why `auto` always takes the
+bare name.
+
+**Type drift.** An existing table is reused rather than recreated, and the
+reuse check compares only row counts. A run whose `storage` resolves to a type
+the table's `v` column is not now fails up front instead of silently measuring
+the wrong heap; `--reload` recreates the table.
+
+**Caveat.** Meerkat's `mktann` opclasses are declared `FOR TYPE vector` only,
+so a Meerkat arm cannot index a `halfvec` column. The option currently serves
+pgvector arms.

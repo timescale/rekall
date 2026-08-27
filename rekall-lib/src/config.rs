@@ -3,9 +3,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::dataset::SourcePrecision;
 use crate::error::{Error, Result};
 
-/// Heap storage type for the vector column.
+/// Heap storage type for the vector column, resolved to a concrete SQL type.
 ///
 /// Only the table's own storage: an index arm's `encoding` is independent of
 /// this, and a pgvector halfvec expression index over a `halfvec` heap just
@@ -32,14 +33,62 @@ impl StorageKind {
         }
     }
 
-    /// Suffix appended to the table name so the two storage kinds can live
-    /// side by side on one instance -- comparing them means loading both,
-    /// and sharing a name would silently make the second load truncate the
-    /// first (or fail on the type mismatch).
+    /// The pgvector type name alone, for comparing against `format_type` on
+    /// an existing column.
+    pub fn type_name(self) -> &'static str {
+        match self {
+            StorageKind::Vector => "vector",
+            StorageKind::Halfvec => "halfvec",
+        }
+    }
+}
+
+/// What a suite *declares* for heap storage, before the source file is seen.
+///
+/// `Auto` -- the default -- means "match the source": an f16 dataset gets a
+/// `halfvec` column, everything else `vector`. Widening f16 source data into
+/// a `vector` column is pure loss, storing bit-identical values in twice the
+/// space, so it is not something a default should do. Narrowing is the
+/// opposite -- a real precision tradeoff -- so it stays explicit.
+///
+/// This stays separate from `StorageKind` so the ordering is enforced by the
+/// types: nothing can ask for a SQL type without first resolving against a
+/// source precision.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum StorageSetting {
+    #[default]
+    Auto,
+    Vector,
+    Halfvec,
+}
+
+impl StorageSetting {
+    /// Resolve against what the source file actually holds.
+    pub fn resolve(self, source: SourcePrecision) -> StorageKind {
+        match self {
+            StorageSetting::Vector => StorageKind::Vector,
+            StorageSetting::Halfvec => StorageKind::Halfvec,
+            StorageSetting::Auto => match source {
+                SourcePrecision::F16 => StorageKind::Halfvec,
+                SourcePrecision::F32 | SourcePrecision::F64 => StorageKind::Vector,
+            },
+        }
+    }
+
+    /// Suffix appended to the table name so an explicitly narrowed table can
+    /// live beside the natural one -- comparing f32 against f16 means loading
+    /// both, and sharing a name would silently make the second load truncate
+    /// the first.
+    ///
+    /// Keyed to the *declared* setting, not the resolved kind, so a table name
+    /// never depends on reading the dataset file. `Auto` therefore always
+    /// takes the bare name: it is the one table that needs no counterpart,
+    /// since by definition nothing else is loaded from that source unchanged.
     pub fn table_suffix(self) -> &'static str {
         match self {
-            StorageKind::Vector => "",
-            StorageKind::Halfvec => "_halfvec",
+            StorageSetting::Auto | StorageSetting::Vector => "",
+            StorageSetting::Halfvec => "_halfvec",
         }
     }
 }
@@ -131,11 +180,12 @@ impl Default for ConnectionConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoadConfig {
     pub table: Option<String>,
-    /// Heap storage for the vector column: `vector` (default, f32) or
-    /// `halfvec` (f16). Halfvec gets its own table name so both can be
-    /// loaded on one instance and compared.
+    /// Heap storage for the vector column. Default `auto` matches the
+    /// source file's own precision; `vector` (f32) and `halfvec` (f16) force
+    /// it. Explicit halfvec gets its own table name so both can be loaded on
+    /// one instance and compared.
     #[serde(default)]
-    pub storage: StorageKind,
+    pub storage: StorageSetting,
     #[serde(default = "default_parallelism")]
     pub parallelism: usize,
     #[serde(default = "default_chunk_size")]
@@ -158,7 +208,7 @@ impl Default for LoadConfig {
     fn default() -> Self {
         Self {
             table: None,
-            storage: StorageKind::default(),
+            storage: StorageSetting::default(),
             parallelism: default_parallelism(),
             chunk_size: default_chunk_size(),
         }
@@ -675,15 +725,54 @@ impl BenchmarkConfig {
         Ok(config)
     }
 
+    /// Resolve the declared heap storage against the source file's precision.
+    ///
+    /// Reads the HDF5 header only. Both init (which needs a column type) and
+    /// load (which needs a COPY encoding) go through here so the two can
+    /// never disagree.
+    pub fn resolve_storage(&self) -> Result<StorageKind> {
+        let path = self.dataset.resolved_path();
+        let source = crate::dataset::hdf5::source_precision(&path)?;
+        let kind = self.load.storage.resolve(source);
+
+        match (self.load.storage, source, kind) {
+            (StorageSetting::Auto, SourcePrecision::F16, _) => {
+                tracing::info!(
+                    "{} stores f16; heap column is halfvec to match \
+                     (set storage = \"vector\" to widen it)",
+                    path.display(),
+                );
+            }
+            (_, SourcePrecision::F16, StorageKind::Vector) => {
+                tracing::warn!(
+                    "storage = \"vector\" over an f16 source widens every \
+                     value into twice the space for bit-identical data: same \
+                     recall, twice the heap competing for cache, twice the \
+                     pages a rerank touches",
+                );
+            }
+            (StorageSetting::Halfvec, SourcePrecision::F64, _) => {
+                tracing::warn!(
+                    "{} stores f64; a halfvec column narrows it twice (f64 \
+                     -> f32 on read, then f32 -> f16)",
+                    path.display(),
+                );
+            }
+            _ => {}
+        }
+        Ok(kind)
+    }
+
     pub fn table_name(&self) -> String {
         let base = self
             .load
             .table
             .clone()
             .unwrap_or_else(|| self.dataset.name.replace('-', "_"));
-        // Suffixed even when `table` is set explicitly: the two storage
-        // kinds must never share a name, and silently loading f16 rows into
-        // a table someone else filled with f32 is the failure this prevents.
+        // Suffixed even when `table` is set explicitly: an explicitly
+        // narrowed table must never share a name with the natural one, and
+        // silently loading f16 rows into a table someone else filled with
+        // f32 is the failure this prevents.
         format!("{base}{}", self.load.storage.table_suffix())
     }
 

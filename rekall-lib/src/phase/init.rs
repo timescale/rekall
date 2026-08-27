@@ -11,7 +11,7 @@ pub async fn run(config: &BenchmarkConfig) -> Result<()> {
         config.dataset.metric,
     );
     // DDL and COPY both depend on the column's actual type.
-    pg.set_storage(config.load.storage);
+    pg.set_storage(config.resolve_storage()?);
 
     pg.create_table().await?;
     pg.create_meta_tables().await?;

@@ -63,6 +63,43 @@ impl PgConnection {
         self.storage = storage;
     }
 
+    /// Error if an existing table's `v` column is not the type this run
+    /// expects.
+    ///
+    /// An existing table is reused rather than recreated, and the reuse check
+    /// only compares row counts -- so without this, pointing a `halfvec` run
+    /// at an f32 table (or the reverse) skips init, skips load, and silently
+    /// measures the wrong heap. The type is the one thing a row count cannot
+    /// catch.
+    pub async fn verify_column_type(&self) -> Result<()> {
+        let client = self.open_connection().await?;
+        let row = client
+            .query_opt(
+                "SELECT format_type(atttypid, atttypmod)
+                   FROM pg_attribute
+                  WHERE attrelid = $1::regclass
+                    AND attname = 'v'
+                    AND NOT attisdropped",
+                &[&self.table_name],
+            )
+            .await?;
+        let Some(row) = row else {
+            return Ok(()); // no `v` column: not our table to judge
+        };
+        let actual: String = row.get(0);
+        let expected = self.storage.type_name();
+        if actual.starts_with(expected) {
+            return Ok(());
+        }
+        Err(Error::Config(format!(
+            "table '{}' has column v of type {actual}, but this run resolves \
+             storage to {expected}. Rekall reuses an existing table rather \
+             than recreating it, so it will not convert the column. Either \
+             set [load] storage to match, or --reload to recreate the table.",
+            self.table_name,
+        )))
+    }
+
     /// Point this arm at another config's physical index (see
     /// `IndexConfig::physical_index`).
     pub fn set_physical_index(&mut self, physical: Option<String>) {

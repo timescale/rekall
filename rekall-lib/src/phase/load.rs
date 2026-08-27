@@ -80,7 +80,7 @@ pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64>
         config.dataset.metric,
     );
     // DDL and COPY both depend on the column's actual type.
-    pg.set_storage(config.load.storage);
+    pg.set_storage(config.resolve_storage()?);
 
     if !pg.table_exists().await? {
         return Err(Error::TableNotFound {

@@ -5,11 +5,64 @@ use ndarray::Array2;
 use crate::config::Metric;
 use crate::error::{Error, Result};
 
-use super::{DatasetMeta, DatasetReader, VectorChunk};
+use super::{DatasetMeta, DatasetReader, SourcePrecision, VectorChunk};
 
 pub struct Hdf5Reader {
     path: PathBuf,
     meta: DatasetMeta,
+}
+
+/// Read the float width of a dataset's element type.
+///
+/// `to_descriptor` maps `H5Tget_class`/`H5Tget_size`, so this is a header
+/// read -- no data is touched. The `f16` crate feature is what makes
+/// `Float(U2)` representable at all; without it `to_descriptor` rejects a
+/// 2-byte float outright, which is why enabling it is load-bearing here and
+/// not cosmetic.
+///
+/// Anything that is not a float (an integer or fixed-point dataset) is
+/// reported as f32: HDF5 still converts it to `f32` on read, and picking a
+/// narrower heap column off a non-float source is not a call to make
+/// implicitly.
+fn element_precision(path: &Path, ds: &hdf5::Dataset) -> Result<SourcePrecision> {
+    use hdf5::types::{FloatSize, TypeDescriptor};
+
+    let dtype = ds.dtype().map_err(|e| Error::Hdf5 {
+        path: path.to_path_buf(),
+        detail: format!("cannot read element type: {e}"),
+    })?;
+    let descriptor = dtype.to_descriptor().map_err(|e| Error::Hdf5 {
+        path: path.to_path_buf(),
+        detail: format!("cannot interpret element type: {e}"),
+    })?;
+
+    Ok(match descriptor {
+        TypeDescriptor::Float(FloatSize::U2) => SourcePrecision::F16,
+        TypeDescriptor::Float(FloatSize::U8) => SourcePrecision::F64,
+        _ => SourcePrecision::F32,
+    })
+}
+
+/// Probe just the source precision, without the shape/dimension validation
+/// `Hdf5Reader::open` does.
+///
+/// Init needs this before it can pick a column type, and init runs before
+/// anything has validated the file.
+pub fn source_precision(path: &Path) -> Result<SourcePrecision> {
+    if !path.exists() {
+        return Err(Error::DatasetNotFound {
+            path: path.to_path_buf(),
+        });
+    }
+    let file = hdf5::File::open(path).map_err(|e| Error::Hdf5 {
+        path: path.to_path_buf(),
+        detail: format!("cannot open file: {e}"),
+    })?;
+    let train = file.dataset("train").map_err(|e| Error::Hdf5 {
+        path: path.to_path_buf(),
+        detail: format!("missing 'train' dataset: {e}"),
+    })?;
+    element_precision(path, &train)
 }
 
 impl Hdf5Reader {
@@ -65,6 +118,7 @@ impl Hdf5Reader {
                 dimension,
                 num_queries,
                 metric,
+                source_precision: element_precision(path, &train)?,
             },
         })
     }
@@ -122,6 +176,7 @@ impl Hdf5Reader {
             has_distances,
             ground_truth_k: gt_k,
             distance_attr,
+            source_precision: element_precision(path, &train)?,
             file_size_bytes: std::fs::metadata(path).map(|m| m.len()).unwrap_or(0),
         })
     }
@@ -135,20 +190,33 @@ pub struct DatasetInfo {
     pub has_distances: bool,
     pub ground_truth_k: Option<u32>,
     pub distance_attr: Option<String>,
+    pub source_precision: SourcePrecision,
     pub file_size_bytes: u64,
 }
 
 impl std::fmt::Display for DatasetInfo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size_mb = self.file_size_bytes as f64 / (1024.0 * 1024.0);
-        let train_size_mb = self.num_train as f64 * self.dimension as f64 * 4.0 / (1024.0 * 1024.0);
+        let elem_bytes = f64::from(self.source_precision.bits() / 8);
+        let train_size_mb =
+            self.num_train as f64 * self.dimension as f64 * elem_bytes / (1024.0 * 1024.0);
         writeln!(
             f,
-            "  Vectors:      {:>12} ({:.0} MB as f32)",
-            self.num_train, train_size_mb
+            "  Vectors:      {:>12} ({:.0} MB as {})",
+            self.num_train, train_size_mb, self.source_precision
         )?;
         writeln!(f, "  Queries:      {:>12}", self.num_test)?;
         writeln!(f, "  Dimension:    {:>12}", self.dimension)?;
+        writeln!(
+            f,
+            "  Precision:    {:>12}  (read as f32; heap column defaults to {})",
+            self.source_precision.to_string(),
+            if matches!(self.source_precision, SourcePrecision::F16) {
+                "halfvec"
+            } else {
+                "vector"
+            }
+        )?;
         writeln!(
             f,
             "  Distance:     {:>12}",
@@ -301,5 +369,113 @@ impl DatasetReader for Hdf5Reader {
             }
             Err(_) => Ok(None),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::{StorageKind, StorageSetting};
+    use half::f16;
+    use ndarray::Array2;
+
+    /// Write a 2-d `train`/`test` pair in the requested element type.
+    fn write<T>(dir: &Path, name: &str, fill: impl Fn(usize) -> T) -> PathBuf
+    where
+        T: hdf5::H5Type + Clone + Default,
+    {
+        let path = dir.join(name);
+        let file = hdf5::File::create(&path).unwrap();
+        for (ds, rows) in [("train", 4usize), ("test", 2usize)] {
+            let data =
+                Array2::from_shape_fn((rows, DIM as usize), |(r, c)| fill(r * DIM as usize + c));
+            file.new_dataset::<T>()
+                .shape([rows, DIM as usize])
+                .create(ds)
+                .unwrap()
+                .write(&data)
+                .unwrap();
+        }
+        path
+    }
+
+    const DIM: u32 = 3;
+
+    #[test]
+    fn source_precision_reflects_the_file_not_what_we_read() {
+        let dir = tempfile::tempdir().unwrap();
+
+        // The f16 case is the one the `f16` cargo feature buys: without it
+        // `to_descriptor` rejects a 2-byte float and this returns an error
+        // instead of F16.
+        let f16_path = write::<f16>(dir.path(), "half.hdf5", |i| f16::from_f32(i as f32));
+        assert_eq!(
+            source_precision(&f16_path).unwrap(),
+            SourcePrecision::F16,
+            "2-byte float misread"
+        );
+
+        let f32_path = write::<f32>(dir.path(), "single.hdf5", |i| i as f32);
+        assert_eq!(source_precision(&f32_path).unwrap(), SourcePrecision::F32);
+
+        let f64_path = write::<f64>(dir.path(), "double.hdf5", |i| i as f64);
+        assert_eq!(source_precision(&f64_path).unwrap(), SourcePrecision::F64);
+
+        // Whatever the file holds, the reader still hands out f32 -- HDF5
+        // converts inside H5Dread -- so precision is a storage decision, not
+        // a decoding one.
+        for path in [&f16_path, &f32_path, &f64_path] {
+            let reader = Hdf5Reader::open(path, crate::config::Metric::Angular, DIM).unwrap();
+            let q: Array2<f32> = reader.queries().unwrap();
+            assert_eq!(q.shape(), &[2, DIM as usize]);
+            assert_eq!(q[[0, 0]], 0.0);
+            assert_eq!(q[[0, 1]], 1.0);
+        }
+    }
+
+    #[test]
+    fn auto_storage_matches_the_source_and_never_widens_f16() {
+        // Auto: halfvec only for an f16 source. Widening f16 into `vector`
+        // stores bit-identical values in twice the space, so it must not be
+        // what a default does.
+        assert_eq!(
+            StorageSetting::Auto.resolve(SourcePrecision::F16),
+            StorageKind::Halfvec
+        );
+        assert_eq!(
+            StorageSetting::Auto.resolve(SourcePrecision::F32),
+            StorageKind::Vector
+        );
+        // f64 narrows to f32 on read; going further to f16 is a real
+        // tradeoff, so auto stops at vector.
+        assert_eq!(
+            StorageSetting::Auto.resolve(SourcePrecision::F64),
+            StorageKind::Vector
+        );
+
+        // Explicit settings ignore the source entirely.
+        for source in [
+            SourcePrecision::F16,
+            SourcePrecision::F32,
+            SourcePrecision::F64,
+        ] {
+            assert_eq!(
+                StorageSetting::Vector.resolve(source),
+                StorageKind::Vector,
+                "explicit vector overridden by {source}"
+            );
+            assert_eq!(
+                StorageSetting::Halfvec.resolve(source),
+                StorageKind::Halfvec,
+                "explicit halfvec overridden by {source}"
+            );
+        }
+
+        // Only an explicit narrowing takes a suffix: it is the one that needs
+        // to coexist with the natural table. Auto never does, so table names
+        // stay computable without opening the dataset.
+        assert_eq!(StorageSetting::Auto.table_suffix(), "");
+        assert_eq!(StorageSetting::Vector.table_suffix(), "");
+        assert_eq!(StorageSetting::Halfvec.table_suffix(), "_halfvec");
     }
 }

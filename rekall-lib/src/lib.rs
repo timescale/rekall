@@ -166,9 +166,11 @@ impl Agent {
     /// If the dataset file doesn't exist locally and a URI is configured,
     /// download it before running phases that need it.
     async fn ensure_dataset(&mut self, phases: &[Phase]) -> Result<()> {
+        // Init is in here too: the column type it creates now comes from the
+        // source file's precision, so it cannot run before the file is there.
         let needs_dataset = phases
             .iter()
-            .any(|p| matches!(p, Phase::Load | Phase::Search));
+            .any(|p| matches!(p, Phase::Init | Phase::Load | Phase::Search));
         if !needs_dataset {
             return Ok(());
         }
@@ -329,6 +331,30 @@ impl Agent {
                 );
                 matches!(pg.table_exists().await, Ok(true))
             };
+
+        // An existing table is reused, not recreated, and the reuse check
+        // above compares only row counts -- so a table whose `v` column is a
+        // different type than this run resolves to would sail through every
+        // phase and have its search silently attributed to the wrong heap.
+        // Tolerant of a missing dataset file (an index-only run does not need
+        // one); the mismatch itself is fatal.
+        if phases
+            .iter()
+            .any(|p| matches!(p, Phase::Init | Phase::Load | Phase::Index | Phase::Search))
+        {
+            if let Ok(kind) = self.config.resolve_storage() {
+                let mut pg = backend::postgres::PgConnection::new(
+                    &self.config.connection,
+                    &self.config.table_name(),
+                    self.config.dataset.dimension,
+                    self.config.dataset.metric,
+                );
+                pg.set_storage(kind);
+                if let Ok(true) = pg.table_exists().await {
+                    pg.verify_column_type().await?;
+                }
+            }
+        }
 
         for &phase in phases {
             // With interleave, Index and Search run together after this loop
