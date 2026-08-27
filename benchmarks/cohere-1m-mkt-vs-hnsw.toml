@@ -59,22 +59,25 @@
 #
 # Arms
 # ----
-# mkt-defaults-rerank-sweep  (five query series: mkt-nprobe{10,20,40,80,160})
+# mkt-defaults-rerank-sweep  (three query series: mkt-rerank{20,40,80})
 #     Meerkat exactly as shipped -- no index params -- swept over BOTH query
 #     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
 #     already sit on the measured optimum (auto nlist = rows/256 = 3906,
 #     auto nprobe = 32, fastscan + centroid fastscan, SOAR 1.0, boundary
 #     0.35), so the index needs no tuning; the sweep is over query time.
 #
-#     Emitted as five named query series, one per nprobe, all against the
-#     one built index. Collapsed into a single series the 2-D sweep renders
-#     as a staircase -- each nprobe's recall ceiling as a plateau, joined by
-#     vertical drops as rerank_pool rises past usefulness -- which reads like
-#     a Pareto frontier even on the per-config plot, whose purpose is to show
-#     configurations apart. Five names give five curves there; the Pareto
-#     plot groups by index family and still collapses them, correctly.
-#     See indexes/mkt-defaults-rerank-sweep.toml for the grid and why
-#     rerank_pool 0/10/160 were dropped.
+#     nprobe is the curve parameter -- the search-time knob that trades
+#     recall for speed -- so it is swept within each series, and rerank_pool,
+#     being a configuration choice, gets a series of its own. Three curves,
+#     all against the one built index.
+#
+#     Sweeping both inside one series is what produced the staircase in the
+#     first published run: with nprobe fixed, recall climbs to that nprobe's
+#     ceiling and then flatlines while QPS keeps falling, so the series ends
+#     in a vertical tail and the union of five reads like a Pareto frontier
+#     even on the per-config plot. Fixing rerank_pool and sweeping nprobe is
+#     monotone in both axes -- see indexes/mkt-defaults-rerank-sweep.toml for
+#     the measurements and why rerank_pool 0/10/160 were dropped.
 #
 # hnsw-m24-halfvec
 #     pgvector's recommended default per the pg-aiguide tuning guide, and
