@@ -1,0 +1,34 @@
+# Pure defaults for the cohere-1M ladder: no index parameters, no session
+# GUCs -- exactly what CREATE INDEX ... USING mktann gives an untuned
+# session. Keeps the arm name `mkt-defaults` so plots and published history
+# line up with every other cohere suite.
+#
+# A 1M-specific copy of indexes/mkt-defaults.toml, which is shared by the
+# 10m/50m/100m/ivfflat/tuning suites and must not change. The only
+# difference is the nprobe tail.
+#
+# nprobe = [0, 10, 20, 40, 80, 160, 320]
+#
+#   0 is the auto sentinel: ~0.5*sqrt(nlist), which is 32 at this scale. It
+#   is the only point on any curve representing a user who tuned nothing,
+#   and it is the only series where BOTH auto settings are in play -- auto
+#   nprobe with an explicit rerank_pool is a hybrid, not the out-of-the-box
+#   experience, which is why this cannot be folded into the rerank-sweep
+#   series. It also self-adjusts with the data (32 at 1M, ~99 at 10M, ~313
+#   at 100M) where a hardcoded 32 would not.
+#
+#   The shared arm runs on to 2560. Trimmed here at 320 because the tail is
+#   where the runtime goes and it buys almost nothing: recall is already
+#   0.994 at nprobe=160, and each doubling roughly halves QPS -- at the
+#   4 GiB rung 640/1280/2560 cost ~11 min between them, and far more at
+#   2 GiB where the heap is not resident. 320 keeps one point past the
+#   rerank-sweep grid's ceiling for the high-recall end.
+[[index]]
+type = "meerkat"
+name = "mkt-defaults"
+table_parallel_workers = 32
+
+[[search.sweep]]
+index = "mkt-defaults"
+[search.sweep.params]
+"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320]

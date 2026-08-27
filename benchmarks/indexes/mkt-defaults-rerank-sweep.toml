@@ -55,7 +55,12 @@
 type = "meerkat"
 name = "mkt-defaults-rerank-sweep"
 table_parallel_workers = 32
-# No [index.params]: the shipped defaults.
+# No [index.params]: the shipped defaults -- byte-identical to what
+# mkt-defaults builds, so reuse that physical index instead of building a
+# second copy (~240s and 0.26 GiB for nothing). This arm keeps its own name
+# for results and plots; only the on-disk index is shared. Requires
+# indexes/mkt-defaults-1m.toml in the same suite, listed before this one.
+physical_index = "mkt-defaults"
 
 [[query]]
 name = "mkt-rerank20"

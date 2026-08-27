@@ -59,6 +59,21 @@
 #
 # Arms
 # ----
+# mkt-defaults
+#     Pure defaults, swept over nprobe alone -- the same arm every other
+#     cohere suite uses (10m, 50m, 100m, ivfflat, tuning), unchanged, so the
+#     1M numbers stay comparable with the published history.
+#
+#     Its nprobe list keeps the auto point the rerank-sweep grid drops:
+#     `0` resolves to ~0.5*sqrt(nlist) = 32 here, self-adjusting with the
+#     data (32 at 1M, ~99 at 10M, ~313 at 100M) where a hardcoded 32 would
+#     not. Tail trimmed at 320 -- see the arm's own header for why.
+#
+#     Note this is the only series where BOTH auto settings are in play.
+#     Auto nprobe combined with an explicit rerank_pool is a hybrid, not the
+#     out-of-the-box experience, which is why the auto point cannot simply
+#     be folded into the four series below.
+#
 # mkt-defaults-rerank-sweep  (four series: mkt-rerank{20,40,80}, mkt-norerank)
 #     Meerkat exactly as shipped -- no index params -- swept over BOTH query
 #     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
@@ -129,6 +144,7 @@
 # One suite at every rung, so the arm list -- and hence the on-disk index
 # names, which are derived from it -- cannot drift between build and search.
 indexes = [
+    "indexes/mkt-defaults-1m.toml",
     "indexes/mkt-defaults-rerank-sweep.toml",
     "indexes/hnsw-m24-halfvec.toml",
     "indexes/hnsw-halfvec.toml",
