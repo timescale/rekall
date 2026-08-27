@@ -210,10 +210,115 @@ PG settings are computed automatically from the instance type:
 | `max_wal_size` / `min_wal_size` | 16 GB / 2 GB | fewer, larger checkpoints during bulk load |
 | `max_parallel_maintenance_workers` | physical cores, capped at 32 | pgvector uses this directly as its HNSW build worker count; pinned to physical cores because SMT siblings contend on the shared graph |
 
-These are computed in `InfraConfig::effective_pg_config`. The table above was
-wrong for a long time — it claimed 40% `shared_buffers` and 10%
-`maintenance_work_mem`, neither of which the code has ever done since
-`eea882e`/`6bc1c41`. If you change the formulas, change this table.
+Computed in `InfraConfig::effective_pg_config`. **If you change a formula,
+change this table** — it drifted out of step for months (see the history
+below) and a benchmark was misread because of it.
+
+#### Why these values, with sources
+
+**`shared_buffers` = 25%.** This is pgvector's own recommendation, not a
+guess and not a compromise:
+
+> Use a tool like PgTune to set initial values for Postgres server
+> parameters. For instance, `shared_buffers` should typically be 25% of the
+> server's memory.
+> — [pgvector README, "Performance"](https://github.com/pgvector/pgvector#performance)
+
+It looks low, and the instinct to raise it recurs. Resist it for benchmark
+runs: 25% is what the vendor documents, so results measured under it are
+measured under vendor-recommended tuning and cannot be dismissed as a
+misconfiguration. Raise it per-run via `[phase_pg_config.search]` if you
+want to *test* the sensitivity; do not change the default, which would
+silently move every future number and break comparability with published
+runs.
+
+Two mechanics worth knowing before arguing about this setting:
+
+- The prewarm caps the buffer-resident slice of a relation at **75% of
+  `shared_buffers`** (`PgConnection::prewarm`), reading the remainder into
+  the OS page cache. So the pool size bounds how much of an index can be
+  pinned where the OS cannot evict it — and a 1953 MB HNSW graph cannot be
+  fully pinned on a 4 GiB box at any setting (it would need ~2.6 GB of
+  pool, ~70% of usable RAM).
+- The usual "shrink `shared_buffers` to avoid double buffering" argument
+  assumes the page cache is uncontested. In these benchmarks it is not: the
+  cohere-1M heap is ~3.9 GB and the prewarm reads it before the index, so
+  page cache is contested and buffer pool is not.
+
+**`maintenance_work_mem` = 40% of RAM, floored at 256 MB.** Both a target
+and a ceiling.
+
+Target, because pgvector builds HNSW dramatically faster when the graph
+fits:
+
+> Indexes build significantly faster when the graph fits into
+> `maintenance_work_mem` … Do not set `maintenance_work_mem` so high that it
+> exhausts the memory on the server.
+> — [pgvector README, "Index Build Time"](https://github.com/pgvector/pgvector#index-build-time)
+
+Missing that shows up as `NOTICE: hnsw graph no longer fits into
+maintenance_work_mem after N tuples`, after which the build falls to an
+on-disk pass roughly an order of magnitude slower. **Grep the build log for
+that string** before trusting any HNSW build time.
+
+Ceiling, because pgvector's *parallel* build places that graph in a DSM
+segment, DSM comes out of `/dev/shm`, and `/dev/shm` is 50% of RAM.
+`6bc1c41` capped the formula at 2·RAM/5 after `RAM/2` produced
+`could not resize shared memory segment: No space left on device`. Anything
+above 40% risks reintroducing it.
+
+Note this affects **builds only**. It has no bearing on search throughput,
+so it cannot explain a slow query benchmark.
+
+**`max_parallel_maintenance_workers` = physical cores, capped at 32.**
+pgvector uses this value *directly* as its HNSW build worker count:
+
+> `SET max_parallel_maintenance_workers = 7; -- plus leader`
+> — [pgvector README, "Index Build Time"](https://github.com/pgvector/pgvector#index-build-time)
+
+Pinned to physical cores (Graviton has no SMT, so vCPU = cores; x86 runs
+two threads per core) because the build is CPU- and lock-bound on one shared
+graph, so SMT siblings mostly contend. Capped at 32 because scaling is
+sublinear past that. `max_parallel_workers` and `max_worker_processes` must
+exceed it or the workers never launch.
+
+**`effective_cache_size` = 75%**, **`work_mem` = 256 MB**, **WAL sizes** —
+pgtune defaults; the WAL ceiling is raised for fewer, larger checkpoints
+during bulk load.
+
+#### Storage
+
+`disk_iops` / `disk_throughput` are optional and **omitted when unset**, so
+the volume keeps gp3's included baseline of 3000 IOPS / 125 MiB/s. Omitting
+rather than defaulting matters: provisioning above the baseline is billed,
+and 16000 IOPS on a 100 GB volume runs ~$108/mo — more than a small
+instance costs, enough to dominate a cost comparison.
+
+Every run records the storage it *actually* used (`StorageInfo` in the run
+environment, shown as "Instance settings (observed)" on the published run
+page): the data directory, its mount point and filesystem, whether the
+device is EBS or instance-store NVMe, and the volume's provisioned
+IOPS/throughput. Read from the machine, never from the config — see below
+for why.
+
+Instance-store NVMe (`pg_on_instance_store`) is wiped by a stop, and
+`infra resize` stops the instance, so PGDATA must be on EBS for anything
+that walks a ladder of instance sizes.
+
+#### Things that have actually gone wrong here
+
+Recorded so they are not rediscovered:
+
+| Symptom | Cause |
+|---|---|
+| A benchmark ran at 3000 IOPS with `disk_iops = 16000` in its config | The native launch path built its block-device spec with `VolumeSize`/`VolumeType` only and silently dropped both fields. Fixed; pinned by a test on the spec string, because the failure is invisible at runtime |
+| This table said 40% `shared_buffers`, 10% `maintenance_work_mem` | Stale since `eea882e`/`6bc1c41`. Led to arguing from the docs for a value the code never used |
+| A 4 GiB box got 1 GB of `maintenance_work_mem`, a 2 GiB box got 50% of RAM | `(ram_gb * 2 / 5).max(1)` — integer division on whole GB, plus a floor that overshot the `/dev/shm` ceiling on small boxes. Now computed in MB |
+| A resized box kept the previous rung's volume settings | `infra resize` changed only the instance type. It now applies the target's disk spec via `modify-volume` (online) |
+| Storage reported as `device=root, media=unknown` | Ubuntu cloud images name the root filesystem `/dev/root` in `/proc/mounts`, which is not a real device node. Resolved from the directory's `st_dev` via `/sys/dev/block/<major>:<minor>` instead |
+
+The common thread: **a config is a request, not a fact.** Prefer reading the
+running machine over trusting what it was asked to be.
 
 Override any setting explicitly in `[pg_config]`:
 
