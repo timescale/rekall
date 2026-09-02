@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-09-02/c8g.xlarge-122830",
+  "dataset": "cohere-1m",
+  "date": "2026-09-02",
+  "time": "12:28:30",
+  "timestamp": "2026-09-02T12:28:30+0000",
+  "instance_type": "c8g.xlarge",
+  "hostname": "ip-172-31-43-194",
+  "cpu_model": "unknown",
+  "cpu_count": 4,
+  "memory_gb": 7.6,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "1834b41",
+  "extensions": {
+    "meerkat": "0.1.0 (bdffa10)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.9986299999999976,
+  "qps_at_peak": 189.9494407774495,
+  "num_indexes": 3,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-09-02/c8g.xlarge-122830/",
+  "comment": "Try to match HNSW on c8.xlarge with Meerkat on c8.large"
+}
