@@ -440,6 +440,42 @@ pub async fn run(
 
         let param_combos = expand_sweep_params(&query.params);
 
+        // Warm the sweep's widest parameter setting once before any timed
+        // point runs. Each point's own warmup below only touches the
+        // narrow slice that point's own setting visits — at the lowest
+        // ef_search/nprobe in the sweep that's a small fraction of the
+        // index, so the first (lowest-recall) point ends up measuring a
+        // largely cold index while later, wider points organically finish
+        // warming it as they go (observed directly: a cold hnsw-halfvec
+        // index took ~250k block reads at ef_search=10 down to 0 by
+        // ef_search=800, and the low-recall points looked artificially
+        // slow enough to get Pareto-dominated). Pre-touching the widest
+        // setting's traversal once, up front, pulls the index's real
+        // working set into cache before anything is measured, instead of
+        // charging that cost to the first sweep point.
+        if config.search.cache == CacheMode::Warm
+            && param_combos.len() > 1
+            && param_combos
+                .iter()
+                .any(|p| !is_completed(&all_results, &query.name, p))
+        {
+            let broadest = broadest_params(&param_combos);
+            backend.set_search_params(&idx_config.gucs).await?;
+            backend.set_search_params(&broadest).await?;
+            for qi in 0..config.search.warmup.min(num_queries) {
+                let q = queries.row(qi).to_vec();
+                if let Err(e) = backend.query(&q, k).await {
+                    report_crash(
+                        config,
+                        progress,
+                        &format!("search '{}' broad warmup query #{qi}", query.name),
+                        &e,
+                    );
+                    return Err(e);
+                }
+            }
+        }
+
         for params in &param_combos {
             let params_json = serde_json::to_value(params).unwrap_or_default();
 
@@ -704,6 +740,35 @@ pub async fn run(
     Ok(all_results)
 }
 
+/// The sweep's most expensive parameter combination: for each swept key,
+/// the numerically largest value across all combos (a non-numeric key, or
+/// a tie, keeps whichever combo's value was seen first). Used to warm the
+/// widest slice of the index before any timed point runs — see the call
+/// site in `run`.
+fn broadest_params(
+    param_combos: &[HashMap<String, toml::Value>],
+) -> HashMap<String, toml::Value> {
+    let mut broadest = match param_combos.first() {
+        Some(p) => p.clone(),
+        None => return HashMap::new(),
+    };
+    for combo in &param_combos[1..] {
+        for (key, value) in combo {
+            let is_larger = match (value, broadest.get(key)) {
+                (toml::Value::Integer(v), Some(toml::Value::Integer(c))) => v > c,
+                (toml::Value::Float(v), Some(toml::Value::Float(c))) => v > c,
+                (toml::Value::Integer(v), Some(toml::Value::Float(c))) => (*v as f64) > *c,
+                (toml::Value::Float(v), Some(toml::Value::Integer(c))) => *v > (*c as f64),
+                _ => false,
+            };
+            if is_larger {
+                broadest.insert(key.clone(), value.clone());
+            }
+        }
+    }
+    broadest
+}
+
 fn expand_sweep_params(
     params: &HashMap<String, Vec<toml::Value>>,
 ) -> Vec<HashMap<String, toml::Value>> {
@@ -804,5 +869,69 @@ mod tests {
         let combos = expand_sweep_params(&params);
         assert_eq!(combos.len(), 1);
         assert_eq!(combos[0]["x"].as_integer().unwrap(), 42);
+    }
+
+    #[test]
+    fn broadest_params_picks_max_of_single_swept_key() {
+        // hnsw-halfvec's real sweep: ef_search alone, ascending.
+        let mut params = HashMap::new();
+        params.insert(
+            "hnsw.ef_search".to_string(),
+            vec![10, 20, 40, 80, 120, 200, 400, 800, 1000]
+                .into_iter()
+                .map(toml::Value::Integer)
+                .collect(),
+        );
+        let combos = expand_sweep_params(&params);
+        let broadest = broadest_params(&combos);
+        assert_eq!(broadest["hnsw.ef_search"].as_integer().unwrap(), 1000);
+    }
+
+    #[test]
+    fn broadest_params_maxes_each_key_independently() {
+        // Cartesian sweep: the widest combo isn't necessarily one that was
+        // ever actually measured together, since each key is maxed on its
+        // own — that's fine, it only needs to be at least as expensive as
+        // every real point so warmup touches at least as much of the index.
+        let mut params = HashMap::new();
+        params.insert(
+            "a".to_string(),
+            vec![toml::Value::Integer(1), toml::Value::Integer(2)],
+        );
+        params.insert(
+            "b".to_string(),
+            vec![
+                toml::Value::Integer(10),
+                toml::Value::Integer(20),
+                toml::Value::Integer(30),
+            ],
+        );
+        let combos = expand_sweep_params(&params);
+        let broadest = broadest_params(&combos);
+        assert_eq!(broadest["a"].as_integer().unwrap(), 2);
+        assert_eq!(broadest["b"].as_integer().unwrap(), 30);
+    }
+
+    #[test]
+    fn broadest_params_keeps_non_numeric_key_stable() {
+        // mkt-norerank's shape: a fixed boolean alongside a swept int.
+        let mut params = HashMap::new();
+        params.insert("mkt.rerank".to_string(), vec![toml::Value::Boolean(false)]);
+        params.insert(
+            "mkt.nprobe".to_string(),
+            vec![10, 20, 40, 80, 160]
+                .into_iter()
+                .map(toml::Value::Integer)
+                .collect(),
+        );
+        let combos = expand_sweep_params(&params);
+        let broadest = broadest_params(&combos);
+        assert_eq!(broadest["mkt.nprobe"].as_integer().unwrap(), 160);
+        assert_eq!(broadest["mkt.rerank"].as_bool().unwrap(), false);
+    }
+
+    #[test]
+    fn broadest_params_empty_is_empty() {
+        assert!(broadest_params(&[]).is_empty());
     }
 }
