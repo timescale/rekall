@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-100m/2026-09-02/r8i.4xlarge-102757",
+  "dataset": "cohere-100m",
+  "date": "2026-09-02",
+  "time": "10:27:57",
+  "timestamp": "2026-09-02T10:27:57+0000",
+  "instance_type": "r8i.4xlarge",
+  "hostname": "ip-172-31-14-230",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 16,
+  "memory_gb": 123.8,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "1834b41",
+  "extensions": {
+    "meerkat": "0.1.0 (bdffa10)",
+    "pg_prewarm": "1.2",
+    "vector": "0.8.6"
+  },
+  "peak_recall": 0.997089999999996,
+  "qps_at_peak": 20.007150395494147,
+  "num_indexes": 1,
+  "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-09-02/r8i.4xlarge-102757/",
+  "comment": "Meerkat 100M build on 4xlarge"
+}
