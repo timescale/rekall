@@ -1,0 +1,104 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.966499999999981,
+      "qps": 144.4598485191139,
+      "p50_latency_us": 6879.0,
+      "p95_latency_us": 8399.0,
+      "p99_latency_us": 9439.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.6842999999999936,
+      "qps": 1966.6650277791416,
+      "p50_latency_us": 498.0,
+      "p95_latency_us": 677.0,
+      "p99_latency_us": 757.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.7763699999999912,
+      "qps": 1158.6614170035175,
+      "p50_latency_us": 843.0,
+      "p95_latency_us": 1191.0,
+      "p99_latency_us": 1381.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.8488299999999804,
+      "qps": 696.0631295847496,
+      "p50_latency_us": 1409.0,
+      "p95_latency_us": 1859.0,
+      "p99_latency_us": 2273.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9011899999999776,
+      "qps": 456.31860493546026,
+      "p50_latency_us": 2155.0,
+      "p95_latency_us": 2779.0,
+      "p99_latency_us": 3481.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.942049999999978,
+      "qps": 232.6204601790991,
+      "p50_latency_us": 4219.0,
+      "p95_latency_us": 5447.0,
+      "p99_latency_us": 6387.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9679299999999812,
+      "qps": 133.9301295621323,
+      "p50_latency_us": 7387.0,
+      "p95_latency_us": 9159.0,
+      "p99_latency_us": 10327.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9838399999999865,
+      "qps": 75.06230321291277,
+      "p50_latency_us": 13215.0,
+      "p95_latency_us": 16015.0,
+      "p99_latency_us": 17839.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9927499999999921,
+      "qps": 38.91895109752843,
+      "p50_latency_us": 25503.0,
+      "p95_latency_us": 30335.0,
+      "p99_latency_us": 33343.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9970899999999961,
+      "qps": 19.454821430030496,
+      "p50_latency_us": 51135.0,
+      "p95_latency_us": 59199.0,
+      "p99_latency_us": 63903.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "build_time_secs": 5897.359920013,
+      "size_bytes": 26731053056,
+      "cache": "prewarmed"
+    }
+  ]
+}
