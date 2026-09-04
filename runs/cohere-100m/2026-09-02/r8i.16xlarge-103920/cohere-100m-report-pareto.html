@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">“Is HNSW build practical on 16xlarge?”<br>cohere-100m  |  2026-09-02  |  r8i.16xlarge, Intel(R) Xeon(R) 6975P-C, 64 vCPU, 496 GB<br>PG 18.6  |  shared_buffers=128 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=32  |  meerkat 0.1.0 (bdffa10), pgvector 0.8.6</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [0.7942352655285722, 1.2416437319279778, 1.7066402403902978, 2.170402709164024, 2.7311516895920755, 3.2968328820223562, 3.3352953821238893, 3.9918908919314076, 4.720731048896201, 5.651486171156287],
+                y: [2097.6999559063484, 1360.9019404828605, 824.5317319387977, 546.5887668356165, 310.0010620636386, 172.72852532313317, 165.55005636896658, 89.88044678203916, 47.54886187614801, 24.598103395707156],
+                customdata: [0.6887399999999948, 0.7758499999999884, 0.8463999999999785, 0.8975599999999767, 0.9388399999999768, 0.9643199999999804, 0.9656199999999806, 0.9818699999999848, 0.9911699999999912, 0.9964999999999958],
+                text: ["<br>Disk read/query: 3.5 kB<br>Blks read/query: 7.7 (idx 0.0, heap 7.7)<br>Buffer hit: 91.1%<br>Disk busy: 26%","<br>Disk read/query: 1020 B<br>Blks read/query: 2.2 (idx 0.0, heap 2.2)<br>Buffer hit: 97.6%<br>Disk busy: 8%","<br>Disk read/query: 688 B<br>Blks read/query: 1.4 (idx 0.0, heap 1.4)<br>Buffer hit: 98.5%<br>Disk busy: 4%","<br>Disk read/query: 387 B<br>Blks read/query: 0.8 (idx 0.0, heap 0.8)<br>Buffer hit: 99.2%<br>Disk busy: 2%","<br>Disk read/query: 157 B<br>Blks read/query: 0.3 (idx 0.0, heap 0.3)<br>Buffer hit: 99.7%<br>Disk busy: 0%","<br>Disk read/query: 8.0 kB<br>Blks read/query: 21.4 (idx 0.0, heap 21.4)<br>Buffer hit: 78.8%<br>Disk busy: 7%","<br>Disk read/query: 56 B<br>Blks read/query: 0.1 (idx 0.0, heap 0.1)<br>Buffer hit: 99.9%<br>Disk busy: 0%","<br>Disk read/query: 630 B<br>Blks read/query: 1.2 (idx 0.0, heap 1.2)<br>Buffer hit: 98.8%<br>Disk busy: 0%","<br>Disk read/query: 447 B<br>Blks read/query: 0.9 (idx 0.0, heap 0.9)<br>Buffer hit: 99.1%<br>Disk busy: 0%","<br>Disk read/query: 307 B<br>Blks read/query: 0.6 (idx 0.0, heap 0.6)<br>Buffer hit: 99.4%<br>Disk busy: 0%"],
+                name: "Meerkat",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "Meerkat",
+                hovertemplate: "<b>Meerkat</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [0.8568399175203645, 1.4836947343586158, 2.0489353742210574, 2.5833148282823353, 2.7538426186364404, 2.8790294812917687, 3.26194569751973, 3.7015735524187727, 4.0755055423622695, 4.216205065128779],
+                y: [681.1962187070386, 500.09861944775525, 350.3684702572727, 222.80177916132723, 183.55527215437328, 145.74549586297763, 71.23049062749926, 38.96606386269785, 20.63405615312424, 16.830983689299043],
+                customdata: [0.7019999999999912, 0.8151299999999839, 0.8858399999999783, 0.929779999999976, 0.9401299999999764, 0.9467999999999768, 0.9630999999999784, 0.975909999999979, 0.9832999999999814, 0.9854599999999836],
+                text: ["<br>Disk read/query: 618 B<br>Blks read/query: 77.1 (idx 77.0, heap 0.1)<br>Buffer hit: 91.5%<br>Disk busy: 3%","<br>Disk read/query: 74 B<br>Blks read/query: 32.8 (idx 32.8, heap 0.0)<br>Buffer hit: 97.4%<br>Disk busy: 0%","<br>Disk read/query: 20 B<br>Blks read/query: 54.1 (idx 54.1, heap 0.0)<br>Buffer hit: 97.2%<br>Disk busy: 0%","<br>Disk read/query: 15 B<br>Blks read/query: 92.8 (idx 92.8, heap 0.0)<br>Buffer hit: 97.1%<br>Disk busy: 0%","<br>Disk read/query: 4 B<br>Blks read/query: 41.9 (idx 41.9, heap 0.0)<br>Buffer hit: 98.9%<br>Disk busy: 0%","<br>Disk read/query: 206 B<br>Blks read/query: 115.1 (idx 115.0, heap 0.1)<br>Buffer hit: 97.4%<br>Disk busy: 0%","<br>Disk read/query: 13.4 kB<br>Blks read/query: 902.2 (idx 893.4, heap 8.8)<br>Buffer hit: 86.7%<br>Disk busy: 7%","<br>Disk read/query: 183 B<br>Blks read/query: 1852.3 (idx 1842.5, heap 9.8)<br>Buffer hit: 85.2%<br>Disk busy: 0%","<br>Disk read/query: 106 B<br>Blks read/query: 3580.5 (idx 3570.7, heap 9.8)<br>Buffer hit: 84.7%<br>Disk busy: 0%","<br>Disk read/query: 716 B<br>Blks read/query: 4395.3 (idx 4385.5, heap 9.8)<br>Buffer hit: 84.6%<br>Disk busy: 0%"],
+                name: "pgvector HNSW (halfvec)",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "pgvector HNSW (halfvec)",
+                hovertemplate: "<b>pgvector HNSW (halfvec)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
