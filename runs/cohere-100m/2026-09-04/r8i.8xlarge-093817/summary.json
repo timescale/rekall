@@ -1,0 +1,96 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9668799999999794,
+      "qps": 164.5423562876779,
+      "p50_latency_us": 5991.0,
+      "p95_latency_us": 7415.0,
+      "p99_latency_us": 8043.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.688549999999991,
+      "qps": 2151.047872215711,
+      "p50_latency_us": 451.0,
+      "p95_latency_us": 627.0,
+      "p99_latency_us": 684.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.7769199999999891,
+      "qps": 1361.8547481133896,
+      "p50_latency_us": 720.0,
+      "p95_latency_us": 943.0,
+      "p99_latency_us": 1027.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.8477899999999814,
+      "qps": 791.274771351264,
+      "p50_latency_us": 1240.0,
+      "p95_latency_us": 1615.0,
+      "p99_latency_us": 1817.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.900139999999974,
+      "qps": 501.1931906289304,
+      "p50_latency_us": 1965.0,
+      "p95_latency_us": 2517.0,
+      "p99_latency_us": 2763.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9412999999999742,
+      "qps": 283.69021278411407,
+      "p50_latency_us": 3475.0,
+      "p95_latency_us": 4331.0,
+      "p99_latency_us": 4711.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9682399999999795,
+      "qps": 156.30897244451037,
+      "p50_latency_us": 6307.0,
+      "p95_latency_us": 7783.0,
+      "p99_latency_us": 8399.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9836099999999857,
+      "qps": 86.4150241575792,
+      "p50_latency_us": 11431.0,
+      "p95_latency_us": 14047.0,
+      "p99_latency_us": 15055.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9924599999999915,
+      "qps": 46.142725614995285,
+      "p50_latency_us": 21471.0,
+      "p95_latency_us": 25999.0,
+      "p99_latency_us": 27615.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "meerkat",
+      "recall": 0.9972199999999961,
+      "qps": 23.56770523761709,
+      "p50_latency_us": 42111.0,
+      "p95_latency_us": 50015.0,
+      "p99_latency_us": 52639.0
+    }
+  ],
+  "builds": []
+}
