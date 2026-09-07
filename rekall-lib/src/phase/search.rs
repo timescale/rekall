@@ -745,9 +745,7 @@ pub async fn run(
 /// a tie, keeps whichever combo's value was seen first). Used to warm the
 /// widest slice of the index before any timed point runs — see the call
 /// site in `run`.
-fn broadest_params(
-    param_combos: &[HashMap<String, toml::Value>],
-) -> HashMap<String, toml::Value> {
+fn broadest_params(param_combos: &[HashMap<String, toml::Value>]) -> HashMap<String, toml::Value> {
     let mut broadest = match param_combos.first() {
         Some(p) => p.clone(),
         None => return HashMap::new(),
@@ -927,7 +925,7 @@ mod tests {
         let combos = expand_sweep_params(&params);
         let broadest = broadest_params(&combos);
         assert_eq!(broadest["mkt.nprobe"].as_integer().unwrap(), 160);
-        assert_eq!(broadest["mkt.rerank"].as_bool().unwrap(), false);
+        assert!(!broadest["mkt.rerank"].as_bool().unwrap());
     }
 
     #[test]
