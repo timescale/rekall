@@ -320,6 +320,28 @@ impl AwsNativeBackend {
             .as_ref()
             .map(|p| format!("Name={p}"));
 
+        // Spot request. One-time (not persistent): interruption terminates
+        // the instance rather than stopping it, and leaves no lingering spot
+        // request for `infra down`/terminate to clean up -- which matches
+        // rekall's up -> terminate lifecycle. A MaxPrice is included only if
+        // the config sets one; otherwise the request caps at the on-demand
+        // price (AWS default).
+        let market_arg = if self.config.spot {
+            let opts = match &self.config.spot_max_price {
+                Some(p) => format!(
+                    "MarketType=spot,SpotOptions={{MaxPrice={p},\
+                     SpotInstanceType=one-time,\
+                     InstanceInterruptionBehavior=terminate}}"
+                ),
+                None => "MarketType=spot,SpotOptions={SpotInstanceType=one-time,\
+                         InstanceInterruptionBehavior=terminate}"
+                    .to_string(),
+            };
+            Some(opts)
+        } else {
+            None
+        };
+
         let mut args = vec![
             "ec2",
             "run-instances",
@@ -346,7 +368,38 @@ impl AwsNativeBackend {
             args.push(pa);
         }
 
-        let result = self.run_aws_json(&args)?;
+        if let Some(ref m) = market_arg {
+            args.push("--instance-market-options");
+            args.push(m);
+            match self.config.spot_max_price {
+                Some(ref p) => info!("Requesting a Spot instance (max ${p}/hr)"),
+                None => info!("Requesting a Spot instance (capped at on-demand price)"),
+            }
+            info!(
+                "Note: `infra resize` is not available for Spot instances (they \
+                 cannot be stopped or change type). To launch on-demand instead \
+                 (required for the resize ladder), add `spot = false` to the \
+                 instance config TOML, or override it in a .local.toml."
+            );
+        }
+
+        let result = self.run_aws_json(&args).map_err(|e| {
+            // Spot capacity for a given type/AZ can be momentarily
+            // unavailable; make that actionable rather than a bare CLI error.
+            if market_arg.is_some()
+                && (e.to_string().contains("InsufficientInstanceCapacity")
+                    || e.to_string().contains("capacity-not-available")
+                    || e.to_string().contains("SpotMaxPriceTooLow"))
+            {
+                Error::Config(format!(
+                    "Spot request could not be fulfilled ({e}). Try again, pick \
+                     another region/AZ or instance type, or set `spot = false` \
+                     in the config to launch on-demand."
+                ))
+            } else {
+                e
+            }
+        })?;
 
         let instance_id = result["Instances"][0]["InstanceId"]
             .as_str()
@@ -765,6 +818,14 @@ impl AwsNativeBackend {
             return Ok(None);
         }
         Ok(Some(instance.clone()))
+    }
+
+    /// Whether the instance was launched as a Spot instance. AWS sets
+    /// `InstanceLifecycle` to "spot" for Spot instances and omits it
+    /// entirely for on-demand, so a missing field means on-demand.
+    pub fn is_spot_instance(&self, instance_id: &str) -> Result<bool> {
+        let desc = self.describe_instance(instance_id)?;
+        Ok(desc.as_ref().and_then(|i| i["InstanceLifecycle"].as_str()) == Some("spot"))
     }
 }
 

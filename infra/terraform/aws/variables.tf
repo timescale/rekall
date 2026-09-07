@@ -28,6 +28,18 @@ variable "disk_throughput" {
   default     = 0
 }
 
+variable "spot" {
+  description = "Launch as a Spot instance (one-time request) for lower cost. Default true; cannot be resized in place."
+  type        = bool
+  default     = true
+}
+
+variable "spot_max_price" {
+  description = "Spot max price per hour in USD (empty = cap at on-demand price)"
+  type        = string
+  default     = ""
+}
+
 variable "pg_version" {
   description = "PostgreSQL major version"
   type        = number

@@ -80,6 +80,22 @@ resource "aws_instance" "benchmark" {
     throughput  = var.disk_throughput > 0 ? var.disk_throughput : null
   }
 
+  # Spot request (default). One-time: interruption terminates the instance
+  # rather than stopping it, matching rekall's up -> terminate lifecycle and
+  # leaving no persistent request behind. A Spot instance cannot be resized;
+  # set `spot = false` for the resize ladder.
+  dynamic "instance_market_options" {
+    for_each = var.spot ? [1] : []
+    content {
+      market_type = "spot"
+      spot_options {
+        spot_instance_type             = "one-time"
+        instance_interruption_behavior = "terminate"
+        max_price                      = var.spot_max_price != "" ? var.spot_max_price : null
+      }
+    }
+  }
+
   # user-data is pre-rendered by rekall from infra/user-data.sh.j2
   # (same template as the aws_native backend) before terraform runs.
   user_data = file("${path.module}/user-data.sh")

@@ -305,6 +305,25 @@ Instance-store NVMe (`pg_on_instance_store`) is wiped by a stop, and
 `infra resize` stops the instance, so PGDATA must be on EBS for anything
 that walks a ladder of instance sizes.
 
+#### Spot instances
+
+`infra up` launches **Spot instances by default** (`spot = true`), which cost
+~60–80% less than on-demand for the same hardware — so benchmark numbers are
+directly comparable, and a one-shot run just gets cheaper. The tradeoff is
+interruption: AWS can reclaim a Spot instance with a two-minute warning, and
+rekall uses a *one-time* request, so an interrupted instance is terminated
+(not stopped) and the run must be redone. An optional `spot_max_price` caps
+the hourly price; omit it to cap at the on-demand price (the sensible
+default).
+
+Spot is **incompatible with `infra resize`**: a Spot instance cannot be
+stopped or have its type changed, which is exactly what resize does (stop →
+modify type → start). `infra resize` against a Spot instance fails fast with
+a message that says so, before it touches PostgreSQL. So any config that
+walks the resize ladder must set **`spot = false`** to run on-demand. The
+launch log also prints, for every Spot launch, that resize is unavailable
+and how to opt out.
+
 #### Things that have actually gone wrong here
 
 Recorded so they are not rediscovered:

@@ -38,6 +38,13 @@ fn default_git_ref() -> String {
     "main".to_string()
 }
 
+/// Spot instances are the default: they cost ~60-80% less than on-demand
+/// and run the same hardware, so benchmark numbers are comparable. Set
+/// `spot = false` in a config that will be driven by `infra resize`.
+fn default_spot() -> bool {
+    true
+}
+
 /// `maintenance_work_mem` in MB: 40% of RAM, floored at 256 MB.
 ///
 /// The 40% is a ceiling as much as a target -- pgvector's parallel HNSW build
@@ -131,6 +138,25 @@ pub struct InfraConfig {
     pub disk_iops: Option<u32>,
     #[serde(default)]
     pub disk_throughput: Option<u32>,
+    /// Launch as an EC2 Spot instance for ~60-80% lower cost. **Defaults to
+    /// true** -- Spot is the same hardware as on-demand, so benchmark
+    /// numbers are comparable, and one-shot runs are the common case. The
+    /// tradeoff: AWS can reclaim the instance with a two-minute warning, in
+    /// which case it is terminated (one-time request, not stopped) and the
+    /// run must be redone.
+    ///
+    /// Set `spot = false` when you need `infra resize`: a Spot instance
+    /// cannot be stopped or have its type changed, so the resize (stop ->
+    /// modify type -> start) fails with a clear error. A build ladder that
+    /// resizes down the rungs must therefore run on-demand.
+    #[serde(default = "default_spot")]
+    pub spot: bool,
+    /// Optional Spot max price per hour in USD (e.g. "0.10"). Omit to cap
+    /// at the on-demand price, which is AWS's default and almost always
+    /// what you want -- a lower cap only raises the chance the request is
+    /// unfulfillable or interrupted, for a saving Spot already provides.
+    #[serde(default)]
+    pub spot_max_price: Option<String>,
     #[serde(default = "default_pg_version")]
     pub pg_version: u32,
     #[serde(default = "default_pg_port")]
@@ -209,6 +235,8 @@ impl Default for InfraConfig {
             disk_size_gb: default_disk_size(),
             disk_iops: None,
             disk_throughput: None,
+            spot: default_spot(),
+            spot_max_price: None,
             pg_version: default_pg_version(),
             pg_port: default_pg_port(),
             ubuntu_version: default_ubuntu_version(),
@@ -582,6 +610,12 @@ impl InfraConfig {
         if let Some(throughput) = self.disk_throughput {
             vars["disk_throughput"] = serde_json::json!(throughput);
         }
+        // Spot defaults to true; emit it unconditionally so the terraform
+        // backend matches the aws_native default rather than its own.
+        vars["spot"] = serde_json::json!(self.spot);
+        if let Some(ref p) = self.spot_max_price {
+            vars["spot_max_price"] = serde_json::json!(p);
+        }
         if let Some(ref profile) = self.iam_instance_profile {
             vars["iam_instance_profile"] = serde_json::json!(profile);
         }
@@ -620,6 +654,23 @@ mod tests {
         assert!(!cfg.pg_on_instance_store);
         let cfg: InfraConfig = toml::from_str("pg_on_instance_store = true").unwrap();
         assert!(cfg.pg_on_instance_store);
+    }
+
+    #[test]
+    fn spot_defaults_on_and_can_be_disabled() {
+        // Spot is the default (cost saving); resize-ladder configs opt out.
+        assert!(InfraConfig::default().spot);
+        let cfg: InfraConfig = toml::from_str("").unwrap();
+        assert!(cfg.spot, "an empty config launches Spot by default");
+        let cfg: InfraConfig = toml::from_str("spot = false").unwrap();
+        assert!(!cfg.spot);
+    }
+
+    #[test]
+    fn spot_max_price_defaults_none_and_parses() {
+        assert!(InfraConfig::default().spot_max_price.is_none());
+        let cfg: InfraConfig = toml::from_str("spot_max_price = \"0.10\"").unwrap();
+        assert_eq!(cfg.spot_max_price.as_deref(), Some("0.10"));
     }
 
     #[test]

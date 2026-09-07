@@ -712,6 +712,24 @@ pub fn resize_instance_to(
 
     let (_, ssh_priv) = target.require_ssh_key().map_err(Error::Config)?;
 
+    // Spot guard: a Spot instance cannot be stopped or have its type
+    // changed, which is exactly what the resize below does (stop -> modify
+    // type -> start). Fail fast here, before any PostgreSQL re-tuning, with
+    // a message that says why and what to do instead.
+    let state = StateManager::new(&target.name_prefix)?;
+    let backend = AwsNativeBackend::new(state.base_dir().to_path_buf(), target);
+    if backend.is_spot_instance(instance_id)? {
+        return Err(Error::Config(format!(
+            "Cannot resize {instance_id}: it is a Spot instance, and Spot \
+             instances cannot be stopped or have their instance type changed \
+             (resize does stop -> modify type -> start). Launch the resize \
+             ladder's instances on-demand instead -- set `spot = false` in the \
+             target config, or start from an on-demand box and resize down. \
+             (Spot is the default; on-demand is required only for the \
+             resize-based ladder.)"
+        )));
+    }
+
     // 1. Re-tune PostgreSQL for the target size while the box is still
     //    up. One ALTER SYSTEM per GUC (separate `-c` options run as
     //    independent statements — ALTER SYSTEM can't run in a multi-
@@ -735,8 +753,7 @@ pub fn resize_instance_to(
     ssh_run(current_ip, &ssh_priv, &psql)?;
 
     // 2. Change the instance type in place (preserves the EBS volume).
-    let state = StateManager::new(&target.name_prefix)?;
-    let backend = AwsNativeBackend::new(state.base_dir().to_path_buf(), target);
+    //    Reuses the backend built for the Spot guard above.
     let new_ip = backend.resize_instance(instance_id, &target.instance_type)?;
 
     // 3. Bring the volume in line with the target's disk spec, so a rung is
