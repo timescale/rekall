@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (ann-benchmarks distance method)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (ann-benchmarks distance method)</div><div class="meta">“Meerkat 1M on c8g.medium”<br>cohere-1m  |  2026-09-08  |  c8g.medium, unknown, 1 vCPU, 2 GB<br>PG 18.6  |  shared_buffers=512 MB  |  work_mem=16 MB  |  max_parallel_maintenance_workers=1  |  meerkat 0.1.0 (c884b15), pgvector 0.8.6</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.9820544750113465, 2.6740845132865316, 3.195643371253689, 3.4614237103327388, 4.430361542904668, 5.651486171155905, 6.867494024651859],
+                y: [83.90776237841925, 74.2356377666413, 68.25218214852987, 66.26980332248958, 59.49825219124333, 50.16278349954835, 38.98463641208867],
+                customdata: [0.878899999999978, 0.9354799999999801, 0.9606699999999788, 0.9695699999999793, 0.9882299999999875, 0.9964999999999945, 0.9989599999999982],
+                text: ["<br>Disk read/query: 485.2 kB<br>Blks read/query: -130.5 (idx -163.5, heap 33.0)<br>Buffer hit: 23.9%<br>Disk busy: 89%","<br>Disk read/query: 567.3 kB<br>Blks read/query: -320.5 (idx -356.9, heap 36.4)<br>Buffer hit: 21.5%<br>Disk busy: 88%","<br>Disk read/query: 628.9 kB<br>Blks read/query: -553.7 (idx -592.3, heap 38.6)<br>Buffer hit: 20.1%<br>Disk busy: 86%","<br>Disk read/query: 646.1 kB<br>Blks read/query: -695.5 (idx -735.3, heap 39.8)<br>Buffer hit: 19.5%<br>Disk busy: 85%","<br>Disk read/query: 732.4 kB<br>Blks read/query: -1415.2 (idx -1458.4, heap 43.2)<br>Buffer hit: 18.0%<br>Disk busy: 82%","<br>Disk read/query: 822.2 kB<br>Blks read/query: -2861.7 (idx -2907.9, heap 46.2)<br>Buffer hit: 16.8%<br>Disk busy: 76%","<br>Disk read/query: 942.5 kB<br>Blks read/query: -5640.1 (idx -5689.3, heap 49.2)<br>Buffer hit: 15.9%<br>Disk busy: 68%"],
+                name: "mkt-defaults",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "mkt-defaults",
+                hovertemplate: "<b>mkt-defaults</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.113064567513054, 1.3118346663374372, 1.436293355843445, 1.5088451832217655, 1.5381113270396758],
+                y: [159.62870618347642, 149.20884175189303, 135.8872970326184, 117.07267274453334, 95.7744531549287],
+                customdata: [0.7526999999999885, 0.7878199999999842, 0.8078799999999815, 0.8188899999999799, 0.8231899999999778],
+                text: ["<br>Disk read/query: 141.9 kB<br>Blks read/query: -189.8 (idx -198.3, heap 8.5)<br>Buffer hit: 8.7%<br>Disk busy: 90%","<br>Disk read/query: 148.7 kB<br>Blks read/query: -395.6 (idx -404.1, heap 8.5)<br>Buffer hit: 7.9%<br>Disk busy: 87%","<br>Disk read/query: 154.7 kB<br>Blks read/query: -787.2 (idx -795.8, heap 8.6)<br>Buffer hit: 7.4%<br>Disk busy: 81%","<br>Disk read/query: 159.4 kB<br>Blks read/query: -1523.8 (idx -1532.5, heap 8.6)<br>Buffer hit: 7.0%<br>Disk busy: 72%","<br>Disk read/query: 162.6 kB<br>Blks read/query: -2986.0 (idx -2994.7, heap 8.7)<br>Buffer hit: 6.8%<br>Disk busy: 60%"],
+                name: "mkt-norerank",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "mkt-norerank",
+                hovertemplate: "<b>mkt-norerank</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.8432277440372253, 2.3776879758788265, 2.8478994294772773, 3.2273327556208615, 3.469589432302776],
+                y: [150.42314104788332, 132.1737064387351, 120.06226092677332, 102.41188384222924, 84.65536298031306],
+                customdata: [0.8633299999999735, 0.9151099999999706, 0.9452099999999657, 0.9618499999999683, 0.9698099999999713],
+                text: ["<br>Disk read/query: 277.5 kB<br>Blks read/query: -165.7 (idx -182.2, heap 16.5)<br>Buffer hit: 29.4%<br>Disk busy: 86%","<br>Disk read/query: 305.2 kB<br>Blks read/query: -367.0 (idx -383.7, heap 16.7)<br>Buffer hit: 27.3%<br>Disk busy: 83%","<br>Disk read/query: 323.7 kB<br>Blks read/query: -755.6 (idx -772.4, heap 16.8)<br>Buffer hit: 25.8%<br>Disk busy: 79%","<br>Disk read/query: 343.1 kB<br>Blks read/query: -1489.5 (idx -1506.4, heap 17.0)<br>Buffer hit: 24.8%<br>Disk busy: 72%","<br>Disk read/query: 353.4 kB<br>Blks read/query: -2949.7 (idx -2966.8, heap 17.1)<br>Buffer hit: 24.0%<br>Disk busy: 62%"],
+                name: "mkt-rerank20",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "mkt-rerank20",
+                hovertemplate: "<b>mkt-rerank20</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.9733455083424867, 2.6456116300129184, 3.3814580127050795, 4.178517993658407, 4.951947304816402],
+                y: [92.84779076341816, 87.62840376213622, 80.67568597708856, 71.24307583202756, 61.649917000716734],
+                customdata: [0.8779699999999783, 0.9337399999999798, 0.9671199999999784, 0.9849099999999851, 0.9929799999999909],
+                text: ["<br>Disk read/query: 463.0 kB<br>Blks read/query: -137.2 (idx -166.9, heap 29.7)<br>Buffer hit: 24.2%<br>Disk busy: 88%","<br>Disk read/query: 509.8 kB<br>Blks read/query: -334.8 (idx -365.0, heap 30.3)<br>Buffer hit: 22.2%<br>Disk busy: 86%","<br>Disk read/query: 551.2 kB<br>Blks read/query: -718.6 (idx -749.4, heap 30.8)<br>Buffer hit: 20.5%<br>Disk busy: 83%","<br>Disk read/query: 586.2 kB<br>Blks read/query: -1448.6 (idx -1479.9, heap 31.3)<br>Buffer hit: 19.3%<br>Disk busy: 79%","<br>Disk read/query: 612.3 kB<br>Blks read/query: -2905.6 (idx -2937.2, heap 31.6)<br>Buffer hit: 18.5%<br>Disk busy: 72%"],
+                name: "mkt-rerank40",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(214,39,40)", width: 3 },
+                marker: { color: "rgb(214,39,40)", size: 8 },
+                legendgroup: "mkt-rerank40",
+                hovertemplate: "<b>mkt-rerank40</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.9894978276367317, 2.6849045881484916, 3.4733530947871145, 4.4260718554097584, 5.609371433882655],
+                y: [65.0489483253562, 60.6703929168141, 57.161326784131575, 53.629252109886025, 46.81658460655715],
+                customdata: [0.8796899999999787, 0.9361299999999807, 0.96991999999998, 0.9881799999999874, 0.9963499999999944],
+                text: ["<br>Disk read/query: 638.1 kB<br>Blks read/query: -110.8 (idx -153.9, heap 43.1)<br>Buffer hit: 22.8%<br>Disk busy: 90%","<br>Disk read/query: 712.6 kB<br>Blks read/query: -302.7 (idx -347.2, heap 44.5)<br>Buffer hit: 20.6%<br>Disk busy: 89%","<br>Disk read/query: 783.8 kB<br>Blks read/query: -680.7 (idx -726.6, heap 45.9)<br>Buffer hit: 18.9%<br>Disk busy: 87%","<br>Disk read/query: 851.6 kB<br>Blks read/query: -1404.8 (idx -1451.9, heap 47.1)<br>Buffer hit: 17.5%<br>Disk busy: 82%","<br>Disk read/query: 904.6 kB<br>Blks read/query: -2856.6 (idx -2904.6, heap 48.0)<br>Buffer hit: 16.5%<br>Disk busy: 77%"],
+                name: "mkt-rerank80",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(148,103,189)", width: 3 },
+                marker: { color: "rgb(148,103,189)", size: 8 },
+                legendgroup: "mkt-rerank80",
+                hovertemplate: "<b>mkt-rerank80</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Cohere-1M — 2026-09-08</title><style>body{font-family:system-ui,sans-serif;margin:0;color:#1a1a1a}.wrap{max-width:1100px;margin:0 auto;padding:24px}h1{font-size:24px;margin:0 0 4px}h2{font-size:19px;margin:28px 0 8px;border-bottom:2px solid #eee;padding-bottom:4px}.sub{color:#555;font-size:13px;margin-bottom:16px}table{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #eee;vertical-align:top}th{color:#555;font-weight:600}a{color:#1f77b4;text-decoration:none}a:hover{text-decoration:underline}a.svg{font-size:11px;color:#888;border:1px solid #ddd;border-radius:3px;padding:0 4px;margin-left:2px}.kv td:first-child{color:#555;width:230px}details{margin:8px 0}summary{cursor:pointer;color:#555;font-size:13px}pre{background:#f6f8fa;padding:10px;border-radius:6px;overflow:auto;font-size:12px}.thumbs img{max-width:520px;border:1px solid #eee;border-radius:6px;margin:8px 8px 0 0}.pos{color:#188038}.neg{color:#c5221f}.faint{color:#999;font-size:11px}tr.sect td{background:#f6f8fa;color:#555;font-weight:600;font-size:12px}</style></head><body><div class="wrap"><p class="sub"><a href="../../../../index.html">← all runs</a></p><h1>Cohere-1M — 2026-09-08</h1><div class="sub">c8g.medium · peak recall 0.9990 @ 39 QPS</div><div class="sub">“Meerkat 1M on c8g.medium”</div><h2>QPS at recall</h2><table><tr><th>Recall</th><th>mkt-defaults</th><th>mkt-norerank</th><th>mkt-rerank20</th><th>mkt-rerank40</th><th>mkt-rerank80</th></tr><tr><td>0.90</td><td>80</td><td>— <span class="faint">(max r=0.823)</span></td><td><b>137</b></td><td>91</td><td>63</td></tr><tr><td>0.95</td><td>71</td><td>— <span class="faint">(max r=0.823)</span></td><td><b>115</b></td><td>84</td><td>59</td></tr><tr><td>0.99</td><td>57</td><td>— <span class="faint">(max r=0.823)</span></td><td>— <span class="faint">(max r=0.970)</span></td><td><b>65</b></td><td>52</td></tr></table><h2>Latency at recall</h2><table><tr><th></th><th>mkt-defaults</th><th>mkt-norerank</th><th>mkt-rerank20</th><th>mkt-rerank40</th><th>mkt-rerank80</th></tr><tr class="sect"><td>@ recall 0.90</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>p50</td><td>12.49 ms</td><td>—</td><td><b>6.87 ms</b></td><td>11.12 ms</td><td>15.80 ms</td></tr><tr><td>p95</td><td>19.43 ms</td><td>—</td><td><b>12.40 ms</b></td><td>16.75 ms</td><td>25.45 ms</td></tr><tr><td>p99</td><td>25.57 ms</td><td>—</td><td><b>15.67 ms</b></td><td>20.04 ms</td><td>28.54 ms</td></tr><tr class="sect"><td>@ recall 0.95</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>p50</td><td>13.92 ms</td><td>—</td><td><b>8.42 ms</b></td><td>11.69 ms</td><td>17.04 ms</td></tr><tr><td>p95</td><td>23.05 ms</td><td>—</td><td><b>14.08 ms</b></td><td>18.63 ms</td><td>26.89 ms</td></tr><tr><td>p99</td><td>31.35 ms</td><td>—</td><td><b>17.53 ms</b></td><td>22.54 ms</td><td>30.53 ms</td></tr><tr class="sect"><td>@ recall 0.99</td><td></td><td></td><td></td><td></td><td></td></tr><tr><td>p50</td><td>17.05 ms</td><td>—</td><td>—</td><td><b>15.00 ms</b></td><td>19.16 ms</td></tr><tr><td>p95</td><td>27.91 ms</td><td>—</td><td>—</td><td><b>23.64 ms</b></td><td>29.94 ms</td></tr><tr><td>p99</td><td>35.19 ms</td><td>—</td><td>—</td><td><b>28.63 ms</b></td><td>36.03 ms</td></tr></table><p class="sub">All values are taken at exactly the stated recall: each configuration's own sweep is log-interpolated between its two surrounding measured points (measured values are used verbatim on an exact hit) and the best configuration at that recall is shown — values are never interpolated across different configurations. “—” means no single sweep spans that recall; nothing is extrapolated. Recall is distance-based (ann-benchmarks, tie-aware). Insert/update/delete workloads are not measured.</p><h2>Plots</h2><a href="cohere-1m-report-pareto.html">Pareto</a> <a href="cohere-1m-report-pareto.svg" class="svg">svg</a> &nbsp;·&nbsp; <a href="cohere-1m-report-distance-recall.html">Distance-recall</a> <a href="cohere-1m-report-distance-recall.svg" class="svg">svg</a> &nbsp;·&nbsp; <a href="cohere-1m-report-per-config.html">Per-config</a> <a href="cohere-1m-report-per-config.svg" class="svg">svg</a><div class="thumbs"><a href="cohere-1m-report-pareto.html"><img src="cohere-1m-report-pareto.svg" alt="pareto"></a><a href="cohere-1m-report-distance-recall.html"><img src="cohere-1m-report-distance-recall.svg" alt="distance-recall"></a></div><h2>Host</h2><table class="kv"><tr><td>Instance type</td><td>c8g.medium</td></tr><tr><td>Hostname</td><td>ip-172-31-1-22</td></tr><tr><td>CPU</td><td>unknown (1 vCPU)</td></tr><tr><td>Memory</td><td>2 GB</td></tr><tr><td>OS</td><td>Ubuntu 26.04.1 LTS</td></tr><tr><td>Kernel</td><td>7.0.0-1012-aws</td></tr></table><h2>Versions</h2><table class="kv"><tr><td>rekall</td><td>0.1.0 (62ad31c / main)</td></tr><tr><td>PostgreSQL</td><td>PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit</td></tr><tr><td>meerkat</td><td>0.1.0 (c884b15)</td></tr><tr><td>pg_prewarm</td><td>1.2</td></tr><tr><td>vector</td><td>0.8.6</td></tr></table><h2>Search</h2><table class="kv"><tr><td>k</td><td>10</td></tr><tr><td>runs</td><td>3</td></tr><tr><td>warmup</td><td>500</td></tr><tr><td>num_queries</td><td>10000</td></tr><tr><td>S3 archive</td><td><a href="https://s3.console.aws.amazon.com/s3/buckets/rekall-bench?prefix=runs/cohere-1m/2026-09-08/c8g.medium-143432/">s3://rekall-bench/runs/cohere-1m/2026-09-08/c8g.medium-143432/</a></td></tr></table><details><summary>Instance settings (observed)</summary><pre>instance type          c8g.medium
+vCPU (observed)        1
+memory (observed)      1.8 GiB
+cpu model              unknown
+kernel                 7.0.0-1012-aws
+data directory         /var/lib/postgresql/18/main
+mount point            /
+filesystem             ext4
+media                  ebs
+device                 nvme0n1
+device size            107 GB
+ebs volume             vol-03774164746bbcca0
+ebs volume type        gp3
+provisioned IOPS       3000
+provisioned throughput 125 MB/s
+io scheduler           mq-deadline
+nr_requests            126
+read_ahead_kb          128
+</pre></details><details><summary>PostgreSQL settings</summary><pre>checkpoint_completion_target = 0.9
+cluster_name = 18/main
+data_directory = /var/lib/postgresql/18/main
+effective_cache_size = 1 GB
+effective_io_concurrency = 200
+huge_pages = try
+jit = off
+maintenance_io_concurrency = 200
+maintenance_work_mem = 384 MB
+max_connections = 100
+max_parallel_maintenance_workers = 1
+max_parallel_workers = 1
+max_wal_size = 4 GB
+random_page_cost = 1.1
+server_version = 18.6 (Ubuntu 18.6-1.pgdg26.04+2)
+shared_buffers = 512 MB
+wal_level = replica
+work_mem = 16 MB
+</pre></details></div></body></html>
