@@ -29,8 +29,22 @@ VECTORCHORD_VERSION="${VECTORCHORD_VERSION:-1.1.1}"
 PG_PORT="${PG_PORT:-5432}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
+PG_UNIT="postgresql@${PG_VERSION}-main"
 REPOS_DIR="$HOME/repos"
 mkdir -p "$REPOS_DIR"
+
+# Stop PostgreSQL for the duration of the source builds below and start it
+# again as the last step (see the end of this script). The builds are
+# memory-heavy -- a release rustc for aws-sdk-s3 alone peaks over 1 GB -- and
+# on a small box (e.g. the 2 GiB c8g.medium) the running server's
+# shared_buffers plus the compiler exceed RAM, so the OOM killer takes rustc
+# mid-build. Nothing here needs the server: the rekall role and database are
+# created earlier in cloud-init, `cargo pgrx install` and `meson install` only
+# copy files (no live server), and `rekall setup` just writes a config file.
+# The new .so's and any postgresql.conf changes below take effect on the
+# single restart at the end.
+echo "=== Stopping PostgreSQL to free memory during source builds ==="
+sudo systemctl stop "$PG_UNIT" || true
 
 # --- Meerkat ---
 
@@ -77,7 +91,7 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
             meson compile -C builddir
             meson install -C builddir
         "
-        sudo systemctl restart "postgresql@${PG_VERSION}-main"
+        # PG is stopped during builds; the .so loads on the final restart.
         echo "=== Meerkat installed ==="
     fi
 fi
@@ -139,7 +153,7 @@ if [ "$VECTORCHORD" = "1" ]; then
         # --sudo: build as ubuntu (keeps target/ cache here) but use sudo
         # for the final copy into /usr/{lib,share}/postgresql/*/.
         cargo pgrx install --release --sudo --pg-config="$PG_CONFIG"
-        sudo systemctl restart "postgresql@${PG_VERSION}-main"
+        # PG is stopped during builds; the .so loads on the final restart.
         echo "=== VectorChord installed ==="
     fi
 
@@ -154,7 +168,7 @@ if [ "$VECTORCHORD" = "1" ]; then
     if ! grep -qE "^[[:space:]]*shared_preload_libraries[[:space:]]*=.*vchord" \
         "$PG_CONF"; then
         echo "shared_preload_libraries = 'vchord'" | sudo tee -a "$PG_CONF" >/dev/null
-        sudo systemctl restart "postgresql@${PG_VERSION}-main"
+        # Applied on the final restart at the end of this script.
         echo "=== Enabled vchord in shared_preload_libraries ==="
     fi
 fi
@@ -217,6 +231,20 @@ if [ -n "$REKALL_GIT_URL" ]; then
         --results-dir "$BENCH_DIR/results" \
         --dsn "host=localhost port=$PG_PORT dbname=rekall user=rekall password=rekall"
 fi
+
+# Bring PostgreSQL back up -- it was stopped at the top to free RAM for the
+# source builds. Doing it last means the box ends ready to serve, with the
+# freshly installed extensions and any postgresql.conf changes applied. Wait
+# for it to accept connections so a caller that connects right after
+# provisioning doesn't race the startup.
+echo "=== Starting PostgreSQL (final step) ==="
+sudo systemctl start "$PG_UNIT"
+for _ in $(seq 1 60); do
+    if sudo -u postgres psql -p "$PG_PORT" -c 'SELECT 1' >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
 
 echo "=== Provisioning complete ==="
 echo ""
