@@ -77,7 +77,7 @@ impl PgConnection {
             .query_opt(
                 "SELECT format_type(atttypid, atttypmod)
                    FROM pg_attribute
-                  WHERE attrelid = $1::regclass
+                  WHERE attrelid = $1::text::regclass
                     AND attname = 'v'
                     AND NOT attisdropped",
                 &[&self.table_name],

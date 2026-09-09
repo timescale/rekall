@@ -265,12 +265,33 @@ pub async fn run(
     // With --rerun, ignore previously-saved results so every sweep point is
     // re-measured. Otherwise the run is resumable: completed points are
     // loaded and skipped (see `is_completed`).
-    let existing = if rerun {
+    let mut all_results = if rerun {
         Vec::new()
     } else {
         load_existing_results(config)
     };
-    let mut all_results = existing.clone();
+
+    // Series this call will actually (re)write. `save_index_results` rewrites
+    // a series' whole file from `all_results` each time one of its points
+    // finishes, so per-query neighbor IDs (`query_results`) must stay resident
+    // for those series. Every other series already sits complete and correct
+    // on disk from a prior run/call and is only ever read here for
+    // `is_completed` (index_name + params, not query_results) — so drop its
+    // heavy payload immediately instead of holding the whole sweep's history
+    // (every index × every query × k neighbors) in memory for the duration of
+    // this call.
+    let effective_queries = config.effective_queries();
+    let active_series: std::collections::HashSet<&str> = effective_queries
+        .iter()
+        .filter(|q| filter_index.map_or(true, |name| q.index == name))
+        .map(|q| q.name.as_str())
+        .collect();
+    for r in &mut all_results {
+        if !active_series.contains(r.index_name.as_str()) {
+            r.query_results = Vec::new();
+        }
+    }
+
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
 
     // Capture the PG runtime now, at search time, rather than trusting the
@@ -722,6 +743,15 @@ pub async fn run(
                 environment,
                 pg_runtime,
             );
+        }
+
+        // This series is done and fully durable in its own file (each point
+        // above rewrote it with the complete accumulated set). Nothing else
+        // in this call touches `query.name` again, so drop its per-query
+        // neighbor IDs from memory now rather than carrying them for the
+        // rest of the sweep.
+        for r in all_results.iter_mut().filter(|r| r.index_name == query.name) {
+            r.query_results = Vec::new();
         }
     }
 
