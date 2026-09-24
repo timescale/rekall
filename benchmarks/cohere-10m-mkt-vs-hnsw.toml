@@ -1,6 +1,6 @@
-# Suite: cohere-10m -- optimized Meerkat vs pgvector HNSW M=24.
+# Suite: cohere-10m -- optimized PRISM vs pgvector HNSW M=24.
 #
-# Meerkat arms use the 50M-tuned configuration (centroid compression + FASTSCAN
+# PRISM arms use the 50M-tuned configuration (centroid compression + FASTSCAN
 # centroids + fastscan-16 + SOAR + boundary, error_scale=0, beam_scale=0.25).
 # n24000 (~416 vecs/list) was the best 10M config measured so far; the sweep
 # never went higher, so n40000 (~250 vecs/list) is included to test whether a

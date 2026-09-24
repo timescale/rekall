@@ -10,12 +10,12 @@
 # index builds. The PG tuning below is build-heavy: a large
 # maintenance_work_mem keeps the whole pgvector HNSW graph in RAM (no
 # on-disk second pass), and max_parallel_maintenance_workers lets both
-# HNSW and Meerkat builds fan out across the 96 vCPUs.
+# HNSW and PRISM builds fan out across the 96 vCPUs.
 #
 # This file is the canonical, committed config for this instance type.
 # Personal/machine-specific overrides go in `r8g.24xlarge.local.toml`
 # (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
-# and the meerkat git_url/git_ref. See `local.toml.example`.
+# and the pg_vectorsearch git_url/git_ref. See `local.toml.example`.
 
 # ----- Provider & region -------------------------------------------------
 
@@ -30,8 +30,8 @@ instance_type = "r8g.24xlarge"
 # space for the dataset + indexes + WAL, and max out gp3 IOPS/throughput
 # so load and build aren't I/O bound. Sized for cohere-50M, where the HDF5
 # file (~155 GB), the heap (~155 GB), and the pgvector HNSW graph (~165 GB,
-# which stores the vectors) dominate, plus the HNSW-bq and Meerkat indexes
-# (~30 GB combined — Meerkat reranks from the heap, so its index is small)
+# which stores the vectors) dominate, plus the HNSW-bq and PRISM indexes
+# (~30 GB combined — PRISM reranks from the heap, so its index is small)
 # and WAL. That's ~600 GB of working set; 1000 GB leaves headroom for WAL
 # spikes during the big HNSW build and temp/sort space.
 disk_size_gb    = 1000
@@ -49,8 +49,8 @@ name_prefix = "rekall-r8g24"
 pg_version = 18
 # pg_port  = 5432
 
-# Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
-extensions = ["pgvector", "meerkat"]
+# Only the extensions this box benchmarks (pgvector HNSW vs PRISM).
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # PG GUC overrides — merged over the auto-computed defaults. Only the
 # values that deliberately differ from the defaults are listed here;
@@ -83,9 +83,9 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-# Meerkat is a private repo. Put the URL and ref in .local.toml:
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+# PRISM is a private repo. Put the URL and ref in .local.toml:
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "feat/parallel-build-pg-on-foundation"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

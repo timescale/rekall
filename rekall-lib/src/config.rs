@@ -225,7 +225,7 @@ pub struct IndexConfig {
     #[serde(default)]
     pub gucs: HashMap<String, toml::Value>,
     /// Table `parallel_workers` reloption to set for this index's build
-    /// (reset afterwards). Meerkat's standard-AM build is derated by the
+    /// (reset afterwards). pg_vectorsearch's standard-AM build is derated by the
     /// planner's heap-size heuristic, so an explicit reloption lets it use
     /// the full `max_parallel_maintenance_workers`. Leave unset for pgvector
     /// HNSW, which reads `max_parallel_maintenance_workers` directly and
@@ -527,10 +527,10 @@ pub struct BenchmarkConfig {
     pub output: OutputConfig,
     #[serde(default)]
     pub publish: PublishConfig,
-    /// Optional `[meerkat]` build step: check out + build + install a meerkat
+    /// Optional `[pg_vectorsearch]` build step: check out + build + install a pg_vectorsearch
     /// branch before the run. Absent / no `branch` → use whatever is installed.
-    #[serde(default)]
-    pub meerkat: MeerkatBuildConfig,
+    #[serde(default, alias = "meerkat")]
+    pub pg_vectorsearch: PgVectorsearchBuildConfig,
     /// Per-phase PostgreSQL config overrides (`[phase_pg_config]`):
     /// applied via ALTER SYSTEM for the duration of the index or search
     /// phase, then restored to whatever the box had before. Published
@@ -573,15 +573,15 @@ impl PhasePgConfig {
     }
 }
 
-/// `[meerkat]` — build & install a specific meerkat branch before the run, so
+/// `[pg_vectorsearch]` — build & install a specific pg_vectorsearch branch before the run, so
 /// experimental branches can be benchmarked without manual builds. Runs
 /// wherever rekall runs (your box locally, or the instance under
 /// `infra run`). Defaults match the instance's provisioning layout.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct MeerkatBuildConfig {
+pub struct PgVectorsearchBuildConfig {
     /// Git ref to fetch + check out + build. None → use the installed binary.
     pub branch: Option<String>,
-    /// Meerkat checkout dir. Default `~/repos/meerkat` (the instance's clone).
+    /// pg_vectorsearch checkout dir. Default `~/repos/pg_vectorsearch` (the instance's clone).
     pub source_dir: Option<String>,
     /// Meson build dir. Default `builddir` (matches the instance build).
     pub build_dir: Option<String>,
@@ -589,25 +589,25 @@ pub struct MeerkatBuildConfig {
     #[serde(default)]
     pub meson_args: Vec<String>,
     /// Run the meson build + install under sudo. The instance provisions
-    /// meerkat as root, so its `builddir` and PG lib dir are root-owned;
+    /// pg_vectorsearch as root, so its `builddir` and PG lib dir are root-owned;
     /// local user-owned checkouts leave this false.
     #[serde(default)]
     pub sudo: bool,
     /// Command to run after install (e.g. restart PG). Usually unnecessary —
     /// a fresh session loads the new `.so`. Empty/None → skip.
     pub restart_command: Option<String>,
-    /// DROP EXTENSION meerkat CASCADE + CREATE EXTENSION before the run.
+    /// DROP EXTENSION pg_vectorsearch CASCADE + CREATE EXTENSION before the run.
     /// Required when the branch changes the extension SQL/metadata (not just
     /// the `.so`). CASCADE drops dependent indexes; the run rebuilds them.
     #[serde(default)]
     pub recreate_extension: bool,
 }
 
-impl MeerkatBuildConfig {
+impl PgVectorsearchBuildConfig {
     pub fn source_dir(&self) -> String {
         self.source_dir
             .clone()
-            .unwrap_or_else(|| "~/repos/meerkat".to_string())
+            .unwrap_or_else(|| "~/repos/pg_vectorsearch".to_string())
     }
     pub fn build_dir(&self) -> String {
         self.build_dir
@@ -1378,7 +1378,7 @@ parallelism = 4
 chunk_size = 10000
 
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-1k"
 [index.params]
 nlist = 1000
@@ -1397,7 +1397,7 @@ warmup = 100
 [[search.sweep]]
 index = "mkt-1k"
 [search.sweep.params]
-"mkt.nprobe" = [5, 10, 20]
+"prism.nprobe" = [5, 10, 20]
 
 [[search.sweep]]
 index = "hnsw-16"
@@ -1428,12 +1428,12 @@ metric = "angular"
 k = 10
 num_queries = 100
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "i1"
 [[search.sweep]]
 index = "i1"
 [search.sweep.params]
-"mkt.nprobe" = [10]
+"prism.nprobe" = [10]
 "#,
         )
         .unwrap();
@@ -1482,11 +1482,11 @@ index = "i1"
         assert_eq!(cfg.load.table, Some("my_table".to_string()));
         assert_eq!(cfg.load.parallelism, 4);
         assert_eq!(cfg.index.len(), 2);
-        assert_eq!(cfg.index[0].index_type, "meerkat");
+        assert_eq!(cfg.index[0].index_type, "prism");
         assert_eq!(cfg.index[1].name, "hnsw-16");
         assert_eq!(cfg.search.k, 10);
         assert_eq!(cfg.search.sweep.len(), 2);
-        assert_eq!(cfg.search.sweep[0].params["mkt.nprobe"].len(), 3);
+        assert_eq!(cfg.search.sweep[0].params["prism.nprobe"].len(), 3);
         assert_eq!(cfg.output.format, vec!["table", "json"]);
     }
 
@@ -1706,13 +1706,13 @@ dimension = 128
 dsn = "host=localhost"
 
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "real-index"
 
 [[search.sweep]]
 index = "nonexistent"
 [search.sweep.params]
-"mkt.nprobe" = [5]
+"prism.nprobe" = [5]
 "#;
         let tmp = tempfile::NamedTempFile::new().unwrap();
         std::fs::write(tmp.path(), toml_str).unwrap();
@@ -1866,9 +1866,9 @@ index = "hnsw-m16"
 "hnsw.ef_search" = [10, 40]
 "#;
 
-    const INDEX_MEERKAT: &str = r#"
+    const INDEX_PRISM: &str = r#"
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-1k"
 [index.params]
 nlist = 1000
@@ -1876,7 +1876,7 @@ nlist = 1000
 [[search.sweep]]
 index = "mkt-1k"
 [search.sweep.params]
-"mkt.nprobe" = [5, 10]
+"prism.nprobe" = [5, 10]
 "#;
 
     fn write_suite_dir(dir: &Path) {
@@ -1891,7 +1891,7 @@ index = "mkt-1k"
         )
         .unwrap();
         std::fs::write(indexes.join("hnsw.toml"), INDEX_HNSW).unwrap();
-        std::fs::write(indexes.join("mkt.toml"), INDEX_MEERKAT).unwrap();
+        std::fs::write(indexes.join("prism.toml"), INDEX_PRISM).unwrap();
     }
 
     #[test]
@@ -1902,7 +1902,7 @@ index = "mkt-1k"
         std::fs::write(
             &suite_path,
             r#"
-indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+indexes = ["indexes/hnsw.toml", "indexes/prism.toml"]
 
 [[suite]]
 dataset = "datasets/ds-a.toml"
@@ -1931,7 +1931,7 @@ dataset = "datasets/ds-b.toml"
         std::fs::write(
             &suite_path,
             r#"
-indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+indexes = ["indexes/hnsw.toml", "indexes/prism.toml"]
 
 [[suite]]
 dataset = "datasets/ds-a.toml"
@@ -1957,7 +1957,7 @@ indexes = ["indexes/hnsw.toml"]
         std::fs::write(
             &suite_path,
             r#"
-indexes = ["indexes/hnsw.toml", "indexes/mkt.toml"]
+indexes = ["indexes/hnsw.toml", "indexes/prism.toml"]
 
 [[suite]]
 dataset = "datasets/ds-a.toml"
@@ -1978,7 +1978,7 @@ indexes = ["indexes/hnsw.toml"]
                 PathBuf::from("datasets/ds-a.toml"),
                 PathBuf::from("datasets/ds-b.toml"),
                 PathBuf::from("indexes/hnsw.toml"),
-                PathBuf::from("indexes/mkt.toml"),
+                PathBuf::from("indexes/prism.toml"),
             ]
         );
     }
@@ -2101,7 +2101,7 @@ dataset = "datasets/ds-a.toml"
             &dir.path().join("datasets/ds-a.toml"),
             &[
                 dir.path().join("indexes/hnsw.toml"),
-                dir.path().join("indexes/mkt.toml"),
+                dir.path().join("indexes/prism.toml"),
             ],
         )
         .unwrap();

@@ -1,11 +1,11 @@
-# Meerkat: nlist=80000, centroid compression + FASTSCAN centroids, fs16, SOAR.
+# PRISM: nlist=80000, centroid compression + FASTSCAN centroids, fs16, SOAR.
 # Sized for cohere-50M (~625 vecs/list at 80000 lists) — matches the 10M
 # sweet-spot vecs/list, the top of the sweep. centroid_fastscan requires the
 # perf/fastscan-centroids branch. Build DSM is dominated by the k-means sample
 # buffer (nlist*256*dim*4 ~= 63 GB at 80000/768d), so build on a box with a
 # large /dev/shm (r8i.16xlarge has ~256 GB, 24xlarge ~384 GB).
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-n80000-cctrue-fs16-soar-cfs"
 table_parallel_workers = 32
 [index.params]
@@ -16,13 +16,13 @@ fastscan = true
 soar_lambda = 1.0
 boundary_epsilon = 0.05
 [index.gucs]
-"mkt.fastscan_bits" = 16
+"prism.fastscan_bits" = 16
 # Recall-neutral query optimizations from the 50M tuning. beam_scale is NOT
 # the default on feat/cohere-50m-perf (ships 1.0), so set both explicitly.
-"mkt.centroid_error_scale" = 0
-"mkt.centroid_beam_scale" = 0.25
+"prism.centroid_error_scale" = 0
+"prism.centroid_beam_scale" = 0.25
 
 [[search.sweep]]
 index = "mkt-n80000-cctrue-fs16-soar-cfs"
 [search.sweep.params]
-"mkt.nprobe" = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 8000]
+"prism.nprobe" = [20, 40, 80, 160, 320, 640, 1280, 2560, 5120, 8000]

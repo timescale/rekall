@@ -24,7 +24,7 @@ name_prefix = "rekall-m8id"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat", "vectorchord"]
+extensions = ["pgvector", "pg_vectorsearch", "vectorchord"]
 
 # [pg_config]
 # shared_buffers   = "16GB"

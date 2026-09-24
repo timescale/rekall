@@ -69,8 +69,8 @@ def monthly_cost(instance: str, gb: int, iops: int, throughput: int) -> float:
 def engine_of(point: dict) -> str:
     """Group sweep points into engines by index type."""
     t = point.get("index_type", "")
-    if t == "meerkat":
-        return "Meerkat"
+    if t in ("prism", "meerkat"):
+        return "PRISM"
     if t == "pgvector-hnsw":
         return "HNSW"
     return t or "unknown"

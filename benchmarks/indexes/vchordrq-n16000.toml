@@ -1,5 +1,5 @@
 # VectorChord vchordrq (1-bit RaBitQ) on the plain `vector` column.
-# lists=16000 follows VectorChord's OWN sizing for 10M, not a Meerkat match:
+# lists=16000 follows VectorChord's OWN sizing for 10M, not a PRISM match:
 # their docs recommend 4*sqrt(N)..8*sqrt(N) for 2M-50M rows (12.6k..25.3k for
 # 10M); 16000 is the mid-range (~5*sqrt(N), ~625 vecs/list). VectorChord has no
 # auto-nlist — an empty `lists` builds a FLAT (unpartitioned) index, so it must

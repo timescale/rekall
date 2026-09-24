@@ -10,10 +10,10 @@
 #
 # The overrides wrap the whole index phase rather than each arm, so there is
 # exactly one PostgreSQL restart down to the build config and one back up
-# per invocation -- and every arm, Meerkat included, builds under
+# per invocation -- and every arm, PRISM included, builds under
 # max_parallel_maintenance_workers = 0. Build times from this suite are
 # therefore NOT comparable with the reference suite's; only "did it fit"
-# and the relative HNSW-vs-Meerkat picture at each rung are.
+# and the relative HNSW-vs-PRISM picture at each rung are.
 #
 # The setup
 # ---------
@@ -27,8 +27,8 @@
 #   smaller than m=24, because at this dimensionality the vector payload
 #   dominates the node and the neighbour lists do not.
 #
-#   Meerkat has NO CLIFF. Its k-means sample buffer is explicitly bounded by
-#   maintenance_work_mem (sample_for_build() in src/pg/mktann_build.c): the
+#   PRISM has NO CLIFF. Its k-means sample buffer is explicitly bounded by
+#   maintenance_work_mem (sample_for_build() in src/pg/build.c): the
 #   ideal sample is nlist*256 vectors, and when that does not fit the build
 #   subsamples and recovers accuracy with a later page-backed refine pass
 #   over the full table. Less memory costs some centroid quality, not a 10x
@@ -38,7 +38,7 @@
 # every advantage available on a small box -- shared_buffers collapsed to
 # 128MB for the duration of the build, all of it redirected into
 # maintenance_work_mem, and the build forced serial to escape the /dev/shm
-# ceiling on pgvector's parallel-build DSM segment. Meerkat gets the same
+# ceiling on pgvector's parallel-build DSM segment. PRISM gets the same
 # settings, which is if anything a handicap for it (a serial build on a box
 # that has 2 cores, and a sample buffer bounded well below the ideal). If
 # HNSW still cannot build, that is a real floor and not a tuning oversight.
@@ -61,7 +61,7 @@
 #
 # The heap survives resizes and the load phase is resumable, so only the
 # index phase actually repeats. The 2 GiB rung cannot be provisioned from
-# scratch (provision.sh compiles meerkat from source) -- resize into it.
+# scratch (provision.sh compiles pg_vectorsearch from source) -- resize into it.
 #
 # What to record at each rung, per arm: did the build complete, how long it
 # took, and -- for HNSW -- whether the server log contains
@@ -74,10 +74,10 @@
 # "fit" from "did not fit"; the log line does.
 #
 # Note the 2 GiB rung cannot be provisioned from scratch (provision.sh
-# compiles meerkat from source, which does not fit) -- resize into it.
+# compiles pg_vectorsearch from source, which does not fit) -- resize into it.
 #
 # Expected: HNSW builds in memory down to 4 GiB and hits the cliff at 2 GiB;
-# Meerkat builds at every rung, with only the sample size shrinking.
+# PRISM builds at every rung, with only the sample size shrinking.
 
 indexes = [
     "indexes/mkt-defaults.toml",

@@ -1,6 +1,6 @@
-# Meerkat: nlist=3000, no centroid compression, fastscan-16, SOAR
+# PRISM: nlist=3000, no centroid compression, fastscan-16, SOAR
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-n3000-ccfalse-fs16-soar"
 [index.params]
 nlist = 3000
@@ -9,9 +9,9 @@ fastscan = true
 soar_lambda = 1.0
 boundary_epsilon = 0.05
 [index.gucs]
-"mkt.fastscan_bits" = 16
+"prism.fastscan_bits" = 16
 
 [[search.sweep]]
 index = "mkt-n3000-ccfalse-fs16-soar"
 [search.sweep.params]
-"mkt.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1200]
+"prism.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1200]

@@ -180,7 +180,7 @@ impl PgConnection {
         if let Some(ext) = extensions.last() {
             // Resolve the shared library this extension's C functions are
             // actually bound to instead of assuming it matches the bare
-            // extension name: some extensions (e.g. meerkat) install a
+            // extension name: some extensions (e.g. pg_vectorsearch) install a
             // version-suffixed .so for side-by-side installs, so
             // `LOAD '{ext}'` can silently load a stale/different file
             // sharing the unversioned name and double-init the real one
@@ -272,7 +272,7 @@ impl PgConnection {
 
             // For dotted names (custom GUCs), check if it's actually
             // registered by looking in pg_settings. Warn if not found
-            // (might be a typo like mkt.nprob instead of mkt.nprobe).
+            // (might be a typo like prism.nprob instead of prism.nprobe).
             if key.contains('.') {
                 let row = client
                     .query_one(
@@ -296,7 +296,7 @@ impl PgConnection {
         Ok(())
     }
 
-    /// Set GUCs from a param map. Keys are GUC names (e.g., "mkt.nprobe"),
+    /// Set GUCs from a param map. Keys are GUC names (e.g., "prism.nprobe"),
     /// values are the settings. Issues `SET key = value` for each entry.
     pub async fn set_gucs(&self, params: &HashMap<String, toml::Value>) -> Result<()> {
         let client = self.client();
@@ -385,32 +385,31 @@ impl PgConnection {
             let name: String = row.get(0);
             let ver: String = row.get(1);
 
-            // Probe for version/commit functions that extensions may provide.
-            // Try common patterns: <ext>.version(), <ext>.git_commit(),
-            // <ext>_version(), <ext>_git_commit()
-            let schema = match name.as_str() {
-                "meerkat" => Some("mkt"),
-                _ => None,
+            // pg_vectorsearch installs these functions into its chosen
+            // extension schema (typically public), so discover that schema
+            // from pg_extension rather than assuming one. Other extensions
+            // keep the conventional unqualified <extension>_* probes.
+            let extension_schema: Option<String> = if name == "pg_vectorsearch" {
+                client
+                    .query_opt(
+                        "SELECT n.nspname FROM pg_extension e \
+                         JOIN pg_namespace n ON n.oid = e.extnamespace \
+                         WHERE e.extname = $1",
+                        &[&name],
+                    )
+                    .await?
+                    .map(|row| row.get(0))
+            } else {
+                None
             };
 
-            let version_candidates = match schema {
-                Some(s) => vec![
-                    // meerkat >= 0.1.0 release machinery
-                    format!("SELECT {s}.extension_version()"),
-                    // older meerkat dev builds
-                    format!("SELECT {s}.version()"),
-                    format!("SELECT {s}_version()"),
-                    format!("SELECT {name}_version()"),
-                ],
+            let version_candidates = match extension_schema.as_deref() {
+                Some(s) => vec![format!("SELECT {s}.pg_vectorsearch_version()")],
                 None => vec![format!("SELECT {name}_version()")],
             };
 
-            let commit_candidates = match schema {
-                Some(s) => vec![
-                    format!("SELECT {s}.git_commit()"),
-                    format!("SELECT {s}_git_commit()"),
-                    format!("SELECT {name}_git_commit()"),
-                ],
+            let commit_candidates = match extension_schema.as_deref() {
+                Some(s) => vec![format!("SELECT {s}.pg_vectorsearch_git_commit()")],
                 None => vec![format!("SELECT {name}_git_commit()")],
             };
 

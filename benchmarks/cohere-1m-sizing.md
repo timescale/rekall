@@ -1,4 +1,4 @@
-# Cohere-1M: what is the smallest instance Meerkat and HNSW can run on?
+# Cohere-1M: what is the smallest instance PRISM and HNSW can run on?
 
 This is the sizing analysis behind `cohere-1m-mkt-vs-hnsw.toml` (the
 reference run) and `cohere-1m-mkt-vs-hnsw.toml` (the memory ladder).
@@ -20,7 +20,7 @@ ladder is for.
 | `hnsw-halfvec` (m=16) | ~2.0 GB | derived: m=16 fullvec measures 3.74 GB/M (laion-5M) vs m=24 fullvec 3.81 GB/M (cohere) — only ~2% apart |
 | `hnsw-m24` (fullvec) | ~4.10 GB | measured 38.14 GiB @ 10M, 190.69 GiB @ 50M |
 
-The headline ratio: **Meerkat's index is ~7.3x smaller than the HNSW
+The headline ratio: **PRISM's index is ~7.3x smaller than the HNSW
 halfvec graph** at this scale.
 
 Two things follow that are easy to miss:
@@ -29,7 +29,7 @@ Two things follow that are easy to miss:
    dominates an HNSW node and the neighbour lists do not, so m=16 buys
    ~2%. If a 2 GB graph does not fit, no HNSW tuning makes it fit.
 2. **The heap is the same 4.1 GB in both cases** and it is bigger than
-   either index. Any claim of the form "Meerkat fits in X GB" is about the
+   either index. Any claim of the form "PRISM fits in X GB" is about the
    *index*, not about caching the whole table.
 
 ## Build sizing vs query sizing
@@ -81,20 +81,20 @@ PostgreSQL overhead ≈ 3.2 GB, which fits. So the **HNSW build floor is
 2 GiB of RAM, and the build can only complete via the spill path.
 `cohere-1m-build-floor.toml` runs this experiment down the ladder.
 
-Meerkat has **no build-memory cliff**. Its k-means sample buffer is
+PRISM has **no build-memory cliff**. Its k-means sample buffer is
 explicitly bounded by `maintenance_work_mem`
-(`sample_for_build()` in `src/pg/mktann_build.c`): the ideal sample is
+(`sample_for_build()` in `src/pg/build.c`): the ideal sample is
 `nlist * 256` vectors, and when that does not fit the build subsamples and
 recovers accuracy with a later page-backed refine pass over the full table.
 Lower `maintenance_work_mem` costs some centroid quality, not a 10x build
 time. At 1M with `nlist = 3906` the ideal sample is the entire table
 (3.1 GB); with `maintenance_work_mem = 384 MB` it draws ~131 k vectors and
-refines. So the Meerkat build floor is set by "does PostgreSQL start", not
+refines. So the PRISM build floor is set by "does PostgreSQL start", not
 by the index.
 
 Build *time* is a separate practical limit. HNSW m24 halfvec at 10M took
 2427 s on 16 Graviton vCPUs; the build is ~N log N and scales sublinearly
-in workers, so 1M on 2 vCPU should land in the tens of minutes. Meerkat at
+in workers, so 1M on 2 vCPU should land in the tens of minutes. PRISM at
 1M took 17.6 s on 96 vCPU (measured) and 796 s at 10M on 16 vCPU, so
 minutes on 2 vCPU.
 
@@ -103,26 +103,26 @@ minutes on 2 vCPU.
 HNSW keeps the halfvec **inside** the graph, so an unfiltered top-k query
 touches the heap only for the k rows it finally returns — its working set
 is the ~2 GB graph and essentially nothing else.
-Meerkat scans compressed posting lists and then reranks exactly against the
+PRISM scans compressed posting lists and then reranks exactly against the
 heap, so its working set is a 0.28 GB index **plus** a bounded random-read
 tail: the auto rerank pool is `16 * k` = 160 tuples per query
-(`mkt.rerank_pool`, `src/index/query_scan.c`).
+(`prism.rerank_pool`, `src/index/query_scan.c`).
 
-That makes Meerkat look more I/O-dependent on paper, and the ladder needs
+That makes PRISM look more I/O-dependent on paper, and the ladder needs
 to test it honestly. But the two miss patterns are not comparable:
 
 - An **HNSW walk is a chain of dependent reads**. Hop N+1's address is only
   known after hop N has been read, so a cache miss cannot be prefetched and
   its full latency lands on the query. A few hundred serialized ~100 µs gp3
   reads is tens of milliseconds per query.
-- **Meerkat's rerank fetches are independent**. All 160 TIDs are known
+- **PRISM's rerank fetches are independent**. All 160 TIDs are known
   before the first fetch, and the rerank path drives them through
   PostgreSQL 18's `read_stream` API (`mkt_storage_rerank` in
-  `src/pg/mktann_storage.c`), which batches them into concurrent async
+  `src/pg/bufstorage.c`), which batches them into concurrent async
   reads under `effective_io_concurrency` (200 on these boxes). The
   posting-list scan itself is near-sequential over contiguous pages.
 
-So the expectation the ladder is testing is: Meerkat degrades from a small
+So the expectation the ladder is testing is: PRISM degrades from a small
 resident index plus prefetchable misses; HNSW degrades from an unprefetchable
 graph walk. `search.io_stats` records the per-point read counters that
 either confirm or refute this.
@@ -151,7 +151,7 @@ cheapest answer if 8 GiB clears the target.
 `shared_buffers = RAM/4` in whole GB, which is `0GB` at 2 GiB and will not
 start PostgreSQL.
 
-`c8g.medium` is also **query-only**. `provision.sh` compiles meerkat (and
+`c8g.medium` is also **query-only**. `provision.sh` compiles pg_vectorsearch (and
 optionally rekall) from source, which does not fit in 2 GiB, and an HNSW
 build there would spill for hours.
 
@@ -159,7 +159,7 @@ build there would spill for hours.
 
 Written down before the run so the results can contradict them.
 
-| Rung | Meerkat | HNSW halfvec |
+| Rung | PRISM | HNSW halfvec |
 |---|---|---|
 | 16 GiB | index + heap cached | graph + heap cached |
 | 8 GiB | index + heap cached (4.4 GB) | graph cached; heap mostly not, and queries do not need it |
@@ -170,7 +170,7 @@ Working answer, to be confirmed:
 
 | | Build floor | Query floor |
 |---|---|---|
-| Meerkat | **2 GiB** | **2 GiB** |
+| PRISM | **2 GiB** | **2 GiB** |
 | HNSW halfvec (stock tuning) | 8 GiB | 4 GiB |
 | HNSW halfvec (`phase_pg_config` + serial build) | **4 GiB** | **4 GiB** |
 
@@ -185,7 +185,7 @@ lifted floor, not the stock one. Benchmarking HNSW at 8 GiB when 4 GiB
 demonstrably works would be a straw man.
 
 Second, even at the lifted floor the claim holds, just with a smaller
-multiple: **HNSW needs 2x the RAM of Meerkat, and the remaining gap is a
+multiple: **HNSW needs 2x the RAM of PRISM, and the remaining gap is a
 hard floor rather than a tuning knob** — 2 GiB of RAM cannot hold a 2.05 GB
 graph under any configuration, and no HNSW parameter makes that graph
 smaller at 768d. The 2 GiB rung is where the two engines actually separate,

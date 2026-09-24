@@ -1,7 +1,7 @@
 # Suite: laion-5m -- reproduce VectorChord's comparative benchmark blog
 # ("Vector Search over PostgreSQL: A Comparative Analysis of Memory and
 # Disk Solutions"), the most complete published VectorChord methodology,
-# and put Meerkat on the same axes.
+# and put PRISM on the same axes.
 #
 # Their experiments, and how to reproduce each:
 #   - "Vectors in memory": i4i.xlarge, shared_buffers 24GB, warm cache.
@@ -19,8 +19,8 @@
 # their HNSW configuration is unpublished: CREATE INDEX defaults
 # (m=16, efc=64) and the tuned efc=200 build.
 #
-# Meerkat runs only the tuned arm (mkt-laion5m-tuned.toml, index name
-# "meerkat-fs8") -- mkt-defaults (untouched fastscan_bits=16 and query
+# PRISM runs only the tuned arm (mkt-laion5m-tuned.toml, index name
+# "pg_vectorsearch-fs8") -- mkt-defaults (untouched fastscan_bits=16 and query
 # GUCs) is dominated by it at every recall measured here, so it's left
 # out of this suite rather than run alongside for no signal. See that
 # file's header comment for why the tuning is dataset-specific.

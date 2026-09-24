@@ -21,13 +21,13 @@ parallelism = 1           # COPY streams (Phase 2)
 chunk_size = 50000        # vectors per HDF5 read
 
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-fs16"
 [index.params]            # passed to CREATE INDEX ... WITH (...)
 nlist = 1000
 fastscan = true
 [index.gucs]              # GUCs set before every search sweep
-"mkt.fastscan_bits" = 16
+"prism.fastscan_bits" = 16
 
 [[index]]
 type = "pgvector-hnsw"
@@ -52,7 +52,7 @@ num_queries = 2000        # omit to use all queries in dataset
 [[search.sweep]]
 index = "mkt-fs16"
 [search.sweep.params]     # keys are PG GUC names
-"mkt.nprobe" = [5, 10, 20, 40, 80]
+"prism.nprobe" = [5, 10, 20, 40, 80]
 
 [[search.sweep]]
 index = "hnsw-m16"
@@ -74,10 +74,10 @@ Each `[[index]]` has two parameter sections:
 
 - **`[index.params]`** — build-time parameters passed to
   `CREATE INDEX ... WITH (...)`. These are index-type-specific (e.g.,
-  `nlist`, `fastscan` for meerkat; `m`, `ef_construction` for pgvector).
+  `nlist`, `fastscan` for pg_vectorsearch; `m`, `ef_construction` for pgvector).
 
 - **`[index.gucs]`** — default GUC values set before every search sweep.
-  Keys must be full PG GUC names (e.g., `"mkt.fastscan_bits"`, not
+  Keys must be full PG GUC names (e.g., `"prism.fastscan_bits"`, not
   `fastscan_bits`). These are applied before each sweep point; sweep
   params in `[search.sweep.params]` override them.
 
@@ -89,20 +89,20 @@ Sweep params use full PG GUC names as keys:
 [[search.sweep]]
 index = "mkt-fs16"
 [search.sweep.params]
-"mkt.nprobe" = [5, 10, 20, 40, 80]
+"prism.nprobe" = [5, 10, 20, 40, 80]
 ```
 
 Multiple params create a Cartesian product:
 
 ```toml
 [search.sweep.params]
-"mkt.nprobe" = [10, 40]
-"mkt.fastscan_bits" = [8, 16]
+"prism.nprobe" = [10, 40]
+"prism.fastscan_bits" = [8, 16]
 # Produces 4 combinations: (10,8), (10,16), (40,8), (40,16)
 ```
 
 GUC names are validated before the sweep starts. A typo like
-`mkt.nprob` gives a clear error instead of silently using the wrong
+`prism.nprob` gives a clear error instead of silently using the wrong
 parameter.
 
 ## Local Overrides
@@ -207,7 +207,7 @@ control order).
 # All configs in the directory
 rekall run configs/cohere-1m/
 
-# Only meerkat configs (shell glob)
+# Only pg_vectorsearch configs (shell glob)
 rekall run configs/cohere-1m/mkt-*.toml
 
 # Multiple groups
@@ -238,18 +238,18 @@ Each index config file in a directory contains:
 
 ```toml
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-vanilla"
 [index.params]
 nlist = 1000
 
 [index.gucs]
-"mkt.fastscan_bits" = 16
+"prism.fastscan_bits" = 16
 
 [[search.sweep]]
 index = "mkt-vanilla"
 [search.sweep.params]
-"mkt.nprobe" = [5, 10, 20, 40, 80]
+"prism.nprobe" = [5, 10, 20, 40, 80]
 ```
 
 ## Index Reuse
@@ -332,7 +332,7 @@ row is 3080 bytes and fits 2 to an 8 kB page; a `halfvec` row is 1544 and fits
 5. Halving the heap halves both the bytes competing with the index for cache
 and the pages a rerank touches — which is the whole difference between
 graceful degradation and a cliff on a memory-constrained box. For cohere-1M
-the Meerkat working set is index 0.26 GiB + heap 3.81 GiB; a halfvec heap
+the PRISM working set is index 0.26 GiB + heap 3.81 GiB; a halfvec heap
 takes that to ~2.2 GiB, against HNSW-halfvec's 1.91 GiB index.
 
 **Why `auto` exists.** HDF5 converts inside `H5Dread`, so rekall always
@@ -364,6 +364,6 @@ reuse check compares only row counts. A run whose `storage` resolves to a type
 the table's `v` column is not now fails up front instead of silently measuring
 the wrong heap; `--reload` recreates the table.
 
-**Caveat.** Meerkat's `mktann` opclasses are declared `FOR TYPE vector` only,
-so a Meerkat arm cannot index a `halfvec` column. The option currently serves
+**Caveat.** PRISM's `prism` opclasses are declared `FOR TYPE vector` only,
+so a PRISM arm cannot index a `halfvec` column. The option currently serves
 pgvector arms.

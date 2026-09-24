@@ -12,7 +12,7 @@
 #
 # 8 GiB is also the interesting boundary for serving:
 #
-#   - Meerkat's index (~0.28 GB) plus the ~4.1 GB heap it reranks against
+#   - PRISM's index (~0.28 GB) plus the ~4.1 GB heap it reranks against
 #     both fit in RAM. Everything is warm.
 #   - HNSW m24 halfvec's graph (~2.0 GB) fits in RAM, but graph + heap
 #     (~6.1 GB) does not fit alongside PG's own memory. Queries stay fast
@@ -83,7 +83,7 @@ name_prefix = "rekall-1m-ladder"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # Auto-computed for 8 GiB: shared_buffers 2GB, maintenance_work_mem 3GB,
 # effective_cache_size 6GB. Left alone — 3 GB of maintenance_work_mem is
@@ -98,8 +98,8 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

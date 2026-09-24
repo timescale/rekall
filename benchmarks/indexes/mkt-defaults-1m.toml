@@ -1,5 +1,5 @@
 # Pure defaults for the cohere-1M ladder: no index parameters, no session
-# GUCs -- exactly what CREATE INDEX ... USING mktann gives an untuned
+# GUCs -- exactly what CREATE INDEX ... USING prism gives an untuned
 # session. Keeps the arm name `mkt-defaults` so plots and published history
 # line up with every other cohere suite.
 #
@@ -45,11 +45,11 @@
 #   at 100M) where a hardcoded 32 would not.
 #
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-defaults"
 table_parallel_workers = 32
 
 [[search.sweep]]
 index = "mkt-defaults"
 [search.sweep.params]
-"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320]
+"prism.nprobe" = [0, 10, 20, 40, 80, 160, 320]

@@ -2,7 +2,7 @@
 # Everything not set stays at the shipped defaults; nprobe=0
 # exercises the auto heuristic on this shape.
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-tuned-fastscan-off"
 table_parallel_workers = 32
 [index.params]
@@ -11,4 +11,4 @@ fastscan = false
 [[search.sweep]]
 index = "mkt-tuned-fastscan-off"
 [search.sweep.params]
-"mkt.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]
+"prism.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]

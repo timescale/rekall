@@ -1,4 +1,4 @@
-# Meerkat (cohere tuning), contrast arm one step BELOW the 50M optimum:
+# PRISM (cohere tuning), contrast arm one step BELOW the 50M optimum:
 # nlist=120000 ~= 416 vecs/list at 50M (vs the n240000 sweet spot that beat
 # HNSW). Coarser than optimal -- kept only to show the downslope. Same optimized
 # config otherwise (centroid compression + FASTSCAN centroids + fastscan-16 +
@@ -6,7 +6,7 @@
 #
 # Build memory: k-means sample buffer ~= nlist*256*dim*4 (~94 GB at 120000/768d).
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-n120000-cctrue-fs16-soar-cfs"
 table_parallel_workers = 32
 [index.params]
@@ -17,8 +17,8 @@ fastscan = true
 soar_lambda = 1.0
 boundary_epsilon = 0.05
 [index.gucs]
-"mkt.fastscan_bits" = 16
-"mkt.centroid_error_scale" = 0
+"prism.fastscan_bits" = 16
+"prism.centroid_error_scale" = 0
 
 # Two-regime query sweep mirroring the 100M-tuned shape (see the
 # n240000 config for the rationale and the re-measure caveat).
@@ -26,14 +26,14 @@ boundary_epsilon = 0.05
 [[search.sweep]]
 index = "mkt-n120000-cctrue-fs16-soar-cfs"
 [search.sweep.params]
-"mkt.nprobe" = [10, 20, 40, 80, 160]
-"mkt.centroid_beam_scale" = [1.0]
-"mkt.rerank_pool" = [40]
+"prism.nprobe" = [10, 20, 40, 80, 160]
+"prism.centroid_beam_scale" = [1.0]
+"prism.rerank_pool" = [40]
 
 # Mid/high-recall regime: half beam + full rerank.
 [[search.sweep]]
 index = "mkt-n120000-cctrue-fs16-soar-cfs"
 [search.sweep.params]
-"mkt.nprobe" = [160, 240, 320, 480, 640, 960, 1280]
-"mkt.centroid_beam_scale" = [0.5]
-"mkt.rerank_pool" = [0]
+"prism.nprobe" = [160, 240, 320, 480, 640, 960, 1280]
+"prism.centroid_beam_scale" = [0.5]
+"prism.rerank_pool" = [0]

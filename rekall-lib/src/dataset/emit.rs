@@ -24,7 +24,7 @@ pub struct SqlTarget {
     pub id_column: String,
     pub dimension: u32,
     /// The distance operator: `<=>`, `<->`, `<~>`, or a schema-qualified
-    /// `OPERATOR(mkt.<=>)`.
+    /// `OPERATOR(prism.<=>)`.
     pub order_op: String,
     /// SQL rendering the query vector, given the literal. Lets a quantized
     /// arm wrap it in the cast its operator needs.

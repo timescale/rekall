@@ -143,7 +143,7 @@ index = "hnsw-m32"
 
 ## Instance Sizing
 
-`cohere-1m-sizing.md` works out how much RAM Meerkat and pgvector HNSW each
+`cohere-1m-sizing.md` works out how much RAM PRISM and pgvector HNSW each
 need for cohere-1M — separately for the build and for queries — from the
 index sizes published at <https://timescale.github.io/rekall/>. It backs two
 suites:

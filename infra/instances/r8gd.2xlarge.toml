@@ -21,7 +21,7 @@ name_prefix = "rekall-r8gd"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat", "vectorchord"]
+extensions = ["pgvector", "pg_vectorsearch", "vectorchord"]
 
 # [pg_config]
 # shared_buffers   = "32GB"

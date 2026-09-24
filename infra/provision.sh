@@ -6,13 +6,13 @@
 # times. Each step checks whether its work is already done.
 #
 # Repos are cloned to ~/repos/ so the user can later update code
-# with `cd ~/repos/meerkat && git pull && ...` without reprovisioning.
+# with `cd ~/repos/pg_vectorsearch && git pull && ...` without reprovisioning.
 #
 # Environment variables (set by rekall before running):
 #   PG_VERSION         — PostgreSQL major version (e.g., 18)
 #   PG_PORT            — PostgreSQL port (default: 5432)
-#   MEERKAT_GIT_URL    — git URL for meerkat (empty to skip)
-#   MEERKAT_GIT_REF    — git ref for meerkat (default: main)
+#   PG_VECTORSEARCH_GIT_URL    — git URL for pg_vectorsearch (empty to skip)
+#   PG_VECTORSEARCH_GIT_REF    — git ref for pg_vectorsearch (default: main)
 #   REKALL_GIT_URL     — git URL for rekall (empty to skip)
 #   REKALL_GIT_REF     — git ref for rekall (default: main)
 #   VECTORCHORD        — set to "1" to install VectorChord
@@ -20,8 +20,8 @@
 set -euo pipefail
 
 PG_VERSION="${PG_VERSION:-18}"
-MEERKAT_GIT_URL="${MEERKAT_GIT_URL:-}"
-MEERKAT_GIT_REF="${MEERKAT_GIT_REF:-main}"
+PG_VECTORSEARCH_GIT_URL="${PG_VECTORSEARCH_GIT_URL:-}"
+PG_VECTORSEARCH_GIT_REF="${PG_VECTORSEARCH_GIT_REF:-main}"
 REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
 VECTORCHORD="${VECTORCHORD:-}"
@@ -46,37 +46,37 @@ mkdir -p "$REPOS_DIR"
 echo "=== Stopping PostgreSQL to free memory during source builds ==="
 sudo systemctl stop "$PG_UNIT" || true
 
-# --- Meerkat ---
+# --- PRISM ---
 
-if [ -n "$MEERKAT_GIT_URL" ]; then
-    MEERKAT_SO="/usr/lib/postgresql/${PG_VERSION}/lib/meerkat.so"
-    MEERKAT_DIR="$REPOS_DIR/meerkat"
-    MEERKAT_SSH_CMD="ssh -i $HOME/.ssh/meerkat -o StrictHostKeyChecking=no"
+if [ -n "$PG_VECTORSEARCH_GIT_URL" ]; then
+    PG_VECTORSEARCH_CONTROL="/usr/share/postgresql/${PG_VERSION}/extension/pg_vectorsearch.control"
+    PG_VECTORSEARCH_DIR="$REPOS_DIR/pg_vectorsearch"
+    PG_VECTORSEARCH_SSH_CMD="ssh -i $HOME/.ssh/pg_vectorsearch -o StrictHostKeyChecking=no"
 
-    if [ -f "$MEERKAT_SO" ]; then
-        echo "=== Meerkat already installed ($MEERKAT_SO exists), skipping ==="
+    if [ -f "$PG_VECTORSEARCH_CONTROL" ]; then
+        echo "=== pg_vectorsearch already installed ($PG_VECTORSEARCH_CONTROL exists), skipping ==="
     else
-        echo "=== Building meerkat from source ==="
+        echo "=== Building pg_vectorsearch from source ==="
 
         # The initial clone needs GIT_SSH_COMMAND because .git/config doesn't
         # exist yet. Every subsequent git operation in this repo uses the
         # core.sshCommand we set below, so users SSH'ing in to pull/push
         # later don't need to export anything.
-        if [ ! -d "$MEERKAT_DIR" ]; then
-            GIT_SSH_COMMAND="$MEERKAT_SSH_CMD" git clone "$MEERKAT_GIT_URL" "$MEERKAT_DIR"
+        if [ ! -d "$PG_VECTORSEARCH_DIR" ]; then
+            GIT_SSH_COMMAND="$PG_VECTORSEARCH_SSH_CMD" git clone "$PG_VECTORSEARCH_GIT_URL" "$PG_VECTORSEARCH_DIR"
         fi
-        cd "$MEERKAT_DIR"
-        git config core.sshCommand "$MEERKAT_SSH_CMD"
+        cd "$PG_VECTORSEARCH_DIR"
+        git config core.sshCommand "$PG_VECTORSEARCH_SSH_CMD"
 
         git fetch origin
-        git checkout "$MEERKAT_GIT_REF"
-        git pull origin "$MEERKAT_GIT_REF" || true
+        git checkout "$PG_VECTORSEARCH_GIT_REF"
+        git pull origin "$PG_VECTORSEARCH_GIT_REF" || true
 
         # Parallelise LTO across all available cores. Without this the link
         # phase is single-threaded and pegs one core for many minutes.
         LTO_THREADS=$(nproc 2>/dev/null || echo 1)
-        MEERKAT_MESON_OPTS="--buildtype=release -Dnative=true -Db_lto=true -Db_lto_threads=$LTO_THREADS"
-        case "$MEERKAT_MESON_OPTS" in
+        PG_VECTORSEARCH_MESON_OPTS="--buildtype=release -Dnative=true -Db_lto=true -Db_lto_threads=$LTO_THREADS"
+        case "$PG_VECTORSEARCH_MESON_OPTS" in
             *"-Db_lto=true"*)
                 echo "NOTE: LTO is enabled with $LTO_THREADS parallel threads."
                 echo "      The link step still runs silently for a few minutes;"
@@ -85,14 +85,14 @@ if [ -n "$MEERKAT_GIT_URL" ]; then
         esac
 
         sudo bash -c "
-            cd $MEERKAT_DIR
+            cd $PG_VECTORSEARCH_DIR
             rm -rf builddir
-            meson setup builddir $MEERKAT_MESON_OPTS -Dpg_config=$PG_CONFIG
+            meson setup builddir $PG_VECTORSEARCH_MESON_OPTS -Dpg_config=$PG_CONFIG
             meson compile -C builddir
             meson install -C builddir
         "
         # PG is stopped during builds; the .so loads on the final restart.
-        echo "=== Meerkat installed ==="
+        echo "=== PRISM installed ==="
     fi
 fi
 
@@ -158,7 +158,7 @@ if [ "$VECTORCHORD" = "1" ]; then
     fi
 
     # VectorChord needs its library preloaded. Nothing else sets
-    # shared_preload_libraries (meerkat is a plain IAM and needs no preload), so
+    # shared_preload_libraries (pg_vectorsearch is a plain IAM and needs no preload), so
     # add vchord here -- after the .so is installed -- and restart. This must
     # live in provision.sh, not the config's [pg_config]: cloud-init starts PG
     # before this script runs, so vchord.so only exists now; setting the preload
@@ -206,7 +206,7 @@ if [ -n "$REKALL_GIT_URL" ]; then
         echo "=== Building rekall from source ==="
         source "$HOME/.cargo/env"
 
-        # See the meerkat block: GIT_SSH_COMMAND only for the initial
+        # See the pg_vectorsearch block: GIT_SSH_COMMAND only for the initial
         # clone, then persist via core.sshCommand for the user's later
         # pulls/pushes.
         if [ ! -d "$REKALL_DIR" ]; then
@@ -251,8 +251,8 @@ echo ""
 echo "Connect to the benchmark database with: psql service=rekall"
 echo ""
 echo "Repos cloned to ~/repos/. To update later:"
-if [ -n "$MEERKAT_GIT_URL" ]; then
-    echo "  cd ~/repos/meerkat && git pull && sudo meson compile -C builddir && sudo meson install -C builddir"
+if [ -n "$PG_VECTORSEARCH_GIT_URL" ]; then
+    echo "  cd ~/repos/pg_vectorsearch && git pull && sudo meson compile -C builddir && sudo meson install -C builddir"
 fi
 if [ "$VECTORCHORD" = "1" ]; then
     echo "  cd ~/repos/vectorchord && git pull && cargo pgrx install --release --pg-config=$PG_CONFIG"

@@ -87,14 +87,14 @@ variable "rekall_git_ref" {
   default     = "main"
 }
 
-variable "meerkat_git_url" {
-  description = "Git URL for meerkat source build (empty to skip)"
+variable "pg_vectorsearch_git_url" {
+  description = "Git URL for pg_vectorsearch source build (empty to skip)"
   type        = string
   default     = ""
 }
 
-variable "meerkat_git_ref" {
-  description = "Git ref for meerkat build"
+variable "pg_vectorsearch_git_ref" {
+  description = "Git ref for pg_vectorsearch build"
   type        = string
   default     = "main"
 }

@@ -5,9 +5,9 @@
 #     ~/.config/rekall/infra.toml  ->  <instance>.toml  ->  <instance>.local.toml
 #
 # The machine-wide values — ssh_key, iam_instance_profile, s3_bucket, the
-# meerkat/rekall git URLs — belong in ~/.config/rekall/infra.toml, where
+# pg_vectorsearch/rekall git URLs — belong in ~/.config/rekall/infra.toml, where
 # they are stated once for every box. A .local.toml is for the cases where
-# ONE box must differ: benchmarking a meerkat feature branch, a bigger disk
+# ONE box must differ: benchmarking a pg_vectorsearch feature branch, a bigger disk
 # for a bigger dataset, a different IAM profile.
 #
 # To use: copy this file to `<instance-name>.local.toml` next to its
@@ -16,7 +16,7 @@
 #
 # TOML gotcha: top-level fields (ssh_key, iam_instance_profile,
 # ubuntu_version, huge_pages, ...) MUST appear before any [section]
-# header. Once you write [meerkat] etc., everything after belongs to
+# header. Once you write [pg_vectorsearch] etc., everything after belongs to
 # that section. The format is flat — there is no [infra] wrapper.
 
 # SSH public key. Defaults to ~/.ssh/id_ed25519.pub — only set this if
@@ -35,9 +35,9 @@
 # s3_bucket = "my-datasets-bucket"
 
 # The canonical reason to have this file: benchmark ONE box against a
-# meerkat feature branch. git_url is inherited from the global file, so
+# pg_vectorsearch feature branch. git_url is inherited from the global file, so
 # only the ref needs restating.
-# [meerkat]
+# [pg_vectorsearch]
 # git_ref = "feat/my-branch"
 
 # Common overrides — uncomment as needed.

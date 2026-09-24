@@ -196,8 +196,8 @@ pub struct InfraConfig {
     pub pg_on_instance_store: bool,
     #[serde(default)]
     pub rekall: Option<GitSourceConfig>,
-    #[serde(default)]
-    pub meerkat: Option<GitSourceConfig>,
+    #[serde(default, alias = "meerkat")]
+    pub pg_vectorsearch: Option<GitSourceConfig>,
     #[serde(default)]
     pub pgvector: Option<ExtVersionConfig>,
     #[serde(default)]
@@ -246,7 +246,7 @@ impl Default for InfraConfig {
             swap_gb: 0,
             pg_on_instance_store: false,
             rekall: None,
-            meerkat: None,
+            pg_vectorsearch: None,
             pgvector: None,
             vectorchord: None,
             ssh_key: None,
@@ -301,10 +301,10 @@ impl InfraConfig {
         // Merge order: global infra defaults -> committed instance file ->
         // sibling .local.toml. The global layer exists so the values that
         // are identical for every box on a machine (iam_instance_profile,
-        // ssh_key, the meerkat/rekall git URLs) are stated once instead of
+        // ssh_key, the pg_vectorsearch/rekall git URLs) are stated once instead of
         // copied into a .local.toml per instance. A .local.toml is then
         // only needed where a box genuinely differs -- benchmarking a
-        // meerkat feature branch, a bigger disk, a different profile.
+        // pg_vectorsearch feature branch, a bigger disk, a different profile.
         let mut base = global_infra_defaults();
 
         let content = std::fs::read_to_string(path)
@@ -379,7 +379,7 @@ impl InfraConfig {
                 return true;
             }
         }
-        if let Some(ref m) = self.meerkat {
+        if let Some(ref m) = self.pg_vectorsearch {
             if is_ssh_url(&m.git_url) {
                 return true;
             }
@@ -395,9 +395,9 @@ impl InfraConfig {
                 names.push("rekall".to_string());
             }
         }
-        if let Some(ref m) = self.meerkat {
+        if let Some(ref m) = self.pg_vectorsearch {
             if is_ssh_url(&m.git_url) {
-                names.push("meerkat".to_string());
+                names.push("pg_vectorsearch".to_string());
             }
         }
         names
@@ -623,9 +623,9 @@ impl InfraConfig {
             vars["rekall_git_url"] = serde_json::json!(rekall.git_url);
             vars["rekall_git_ref"] = serde_json::json!(rekall.git_ref);
         }
-        if let Some(ref meerkat) = self.meerkat {
-            vars["meerkat_git_url"] = serde_json::json!(meerkat.git_url);
-            vars["meerkat_git_ref"] = serde_json::json!(meerkat.git_ref);
+        if let Some(ref pg_vectorsearch) = self.pg_vectorsearch {
+            vars["pg_vectorsearch_git_url"] = serde_json::json!(pg_vectorsearch.git_url);
+            vars["pg_vectorsearch_git_ref"] = serde_json::json!(pg_vectorsearch.git_ref);
         }
 
         vars
@@ -709,13 +709,13 @@ mod tests {
         std::fs::write(&f, "instance_type = \"c8g.large\"\ndisk_size_gb = 100\n").unwrap();
         std::fs::write(
             dir.path().join("box.local.toml"),
-            "disk_size_gb = 500\n[meerkat]\ngit_url = \"git@x:y.git\"\ngit_ref = \"feat/z\"\n",
+            "disk_size_gb = 500\n[pg_vectorsearch]\ngit_url = \"git@x:y.git\"\ngit_ref = \"feat/z\"\n",
         )
         .unwrap();
         let cfg = InfraConfig::from_file(&f).unwrap();
         assert_eq!(cfg.instance_type, "c8g.large", "committed value survives");
         assert_eq!(cfg.disk_size_gb, 500, "local overrides committed");
-        assert_eq!(cfg.meerkat.unwrap().git_ref, "feat/z");
+        assert_eq!(cfg.pg_vectorsearch.unwrap().git_ref, "feat/z");
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod tests {
         let base = dir.path().join("box.toml");
         std::fs::write(
             &base,
-            "extensions = [\"pgvector\", \"meerkat\"]\ninstance_type = \"r8i.12xlarge\"\n",
+            "extensions = [\"pgvector\", \"pg_vectorsearch\"]\ninstance_type = \"r8i.12xlarge\"\n",
         )
         .unwrap();
         std::fs::write(dir.path().join("box.local.toml"), "disk_size_gb = 1000\n").unwrap();
@@ -733,7 +733,7 @@ mod tests {
         // Overlay applied on top of the committed values, not instead of.
         assert_eq!(cfg.disk_size_gb, 1000);
         assert_eq!(cfg.instance_type, "r8i.12xlarge");
-        assert_eq!(cfg.extensions, vec!["pgvector", "meerkat"]);
+        assert_eq!(cfg.extensions, vec!["pgvector", "pg_vectorsearch"]);
     }
 
     #[test]
@@ -756,7 +756,7 @@ instance_type = "r6i.4xlarge"
 disk_size_gb = 200
 pg_version = 17
 pg_port = 5433
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 name_prefix = "bench"
 ssh_key = "~/.ssh/bench_key"
 
@@ -765,8 +765,8 @@ ssh_key = "~/.ssh/bench_key"
 shared_buffers = "8GB"
 maintenance_work_mem = "4GB"
 
-[meerkat]
-git_url = "git@github.com:tigerdata/meerkat.git"
+[pg_vectorsearch]
+git_url = "git@github.com:timescale/pg_vectorsearch.git"
 git_ref = "feat/parallel-build"
 "#;
         let cfg: InfraConfig = toml::from_str(toml_str).unwrap();
@@ -777,8 +777,8 @@ git_ref = "feat/parallel-build"
         assert_eq!(cfg.pg_port, 5433);
         assert_eq!(cfg.pg_config["shared_buffers"], "8GB");
         assert!(cfg.needs_github_access());
-        let meerkat = cfg.meerkat.unwrap();
-        assert_eq!(meerkat.git_ref, "feat/parallel-build");
+        let pg_vectorsearch = cfg.pg_vectorsearch.unwrap();
+        assert_eq!(pg_vectorsearch.git_ref, "feat/parallel-build");
     }
 
     #[test]
@@ -786,14 +786,14 @@ git_ref = "feat/parallel-build"
         let mut cfg = InfraConfig::default();
         assert!(!cfg.needs_github_access());
 
-        cfg.meerkat = Some(GitSourceConfig {
+        cfg.pg_vectorsearch = Some(GitSourceConfig {
             git_url: "https://github.com/pgvector/pgvector.git".to_string(),
             git_ref: "main".to_string(),
         });
         assert!(!cfg.needs_github_access());
 
-        cfg.meerkat = Some(GitSourceConfig {
-            git_url: "git@github.com:tigerdata/meerkat.git".to_string(),
+        cfg.pg_vectorsearch = Some(GitSourceConfig {
+            git_url: "git@github.com:timescale/pg_vectorsearch.git".to_string(),
             git_ref: "main".to_string(),
         });
         assert!(cfg.needs_github_access());

@@ -819,15 +819,17 @@ fn render_run_page(
     for (name, tag) in &meta.extensions {
         row(&mut b, name, tag);
     }
-    // The meerkat branch the run was built from, when [meerkat] branch drove
-    // the build (the commit above is authoritative; this is the readable ref).
+    // The pg_vectorsearch branch the run was built from (the commit above is
+    // authoritative; this is the readable ref). Accept the old key in archived
+    // result files.
     if let Some(branch) = summary
         .config
-        .get("meerkat")
+        .get("pg_vectorsearch")
+        .or_else(|| summary.config.get("meerkat"))
         .and_then(|m| m.get("branch"))
         .and_then(|v| v.as_str())
     {
-        row(&mut b, "meerkat branch", branch);
+        row(&mut b, "pg_vectorsearch branch", branch);
     }
     b.push_str("</table>");
 
@@ -1279,7 +1281,7 @@ mod tests {
         assert!(html.contains("Insert/update/delete workloads are not measured"));
         assert!(html.contains("Interpolated on config"));
         assert!(html.contains("never interpolated across different configurations"));
-        assert!(html.contains("Meerkat = mkt-n16000, prewarmed"));
+        assert!(html.contains("PRISM = mkt-n16000, prewarmed"));
         // Build cells with meerkat faster + smaller: green negative deltas.
         assert!(html.contains("class=\"pos\">-39%"));
     }

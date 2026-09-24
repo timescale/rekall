@@ -1,4 +1,4 @@
-# Suite: cohere-1M -- cheapest Meerkat vs cheapest HNSW at equal performance.
+# Suite: cohere-1M -- cheapest PRISM vs cheapest HNSW at equal performance.
 #
 # ONE suite, run at EVERY rung of the RAM ladder. There used to be a second
 # "small-instance" suite for the lower rungs; it had the same three arms and
@@ -78,8 +78,8 @@
 #     be folded into the four series below.
 #
 # mkt-defaults-rerank-sweep  (four series: mkt-rerank{20,40,80}, mkt-norerank)
-#     Meerkat exactly as shipped -- no index params -- swept over BOTH query
-#     knobs, mkt.nprobe x mkt.rerank_pool. At 1M rows the tuned defaults
+#     PRISM exactly as shipped -- no index params -- swept over BOTH query
+#     knobs, prism.nprobe x prism.rerank_pool. At 1M rows the tuned defaults
 #     already sit on the measured optimum (auto nlist = rows/256 = 3906,
 #     auto nprobe = 32, fastscan + centroid fastscan, SOAR 1.0, boundary
 #     0.35), so the index needs no tuning; the sweep is over query time.
@@ -97,18 +97,18 @@
 #     monotone in both axes -- see indexes/mkt-defaults-rerank-sweep.toml for
 #     the measurements and why rerank_pool 0/10/160 were dropped.
 #
-#     mkt-norerank (mkt.rerank = off) is the frontier's floor: no
+#     mkt-norerank (prism.rerank = off) is the frontier's floor: no
 #     exact-distance stage at all, so the query never touches the heap
 #     beyond the k rows PostgreSQL fetches for visibility. It cannot reach
 #     0.95 -- 1-bit code precision caps it near 0.83 -- but it costs ~19s of
-#     runtime and it is the one Meerkat setting guaranteed not to be I/O
+#     runtime and it is the one PRISM setting guaranteed not to be I/O
 #     bound on a box that cannot cache the heap.
 #
 # hnsw-m24-halfvec
 #     pgvector's recommended default per the pg-aiguide tuning guide, and
 #     the arm every other rekall cohere suite uses. Highest HNSW recall.
 #     Built on the `v::halfvec(768)` expression -- no materialized column,
-#     no table rewrite, so `v` stays available for Meerkat's exact rerank.
+#     no table rewrite, so `v` stays available for PRISM's exact rerank.
 #
 # hnsw-halfvec
 #     The same thing at m=16. Not a tuning arm: it is the *smallest*
@@ -128,7 +128,7 @@
 # Full-precision HNSW is dropped -- halfvec supersedes it. Binary
 # quantization is dropped too: at 1M the BQ graph is small (~0.5 GB) but the
 # 80x-oversampled rerank turns every query into ~800 random heap fetches,
-# which is a strictly worse memory profile than Meerkat's 160 for a lower
+# which is a strictly worse memory profile than PRISM's 160 for a lower
 # recall ceiling. IVFFlat is covered by cohere-1m-ivfflat.toml.
 #
 # Usage (from your WORKSTATION -- infra run executes it on the instance):

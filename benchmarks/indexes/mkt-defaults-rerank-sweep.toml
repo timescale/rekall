@@ -1,5 +1,5 @@
-# Meerkat shipped defaults: one query series per mkt.rerank_pool, each
-# swept over mkt.nprobe.
+# PRISM shipped defaults: one query series per prism.rerank_pool, each
+# swept over prism.nprobe.
 #
 # nprobe is the CURVE parameter. It is the search-time knob that trades
 # recall for speed, so sweeping it traces a recall/QPS curve; everything else
@@ -25,7 +25,7 @@
 #   - 0 is auto, resolving to 16*k = 160 -- a duplicate (both measured
 #     0.9941 / 85 QPS at nprobe=160).
 #
-# mkt-norerank is the floor of the frontier: mkt.rerank = off skips the
+# mkt-norerank is the floor of the frontier: prism.rerank = off skips the
 # exact-distance stage entirely, so results come straight from the
 # compressed RaBitQ codes and the query touches the heap zero times beyond
 # the k rows PostgreSQL fetches for visibility anyway. On a box that cannot
@@ -44,7 +44,7 @@
 # 0.076 recall for a 16x increase in nprobe. Included anyway because it
 # costs ~19s of runtime (0.3% of this arm), it makes the frontier's lower
 # bound explicit rather than implied, and it is the baseline that
-# multi-bit RaBitQ has to beat -- if no-rerank ever reached 0.95, Meerkat
+# multi-bit RaBitQ has to beat -- if no-rerank ever reached 0.95, PRISM
 # would need only its 0.26 GiB index resident and never touch the 4.10 GB
 # heap at all.
 #
@@ -52,7 +52,7 @@
 # query-time GUCs, so there is no extra build cost.
 
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-defaults-rerank-sweep"
 table_parallel_workers = 32
 # No [index.params]: the shipped defaults -- byte-identical to what
@@ -66,26 +66,26 @@ physical_index = "mkt-defaults"
 name = "mkt-rerank20"
 index = "mkt-defaults-rerank-sweep"
 [query.params]
-"mkt.rerank_pool" = [20]
-"mkt.nprobe" = [10, 20, 40, 80, 160]
+"prism.rerank_pool" = [20]
+"prism.nprobe" = [10, 20, 40, 80, 160]
 
 [[query]]
 name = "mkt-rerank40"
 index = "mkt-defaults-rerank-sweep"
 [query.params]
-"mkt.rerank_pool" = [40]
-"mkt.nprobe" = [10, 20, 40, 80, 160]
+"prism.rerank_pool" = [40]
+"prism.nprobe" = [10, 20, 40, 80, 160]
 
 [[query]]
 name = "mkt-rerank80"
 index = "mkt-defaults-rerank-sweep"
 [query.params]
-"mkt.rerank_pool" = [80]
-"mkt.nprobe" = [10, 20, 40, 80, 160]
+"prism.rerank_pool" = [80]
+"prism.nprobe" = [10, 20, 40, 80, 160]
 
 [[query]]
 name = "mkt-norerank"
 index = "mkt-defaults-rerank-sweep"
 [query.params]
-"mkt.rerank" = [false]
-"mkt.nprobe" = [10, 20, 40, 80, 160]
+"prism.rerank" = [false]
+"prism.nprobe" = [10, 20, 40, 80, 160]

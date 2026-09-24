@@ -33,7 +33,7 @@ name_prefix = "rekall-r7gd"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat", "vectorchord"]
+extensions = ["pgvector", "pg_vectorsearch", "vectorchord"]
 
 # [pg_config]
 # shared_buffers   = "32GB"
@@ -57,8 +57,8 @@ version = "1.1.1"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-# [meerkat]
-# git_url = "git@github.com:timescale/meerkat.git"
+# [pg_vectorsearch]
+# git_url = "git@github.com:timescale/pg_vectorsearch.git"
 # git_ref = "main"
 
 # [rekall]

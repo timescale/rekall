@@ -3,7 +3,7 @@
 *"Get your recall back."*
 
 **Rekall** is a vector search benchmark tool built in Rust. It measures the
-recall-vs-throughput tradeoff across PostgreSQL vector indexes (Meerkat,
+recall-vs-throughput tradeoff across PostgreSQL vector indexes (PRISM,
 pgvector, VectorChord) and, in the future, remote vector search services
 (Pinecone, Turbopuffer, etc.).
 

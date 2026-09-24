@@ -1,5 +1,5 @@
-# Meerkat, tuned for LAION-5M: 8-bit fastscan + the low-nprobe query GUCs.
-# This is the arm the suite runs for Meerkat -- mkt-defaults (fastscan
+# PRISM, tuned for LAION-5M: 8-bit fastscan + the low-nprobe query GUCs.
+# This is the arm the suite runs for PRISM -- mkt-defaults (fastscan
 # bits=16, untouched query GUCs) is deliberately not part of this suite;
 # it's dominated at every recall this arm was measured at, so running it
 # alongside would just cost time without adding information.
@@ -7,8 +7,8 @@
 # mkt-defaults profiles at ~70% of query CPU time in
 # mkt_fastscan_accumulate_hacc_avx512 -- the "high accuracy" 16-bit LUT
 # kernel, which runs two VPSHUFB passes per candidate block instead of
-# one. Meerkat always reranks candidates with the exact float distance
-# afterward (mkt.rerank, on by default), so the fastscan pass only has to
+# one. PRISM always reranks candidates with the exact float distance
+# afterward (prism.rerank, on by default), so the fastscan pass only has to
 # get the true neighbours *into* the rerank pool; once they're in, the
 # exact rerank recovers full accuracy regardless of whether the
 # approximate pre-filter was 8-bit-coarse or 16-bit-precise. Measured on
@@ -31,21 +31,21 @@
 # cohere.
 #
 # The three query GUCs below follow the same profile-driven logic and
-# generalize better: mkt.rerank_pool=80 and mkt.centroid_beam_scale=1.0
+# generalize better: prism.rerank_pool=80 and prism.centroid_beam_scale=1.0
 # at low nprobe match what the team's own cohere-100M tuning
 # (mkt-n400000-cctrue-fs16-soar-cfs-eps015.toml) independently converged
-# on for the same reason. mkt.probe_expand=1.0 is the one outlier here --
-# meerkat/docs/tuning.md lists it as "never touch" -- so it's flagged for
+# on for the same reason. prism.probe_expand=1.0 is the one outlier here --
+# pg_vectorsearch/docs/tuning.md lists it as "never touch" -- so it's flagged for
 # extra scrutiny rather than assumed safe elsewhere.
 [[index]]
-type = "meerkat"
-name = "meerkat-fs8"
+type = "prism"
+name = "pg_vectorsearch-fs8"
 
 [index.gucs]
-"mkt.fastscan_bits" = 8
-"mkt.rerank_pool" = 80
-"mkt.probe_expand" = 1.0
-"mkt.centroid_beam_scale" = 1.0
+"prism.fastscan_bits" = 8
+"prism.rerank_pool" = 80
+"prism.probe_expand" = 1.0
+"prism.centroid_beam_scale" = 1.0
 
 # Full recall sweep, low nprobe up through very high nprobe, so every
 # RECALL_TARGETS bucket (0.90/0.95/0.99) has a measured point on both
@@ -61,6 +61,6 @@ name = "meerkat-fs8"
 # extrapolating. 160-640 extend the high end past the original ceiling
 # to cover recall beyond 0.99.
 [[search.sweep]]
-index = "meerkat-fs8"
+index = "pg_vectorsearch-fs8"
 [search.sweep.params]
-"mkt.nprobe" = [3, 4, 5, 6, 8, 10, 12, 15, 18, 20, 25, 30, 40, 60, 80, 120, 160, 240, 320, 480, 640]
+"prism.nprobe" = [3, 4, 5, 6, 8, 10, 12, 15, 18, 20, 25, 30, 40, 60, 80, 120, 160, 240, 320, 480, 640]

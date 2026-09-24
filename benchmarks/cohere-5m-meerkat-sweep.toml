@@ -1,4 +1,4 @@
-# Suite: cohere-5m × meerkat full 3-axis sweep.
+# Suite: cohere-5m × pg_vectorsearch full 3-axis sweep.
 #
 # 4 × 2 × 2 = 16 index variants, all at fastscan-16 with
 # boundary_epsilon=0.05:
@@ -14,7 +14,7 @@
 # Heavy: 16 builds × 10 nprobes × 3 runs against a 5M dataset is
 # multi-hour. Use `rekall run ... --dry-run` first if unsure.
 #
-# Usage: rekall run benchmarks/cohere-5m-meerkat-sweep.toml [--dry-run]
+# Usage: rekall run benchmarks/cohere-5m-pg_vectorsearch-sweep.toml [--dry-run]
 
 indexes = [
     # cc=true, SOAR off

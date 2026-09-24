@@ -31,7 +31,7 @@ instance_type = "r8g.large"
 # silently landed elsewhere shows up on the results page.)
 #
 # Disk budget: cohere-1M hdf5 (~3.1 GB) + heap (~4.1 GB) + two HNSW
-# halfvec graphs (~2.0 GB each) + meerkat (~0.3 GB) + max_wal_size + the
+# halfvec graphs (~2.0 GB each) + pg_vectorsearch (~0.3 GB) + max_wal_size + the
 # OS/PG install. 100 GB fits with room to spare.
 # gp3 at its included baseline: 3000 IOPS / 125 MiB/s, no provisioned
 # extra. Held constant across every rung.
@@ -69,7 +69,7 @@ name_prefix = "rekall-1m-ladder"
 pg_version = 18
 
 # Only what this comparison needs — source builds are slow on 2 vCPU.
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # Auto-computed for 16 GiB: shared_buffers 4GB, maintenance_work_mem 6GB,
 # effective_cache_size 12GB. 6 GB of maintenance_work_mem comfortably holds
@@ -88,8 +88,8 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

@@ -1,6 +1,6 @@
-# Suite: cohere-1m -- optimized Meerkat vs pgvector HNSW.
+# Suite: cohere-1m -- optimized PRISM vs pgvector HNSW.
 #
-# Meerkat arms use the 50M-tuned configuration (centroid compression + FASTSCAN
+# PRISM arms use the 50M-tuned configuration (centroid compression + FASTSCAN
 # centroids + fastscan-16 + SOAR + boundary, error_scale=0, beam_scale=0.25).
 # n4000 (~250 vecs/list) is the extrapolated 1M optimum -- the ~208-256
 # vecs/list density confirmed at 50M (n240000) scaled down -- with n8000

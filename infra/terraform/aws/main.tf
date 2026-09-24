@@ -134,9 +134,9 @@ resource "aws_instance" "benchmark" {
         "rm -rf /tmp/deploy-keys",
       ] : [],
 
-      # Build meerkat from source (uses per-repo deploy key)
-      var.meerkat_git_url != "" ? [
-        "sudo bash -c 'export GIT_SSH_COMMAND=\"ssh -i /root/.ssh/meerkat -o StrictHostKeyChecking=no\" && cd /tmp && git clone ${var.meerkat_git_url} meerkat && cd meerkat && git checkout ${var.meerkat_git_ref} && meson setup builddir --buildtype=release -Dpg_config=/usr/lib/postgresql/${var.pg_version}/bin/pg_config && meson compile -C builddir && meson install -C builddir'",
+      # Build pg_vectorsearch from source (uses per-repo deploy key)
+      var.pg_vectorsearch_git_url != "" ? [
+        "sudo bash -c 'export GIT_SSH_COMMAND=\"ssh -i /root/.ssh/pg_vectorsearch -o StrictHostKeyChecking=no\" && cd /tmp && git clone ${var.pg_vectorsearch_git_url} pg_vectorsearch && cd pg_vectorsearch && git checkout ${var.pg_vectorsearch_git_ref} && meson setup builddir --buildtype=release -Dpg_config=/usr/lib/postgresql/${var.pg_version}/bin/pg_config && meson compile -C builddir && meson install -C builddir'",
         "sudo systemctl restart postgresql@${var.pg_version}-main",
       ] : [],
 

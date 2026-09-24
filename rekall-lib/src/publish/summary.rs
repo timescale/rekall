@@ -178,7 +178,7 @@ mod tests {
     fn search_result(name: &str, recall: f64, qps: f64) -> SearchResult {
         SearchResult {
             index_name: name.into(),
-            index_type: "meerkat".into(),
+            index_type: "prism".into(),
             data_type: None,
             search_params: serde_json::json!({"probes": 10}),
             k: 10,
@@ -210,7 +210,7 @@ mod tests {
             pg_runtime: None,
             index_builds: vec![crate::metrics::IndexBuildResult {
                 index_name: "mkt-n1000".into(),
-                index_type: "meerkat".into(),
+                index_type: "prism".into(),
                 params: serde_json::json!({"nlist": 1000}),
                 build_time: Duration::from_secs_f64(312.5),
                 index_size_bytes: 3_100_000_000,

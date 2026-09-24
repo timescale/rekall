@@ -283,7 +283,7 @@ pub async fn run(
     let effective_queries = config.effective_queries();
     let active_series: std::collections::HashSet<&str> = effective_queries
         .iter()
-        .filter(|q| filter_index.map_or(true, |name| q.index == name))
+        .filter(|q| filter_index.is_none_or(|name| q.index == name))
         .map(|q| q.name.as_str())
         .collect();
     for r in &mut all_results {
@@ -750,7 +750,10 @@ pub async fn run(
         // in this call touches `query.name` again, so drop its per-query
         // neighbor IDs from memory now rather than carrying them for the
         // rest of the sweep.
-        for r in all_results.iter_mut().filter(|r| r.index_name == query.name) {
+        for r in all_results
+            .iter_mut()
+            .filter(|r| r.index_name == query.name)
+        {
             r.query_results = Vec::new();
         }
     }
@@ -853,7 +856,7 @@ mod tests {
     fn expand_single_param() {
         let mut params = HashMap::new();
         params.insert(
-            "mkt.nprobe".to_string(),
+            "prism.nprobe".to_string(),
             vec![
                 toml::Value::Integer(5),
                 toml::Value::Integer(10),
@@ -864,7 +867,7 @@ mod tests {
         assert_eq!(combos.len(), 3);
         let values: Vec<i64> = combos
             .iter()
-            .map(|c| c["mkt.nprobe"].as_integer().unwrap())
+            .map(|c| c["prism.nprobe"].as_integer().unwrap())
             .collect();
         assert!(values.contains(&5));
         assert!(values.contains(&10));
@@ -944,9 +947,12 @@ mod tests {
     fn broadest_params_keeps_non_numeric_key_stable() {
         // mkt-norerank's shape: a fixed boolean alongside a swept int.
         let mut params = HashMap::new();
-        params.insert("mkt.rerank".to_string(), vec![toml::Value::Boolean(false)]);
         params.insert(
-            "mkt.nprobe".to_string(),
+            "prism.rerank".to_string(),
+            vec![toml::Value::Boolean(false)],
+        );
+        params.insert(
+            "prism.nprobe".to_string(),
             vec![10, 20, 40, 80, 160]
                 .into_iter()
                 .map(toml::Value::Integer)
@@ -954,8 +960,8 @@ mod tests {
         );
         let combos = expand_sweep_params(&params);
         let broadest = broadest_params(&combos);
-        assert_eq!(broadest["mkt.nprobe"].as_integer().unwrap(), 160);
-        assert!(!broadest["mkt.rerank"].as_bool().unwrap());
+        assert_eq!(broadest["prism.nprobe"].as_integer().unwrap(), 160);
+        assert!(!broadest["prism.rerank"].as_bool().unwrap());
     }
 
     #[test]
