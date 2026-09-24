@@ -1,8 +1,8 @@
 # Suite: cohere-100m -- pgvector IVFFlat across the three operand encodings
 # (full vector / halfvec / binary-quantized+rerank), lists = 10000
-# (sqrt(rows)), compared against Meerkat's out-of-the-box defaults arm.
+# (sqrt(rows)), compared against PRISM's out-of-the-box defaults arm.
 # Uncomment the HNSW include for a three-way against the standing pgvector
-# baseline (or add tuned meerkat arms from the corresponding mkt suites).
+# baseline (or add tuned pg_vectorsearch arms from the corresponding mkt suites).
 #
 # IVFFlat builds train k-means at CREATE INDEX, so give the build box a large
 # maintenance_work_mem (see infra/instances/r8i.24xlarge.toml).

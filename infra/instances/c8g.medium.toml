@@ -5,12 +5,12 @@
 # worth benchmarking on. (t4g.small is also 2 GiB but is burstable; its CPU
 # credit accounting makes QPS numbers meaningless.)
 #
-# Do not provision from scratch here: provision.sh compiles meerkat (and
+# Do not provision from scratch here: provision.sh compiles pg_vectorsearch (and
 # optionally rekall) from source and 2 GiB is not enough headroom. Resize
 # into it instead — `rekall infra resize -c infra/instances/c8g.medium.toml`
 # brings the EBS volume and both built indexes along.
 #
-# Meerkat builds fine at this size (its k-means sample buffer is bounded by
+# PRISM builds fine at this size (its k-means sample buffer is bounded by
 # maintenance_work_mem and it subsamples rather than failing). pgvector HNSW
 # does not: the ~2.05 GB graph exceeds anything 2 GiB of RAM can hand to
 # maintenance_work_mem, even with shared_buffers collapsed for the build
@@ -18,9 +18,9 @@
 # is the point of benchmarks/cohere-1m-build-floor.toml, and this is the
 # rung where it is expected to show up.
 #
-# What this rung tests: 2 GiB holds Meerkat's ~0.28 GB index with room to
+# What this rung tests: 2 GiB holds PRISM's ~0.28 GB index with room to
 # spare, and holds essentially none of HNSW's ~1.9-2.0 GB halfvec graph (m=16
-# and m=24 are within ~2% of each other at 768d). If Meerkat serves cohere-1M
+# and m=24 are within ~2% of each other at 768d). If PRISM serves cohere-1M
 # at a usable QPS here and HNSW does not, this is the instance size that
 # proves it.
 #
@@ -79,18 +79,18 @@ name_prefix = "rekall-1m-ladder"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # The auto-tuner derives shared_buffers as RAM/4 in whole GB, which is
 # 0GB at 2 GiB of RAM — PostgreSQL will not start with that. Every memory
 # GUC is therefore set explicitly here.
 #
-# 512MB of shared_buffers is chosen so Meerkat's ~0.28 GB index fits inside
+# 512MB of shared_buffers is chosen so PRISM's ~0.28 GB index fits inside
 # it outright; the remaining ~1.4 GiB is left to the OS page cache and the
 # backends. maintenance_work_mem is kept small on purpose: it bounds
-# Meerkat's k-means sample buffer (a palloc'd
+# PRISM's k-means sample buffer (a palloc'd
 # maintenance_work_mem/(4*dim)-vector array), so a large value would OOM the
-# box if someone does try to build here. Meerkat degrades by subsampling and
+# box if someone does try to build here. PRISM degrades by subsampling and
 # recovers with its page-backed refine pass; it has no build-memory cliff.
 [pg_config]
 shared_buffers       = "512MB"
@@ -107,8 +107,8 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

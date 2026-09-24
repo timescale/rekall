@@ -1,5 +1,5 @@
-# Suite: cohere-10m × hnsw + meerkat.
-# Meerkat is swept over nlist (8000 → 24000; ~4·√N ≈ 12,600 for 10M) BOTH with
+# Suite: cohere-10m × hnsw + pg_vectorsearch.
+# PRISM is swept over nlist (8000 → 24000; ~4·√N ≈ 12,600 for 10M) BOTH with
 # and without centroid_compression, all fastscan-16 + SOAR — so the suite
 # isolates the effect of centroid compression and of larger nlist.
 # Usage: rekall run benchmarks/cohere-10m.toml [--dry-run]

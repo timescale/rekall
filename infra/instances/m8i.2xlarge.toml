@@ -38,11 +38,11 @@ ubuntu_version = "26.04"
 pg_version = 18
 # pg_port  = 5432
 
-# Extensions to install. pgvector ships via PGDG apt; meerkat and
+# Extensions to install. pgvector ships via PGDG apt; pg_vectorsearch and
 # vectorchord are built from source by provision.sh (requires git_url
-# in .local.toml for meerkat). VectorChord's pgrx/cargo build is slow and
+# in .local.toml for pg_vectorsearch). VectorChord's pgrx/cargo build is slow and
 # unused by the current suites — add "vectorchord" back here to re-enable.
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # Override PG GUC settings. Anything set here merges over the auto-
 # computed defaults (shared_buffers = 40% RAM, etc — see docs).
@@ -67,9 +67,9 @@ version = "1.1.1"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-# Meerkat is a private repo. Put the URL and ref in .local.toml:
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+# PRISM is a private repo. Put the URL and ref in .local.toml:
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # Build rekall from source on the instance instead of relying on

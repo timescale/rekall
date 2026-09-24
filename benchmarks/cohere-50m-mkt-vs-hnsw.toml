@@ -1,6 +1,6 @@
-# Suite: cohere-50m -- optimized Meerkat vs pgvector HNSW M=24.
+# Suite: cohere-50m -- optimized PRISM vs pgvector HNSW M=24.
 #
-# Meerkat arms use the tuned configuration (centroid compression + FASTSCAN
+# PRISM arms use the tuned configuration (centroid compression + FASTSCAN
 # centroids + fastscan-16 + SOAR + boundary, error_scale=0, two-regime query
 # GUCs) at the nlist sweet spot found during tuning: n240000 (~208 vecs/list)
 # beat HNSW in the mid-recall band; coarser n120000 was worse and finer

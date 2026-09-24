@@ -23,7 +23,7 @@ pub const RECALL_TARGETS: &[f64] = &[0.90, 0.95, 0.99];
 pub const CATALOG_MIN_RECALL: f64 = 0.80;
 
 pub fn is_meerkat(index_type: &str) -> bool {
-    index_type == "meerkat"
+    matches!(index_type, "prism" | "meerkat")
 }
 
 fn point_family(p: &SweepPoint) -> String {
@@ -76,7 +76,7 @@ pub struct CompetitorDelta {
     pub samples: Vec<DeltaSample>,
 }
 
-/// The catalog's Meerkat-vs-competition summary. Meerkat = every `meerkat`
+/// The catalog's Meerkat-vs-competition summary. PRISM = every `meerkat`
 /// point regardless of config/variant; one entry per competitor family.
 /// Values are interpolated per config sweep and the best line wins (never
 /// blended across configs). Empty when the run has no meerkat points or no
@@ -694,7 +694,7 @@ mod tests {
         );
         let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
         assert_eq!(m.mode, ColumnMode::Families);
-        assert_eq!(m.columns[0], "Meerkat"); // meerkat first
+        assert_eq!(m.columns[0], "PRISM"); // meerkat first
         assert_eq!(m.meerkat_col, Some(0));
         // 0.99 spanned by nobody -> row dropped; 0.90 and 0.95 remain.
         assert_eq!(m.rows.len(), 2);
@@ -788,7 +788,7 @@ mod tests {
         let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
         assert_eq!(
             m.columns,
-            vec!["Meerkat", "pgvector HNSW", "vchordrq"]
+            vec!["PRISM", "pgvector HNSW", "vchordrq"]
                 .into_iter()
                 .map(String::from)
                 .collect::<Vec<_>>()

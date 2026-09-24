@@ -1,11 +1,11 @@
-# Remote profile: run the cohere-10M meerkat nlist sweep on the
+# Remote profile: run the cohere-10M pg_vectorsearch nlist sweep on the
 # perf/fastscan-centroids branch. `rekall infra run` uploads this + the suite
 # it extends (+ datasets/indexes) and the instance builds the branch first.
-# Prereqs: push perf/fastscan-centroids to origin (timescale/meerkat); rebuild
+# Prereqs: push perf/fastscan-centroids to origin (timescale/pg_vectorsearch); rebuild
 # the instance's rekall to latest main.
 extends = "cohere-10m-mkt-nlist.toml"
 
-[meerkat]
+[pg_vectorsearch]
 branch = "perf/fastscan-centroids"
 sudo = true                  # instance builddir + PG lib are root-owned
 # recreate_extension = true  # only if the branch changes extension SQL/metadata

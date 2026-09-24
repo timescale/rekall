@@ -123,11 +123,11 @@ impl InfraManager {
                     .to_string(),
             ));
         }
-        if self.config.meerkat.is_none() {
+        if self.config.pg_vectorsearch.is_none() {
             tracing::warn!(
-                "[meerkat] is not configured — the meerkat extension won't \
+                "[pg_vectorsearch] is not configured — the pg_vectorsearch extension won't \
                  be installed on the instance. Benchmarks that use \
-                 type = \"meerkat\" will fail."
+                 type = \"prism\" will fail."
             );
         }
 
@@ -418,7 +418,7 @@ pub fn ssh_provision(
 
     // Upload and run provisioning script
     let has_vectorchord = config.extensions.contains(&"vectorchord".to_string());
-    let has_builds = config.meerkat.is_some() || config.rekall.is_some() || has_vectorchord;
+    let has_builds = config.pg_vectorsearch.is_some() || config.rekall.is_some() || has_vectorchord;
     if has_builds {
         info!("Uploading provisioning script");
 
@@ -439,9 +439,9 @@ pub fn ssh_provision(
             format!("PG_VERSION={}", config.pg_version),
             format!("PG_PORT={}", config.pg_port),
         ];
-        if let Some(ref m) = config.meerkat {
-            env_vars.push(format!("MEERKAT_GIT_URL={}", m.git_url));
-            env_vars.push(format!("MEERKAT_GIT_REF={}", m.git_ref));
+        if let Some(ref m) = config.pg_vectorsearch {
+            env_vars.push(format!("PG_VECTORSEARCH_GIT_URL={}", m.git_url));
+            env_vars.push(format!("PG_VECTORSEARCH_GIT_REF={}", m.git_ref));
         }
         if let Some(ref r) = config.rekall {
             env_vars.push(format!("REKALL_GIT_URL={}", r.git_url));

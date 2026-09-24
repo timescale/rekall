@@ -21,7 +21,7 @@
 # This file is the canonical, committed config for this instance type.
 # Personal/machine-specific overrides go in `r8g.4xlarge.local.toml`
 # (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
-# and the meerkat git_url/git_ref. See `local.toml.example`.
+# and the pg_vectorsearch git_url/git_ref. See `local.toml.example`.
 
 # ----- Provider & region -------------------------------------------------
 
@@ -53,8 +53,8 @@ name_prefix = "rekall-r8g4"
 pg_version = 18
 # pg_port  = 5432
 
-# Only the extensions this box benchmarks (pgvector HNSW vs Meerkat).
-extensions = ["pgvector", "meerkat"]
+# Only the extensions this box benchmarks (pgvector HNSW vs PRISM).
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # PG GUC overrides — merged over the auto-computed defaults. Only the values
 # that deliberately differ are listed; the rest are derived from the instance
@@ -82,9 +82,9 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-# Meerkat is a private repo. Put the URL and ref in .local.toml:
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+# PRISM is a private repo. Put the URL and ref in .local.toml:
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "feat/parallel-build-pg-on-foundation"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

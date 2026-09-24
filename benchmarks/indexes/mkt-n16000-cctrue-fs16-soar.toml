@@ -1,8 +1,8 @@
-# Meerkat: nlist=16000, centroid compression, fastscan-16, SOAR
+# PRISM: nlist=16000, centroid compression, fastscan-16, SOAR
 [[index]]
-type = "meerkat"
+type = "prism"
 name = "mkt-n16000-cctrue-fs16-soar"
-# Let Meerkat's build use the full max_parallel_maintenance_workers; its
+# Let PRISM's build use the full max_parallel_maintenance_workers; its
 # standard-AM path is otherwise derated by the planner's heap-size heuristic.
 # Reset automatically before non-requesting builds, so pgvector is unaffected.
 table_parallel_workers = 32
@@ -13,9 +13,9 @@ fastscan = true
 soar_lambda = 1.0
 boundary_epsilon = 0.05
 [index.gucs]
-"mkt.fastscan_bits" = 16
+"prism.fastscan_bits" = 16
 
 [[search.sweep]]
 index = "mkt-n16000-cctrue-fs16-soar"
 [search.sweep.params]
-"mkt.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1200, 2000, 3000]
+"prism.nprobe" = [10, 20, 40, 80, 160, 320, 640, 1200, 2000, 3000]

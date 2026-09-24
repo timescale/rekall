@@ -4,7 +4,7 @@
 # benchmarks/cohere-1m-sizing.md). This is the rung where the two engines
 # are expected to separate:
 #
-#   - Meerkat's index is ~0.28 GB. It fits in shared_buffers with room left
+#   - PRISM's index is ~0.28 GB. It fits in shared_buffers with room left
 #     over; only the exact-rerank heap fetches (auto rerank_pool = 16*k =
 #     160 tuples/query) miss cache. Those are INDEPENDENT random reads, so
 #     PG can issue them concurrently (effective_io_concurrency 200).
@@ -82,7 +82,7 @@ name_prefix = "rekall-1m-ladder"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat"]
+extensions = ["pgvector", "pg_vectorsearch"]
 
 # Auto-computed for 4 GiB: shared_buffers 1GB, maintenance_work_mem 1GB,
 # effective_cache_size 3GB. work_mem's auto value (256MB) is far too large a
@@ -97,8 +97,8 @@ version = "v0.8.2"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

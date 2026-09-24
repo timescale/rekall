@@ -214,7 +214,7 @@ mod tests {
     fn build(name: &str, secs: u64, size: u64, workers: u32) -> IndexBuildResult {
         IndexBuildResult {
             index_name: name.to_string(),
-            index_type: "meerkat".to_string(),
+            index_type: "prism".to_string(),
             params: serde_json::json!({}),
             build_time: Duration::from_secs(secs),
             index_size_bytes: size,

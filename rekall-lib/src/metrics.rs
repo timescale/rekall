@@ -5,12 +5,12 @@ use hdrhistogram::Histogram;
 use serde::{Deserialize, Serialize};
 
 /// Display label for an index family: the readable index-type name plus the
-/// data-type variant, e.g. "Meerkat", "pgvector HNSW (bit)". Single source of
+/// data-type variant, e.g. "PRISM", "pgvector HNSW (bit)". Single source of
 /// truth for plot series grouping and the published comparison tables — the
 /// two must agree so a table column is findable in the plots.
 pub fn family_label(index_type: &str, data_type: Option<&str>) -> String {
     let family = match index_type {
-        "meerkat" => "Meerkat",
+        "prism" | "meerkat" => "PRISM",
         "pgvector-hnsw" => "pgvector HNSW",
         other => other,
     };
@@ -288,7 +288,7 @@ pub struct IndexBuildResult {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub create_sql: Option<String>,
     /// Build-session GUCs applied before `CREATE INDEX` (e.g.
-    /// `max_parallel_maintenance_workers`, `mkt.fastscan_bits`).
+    /// `max_parallel_maintenance_workers`, `prism.fastscan_bits`).
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub build_gucs: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -466,7 +466,8 @@ mod tests {
 
     #[test]
     fn family_label_maps_known_types() {
-        assert_eq!(family_label("meerkat", None), "Meerkat");
+        assert_eq!(family_label("prism", None), "PRISM");
+        assert_eq!(family_label("meerkat", None), "PRISM");
         assert_eq!(family_label("pgvector-hnsw", None), "pgvector HNSW");
         assert_eq!(family_label("vchordrq", None), "vchordrq");
     }

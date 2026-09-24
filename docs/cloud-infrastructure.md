@@ -22,7 +22,7 @@ A single EC2 instance with:
 - Ubuntu 24.04 LTS (ARM for Graviton, x86_64 otherwise)
 - PostgreSQL (via PGDG apt packages, latest point release)
 - pgvector (via apt or built from source)
-- Meerkat (built from source if configured)
+- PRISM (built from source if configured)
 - Rust toolchain + rekall (built from source if configured)
 - Build tools: gcc, clang, cmake, meson, ninja, gdb, valgrind
 - AWS CLI (for S3 dataset access)
@@ -135,17 +135,17 @@ overriding the one before:
 
 | Layer | File | Holds |
 |---|---|---|
-| 1. Machine defaults | `~/.config/rekall/infra.toml` | Values identical for every box here: `ssh_key`, `iam_instance_profile`, `s3_bucket`, the meerkat/rekall git URLs |
+| 1. Machine defaults | `~/.config/rekall/infra.toml` | Values identical for every box here: `ssh_key`, `iam_instance_profile`, `s3_bucket`, the pg_vectorsearch/rekall git URLs |
 | 2. Committed config | `infra/instances/<type>.toml` | The box itself: `instance_type`, disk, `extensions`, `pg_config` |
 | 3. Local override | `<type>.local.toml` (gitignored) | Only what makes THIS box different |
 
 Layer 1 is why most instances need no `.local.toml` at all. Reach for one
-when a single box must deviate — the canonical case being a meerkat feature
+when a single box must deviate — the canonical case being a pg_vectorsearch feature
 branch, where `git_url` is inherited and only the ref is restated:
 
 ```toml
 # infra/instances/m8g.large.local.toml
-[meerkat]
+[pg_vectorsearch]
 git_ref = "feat/my-branch"
 ```
 
@@ -167,7 +167,7 @@ provider      = "aws"
 region        = "us-east-1"
 instance_type = "r7g.2xlarge"
 pg_version    = 18
-extensions    = ["pgvector", "meerkat", "vectorchord"]
+extensions    = ["pgvector", "pg_vectorsearch", "vectorchord"]
 name_prefix   = "rekall-r7g"
 
 # ubuntu_version = "24.04"   # 22.04 | 24.04 | 26.04
@@ -188,8 +188,8 @@ Copy `infra/instances/local.toml.example` to start:
 ssh_key              = "~/.ssh/id_ed25519.pub"
 iam_instance_profile = "rekall-profile"
 
-[meerkat]
-git_url = "git@github.com:myorg/meerkat.git"
+[pg_vectorsearch]
+git_url = "git@github.com:myorg/pg_vectorsearch.git"
 git_ref = "main"
 
 [rekall]

@@ -210,7 +210,7 @@ echo "=== Enabling core dumps (systemd-coredump) ==="
 # systemd-coredump package (installed with the base toolchain above; sets
 # kernel.core_pattern → systemd-coredump, cores land in
 # /var/lib/systemd/coredump, inspect with `coredumpctl`) plus the config
-# below make a meerkat / pgvector build crash leave a debuggable core.
+# below make a pg_vectorsearch / pgvector build crash leave a debuggable core.
 
 # No size cap: a build backend can hold many GB of maintenance_work_mem and a
 # truncated core loses the heap. Compressed on disk, on the root volume.

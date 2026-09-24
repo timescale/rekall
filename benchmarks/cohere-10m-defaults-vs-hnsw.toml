@@ -1,4 +1,4 @@
-# Suite: cohere-10m — out-of-the-box Meerkat vs the tuned pgvector
+# Suite: cohere-10m — out-of-the-box PRISM vs the tuned pgvector
 # HNSW baseline. The 10M sibling of cohere-100m-defaults-vs-hnsw.toml.
 #
 # Exactly two builds, to compare how the indexes build and then trade
@@ -6,7 +6,7 @@
 #
 #   mkt-defaults      built by a bare CREATE INDEX — no options, no
 #                     pinned GUCs, auto nlist ≈ 39k (requires a
-#                     meerkat build with the tuned defaults). The
+#                     pg_vectorsearch build with the tuned defaults). The
 #                     search phase still sweeps nprobe for the full
 #                     recall/QPS line; the nprobe=0 point on it is
 #                     the shipped auto default
@@ -14,7 +14,7 @@
 #                     ef_construction=200, halfvec expression index)
 #
 # Fits any box in the ladder: the working set is ~100 GB on disk
-# (dataset ~29 GB + heap ~38 GB + halfvec graph ~20 GB + meerkat
+# (dataset ~29 GB + heap ~38 GB + halfvec graph ~20 GB + pg_vectorsearch
 # ~3 GB), and a 4xlarge's auto maintenance_work_mem (~51 GiB) already
 # holds the HNSW graph in RAM for a single-pass build.
 #

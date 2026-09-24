@@ -30,7 +30,7 @@ name_prefix = "rekall-i4i-xl"
 
 pg_version = 18
 
-extensions = ["pgvector", "meerkat", "vectorchord"]
+extensions = ["pgvector", "pg_vectorsearch", "vectorchord"]
 
 # VectorChord's documented settings for this experiment.
 [pg_config]
@@ -48,9 +48,9 @@ version = "1.1.1"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
-# Meerkat is a private repo. Put the URL and ref in .local.toml:
-#   [meerkat]
-#   git_url = "git@github.com:timescale/meerkat.git"
+# PRISM is a private repo. Put the URL and ref in .local.toml:
+#   [pg_vectorsearch]
+#   git_url = "git@github.com:timescale/pg_vectorsearch.git"
 #   git_ref = "main"
 
 # ----- Required local-only fields (set in .local.toml) -----------------

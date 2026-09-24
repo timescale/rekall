@@ -1,6 +1,6 @@
 # Suite: cohere-50m parameter-tuning sweep.
 #
-# Requires a meerkat build with the tuned defaults. Anchored on
+# Requires a pg_vectorsearch build with the tuned defaults. Anchored on
 # mkt-defaults (nlist auto = ~195k, 256 rows/list); arms:
 #
 #   nlist:     n120000 (~416 rows/list), n240000 (~208, the July

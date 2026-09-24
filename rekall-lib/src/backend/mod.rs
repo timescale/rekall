@@ -1,10 +1,10 @@
 pub mod build_monitor;
-pub mod meerkat;
 pub mod pg_vector_type;
 pub mod pgvector_encoding;
 pub mod pgvector_hnsw;
 pub mod pgvector_ivfflat;
 pub mod postgres;
+pub mod prism;
 pub mod search_monitor;
 pub mod vchordrq;
 
@@ -132,7 +132,7 @@ pub trait IndexBackend: Send + Sync {
     fn order_op(&self) -> &'static str;
 
     /// Access method name used in `CREATE INDEX ... USING <method>`.
-    /// e.g. "hnsw", "mktann", "vchordrq".
+    /// e.g. "hnsw", "prism", "vchordrq".
     fn index_method(&self) -> &str;
 
     /// Operator class for `CREATE INDEX (col <opclass>)`. Depends on
@@ -464,8 +464,8 @@ impl BackendRegistry {
         progress: Option<ProgressTx>,
     ) -> Result<Box<dyn IndexBackend>> {
         let mut backend: Box<dyn IndexBackend> = match index_config.index_type.as_str() {
-            "meerkat" => {
-                let b = meerkat::MeerkatBackend::create(
+            "prism" | "meerkat" => {
+                let b = prism::PrismBackend::create(
                     conn,
                     table,
                     dimension,

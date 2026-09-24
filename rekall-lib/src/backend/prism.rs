@@ -8,7 +8,7 @@ use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
 
 #[derive(Debug, Serialize, Deserialize)]
-struct MeerkatParams {
+struct PrismParams {
     #[serde(default)]
     nlist: Option<u32>,
     #[serde(default)]
@@ -29,13 +29,28 @@ struct MeerkatParams {
     soar_lambda: Option<f64>,
 }
 
-pub struct MeerkatBackend {
+pub struct PrismBackend {
     pg: PgConnection,
     name: String,
-    params: MeerkatParams,
+    params: PrismParams,
 }
 
-impl MeerkatBackend {
+impl PrismBackend {
+    fn extension_names() -> &'static [&'static str] {
+        &["pg_vectorsearch"]
+    }
+
+    fn access_method_name() -> &'static str {
+        "prism"
+    }
+
+    fn opclass_for_metric(metric: Metric) -> &'static str {
+        match metric {
+            Metric::Angular => "vec32_cosine_ops",
+            Metric::Euclidean => "vec32_l2_ops",
+        }
+    }
+
     pub async fn create(
         conn: &ConnectionConfig,
         table: &str,
@@ -51,7 +66,7 @@ impl MeerkatBackend {
             metric,
             idx,
             cancel_registry,
-            "meerkat",
+            "prism",
             |pg, name, params| Self { pg, name, params },
         )
         .await
@@ -59,33 +74,30 @@ impl MeerkatBackend {
 }
 
 #[async_trait]
-impl IndexBackend for MeerkatBackend {
+impl IndexBackend for PrismBackend {
     pg_backend_field_accessors!();
 
     fn type_name(&self) -> &str {
-        "meerkat"
+        "prism"
     }
 
     fn extensions(&self) -> &'static [&'static str] {
-        &["meerkat"]
+        Self::extension_names()
     }
 
     fn order_op(&self) -> &'static str {
         match self.pg.metric {
-            Metric::Angular => "OPERATOR(mkt.<=>)",
-            Metric::Euclidean => "OPERATOR(mkt.<->)",
+            Metric::Angular => "<=>",
+            Metric::Euclidean => "<->",
         }
     }
 
     fn index_method(&self) -> &str {
-        "mktann"
+        Self::access_method_name()
     }
 
     fn opclass(&self) -> &str {
-        match self.pg.metric {
-            Metric::Angular => "mkt.vector_cosine_ops",
-            Metric::Euclidean => "mkt.vector_l2_ops",
-        }
+        Self::opclass_for_metric(self.pg.metric)
     }
 
     fn index_options(&self) -> Vec<(&'static str, String)> {
@@ -101,7 +113,7 @@ impl IndexBackend for MeerkatBackend {
 /// Booleans are emitted only when `Some(true)`; floats only when `> 0.0`.
 /// Kept as a free function so it can be unit-tested without standing up
 /// a `PgConnection`.
-fn options_from_params(params: &MeerkatParams) -> Vec<(&'static str, String)> {
+fn options_from_params(params: &PrismParams) -> Vec<(&'static str, String)> {
     let mut opts = Vec::new();
     if let Some(nlist) = params.nlist {
         opts.push(("nlist", nlist.to_string()));
@@ -109,7 +121,7 @@ fn options_from_params(params: &MeerkatParams) -> Vec<(&'static str, String)> {
     if let Some(fan_out) = params.fan_out {
         opts.push(("fan_out", fan_out.to_string()));
     }
-    // Forward both true and false: meerkat's default is AUTO (compresses for
+    // Forward both true and false: PRISM's default is AUTO (compresses for
     // cosine/L2), so omitting on `false` would silently leave compression ON.
     // Emit the explicit value so `centroid_compression = false` truly disables
     // it.
@@ -142,8 +154,8 @@ fn options_from_params(params: &MeerkatParams) -> Vec<(&'static str, String)> {
 mod tests {
     use super::*;
 
-    fn default_params() -> MeerkatParams {
-        MeerkatParams {
+    fn default_params() -> PrismParams {
+        PrismParams {
             nlist: None,
             fan_out: None,
             centroid_compression: None,
@@ -154,6 +166,28 @@ mod tests {
             boundary_epsilon: None,
             soar_lambda: None,
         }
+    }
+
+    #[test]
+    fn extension_and_index_names_are_distinct() {
+        assert_eq!(PrismBackend::extension_names(), &["pg_vectorsearch"]);
+        assert_eq!(PrismBackend::access_method_name(), "prism");
+        assert_ne!(
+            PrismBackend::extension_names()[0],
+            PrismBackend::access_method_name()
+        );
+    }
+
+    #[test]
+    fn opclasses_use_prism_vec32_names() {
+        assert_eq!(
+            PrismBackend::opclass_for_metric(Metric::Angular),
+            "vec32_cosine_ops"
+        );
+        assert_eq!(
+            PrismBackend::opclass_for_metric(Metric::Euclidean),
+            "vec32_l2_ops"
+        );
     }
 
     #[test]
@@ -182,7 +216,7 @@ mod tests {
 
     #[test]
     fn options_emit_centroid_compression_both_ways() {
-        // centroid_compression must be forwarded on false too: meerkat defaults
+        // centroid_compression must be forwarded on false too: PRISM defaults
         // to AUTO (compresses cosine/L2), so omitting it would leave it ON.
         let mut p = default_params();
         p.centroid_compression = Some(false);

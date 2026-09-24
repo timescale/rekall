@@ -1,6 +1,6 @@
 # Suite: cohere-10m parameter-tuning sweep.
 #
-# Requires a meerkat build with the tuned defaults (auto nlist/nprobe,
+# Requires a pg_vectorsearch build with the tuned defaults (auto nlist/nprobe,
 # fastscan + centroid fastscan, SOAR 1.0, boundary 0.35, beam 0.5 +
 # floor). The anchor is mkt-defaults — the exact out-of-the-box
 # configuration, nlist auto (~39k here) — and every other arm changes

@@ -6,7 +6,7 @@
 //!     cargo test --test pg_integration
 //!
 //! The target database must have the pgvector extension available.
-//! Meerkat tests also require the meerkat extension.
+//! pg_vectorsearch tests also require the pg_vectorsearch extension.
 
 use std::collections::HashMap;
 
@@ -119,10 +119,10 @@ async fn pg_guc_set_builtin() {
 }
 
 #[tokio::test]
-async fn pg_guc_meerkat_after_load() {
+async fn pg_guc_pg_vectorsearch_after_load() {
     let dsn = require_pg!();
-    if !has_meerkat() {
-        eprintln!("Skipping meerkat GUC test: REKALL_TEST_MEERKAT=0");
+    if !has_pg_vectorsearch() {
+        eprintln!("Skipping pg_vectorsearch GUC test: REKALL_TEST_PG_VECTORSEARCH=0");
         return;
     }
 
@@ -134,19 +134,23 @@ async fn pg_guc_meerkat_after_load() {
     );
 
     let client = pg.open_connection().await.unwrap();
-    // LOAD registers meerkat GUCs
-    client.execute("LOAD 'meerkat'", &[]).await.unwrap();
-    // Now mkt.nprobe should be settable
-    client.execute("SET mkt.nprobe = 10", &[]).await.unwrap();
-    // Invalid meerkat GUC should fail
-    let result = client.execute("SET mkt.nonexistent = 1", &[]).await;
+    // Creating the extension loads its versioned library and registers the
+    // PRISM GUCs; the library name is deliberately not assumed here.
+    client
+        .execute("CREATE EXTENSION IF NOT EXISTS pg_vectorsearch", &[])
+        .await
+        .unwrap();
+    // Now prism.nprobe should be settable
+    client.execute("SET prism.nprobe = 10", &[]).await.unwrap();
+    // Invalid pg_vectorsearch GUC should fail
+    let result = client.execute("SET prism.nonexistent = 1", &[]).await;
     assert!(result.is_err());
 }
 
 // ---------- IndexBackend tests ----------
 
-fn has_meerkat() -> bool {
-    std::env::var("REKALL_TEST_MEERKAT")
+fn has_pg_vectorsearch() -> bool {
+    std::env::var("REKALL_TEST_PG_VECTORSEARCH")
         .map(|v| v != "0" && v != "false")
         .unwrap_or(true)
 }
@@ -167,7 +171,7 @@ async fn backend_pgvector_hnsw_lifecycle() {
         let v = format!("[{}, {}, {}]", i as f32, (i * 2) as f32, (i * 3) as f32);
         client
             .execute(
-                &format!("INSERT INTO {table} (v) VALUES ('{v}'::vector)"),
+                &format!("INSERT INTO {table} (id, v) VALUES ({i}, '{v}'::vector)"),
                 &[],
             )
             .await
@@ -230,10 +234,10 @@ async fn backend_pgvector_hnsw_lifecycle() {
 }
 
 #[tokio::test]
-async fn backend_meerkat_lifecycle() {
+async fn backend_pg_vectorsearch_lifecycle() {
     let dsn = require_pg!();
-    if !has_meerkat() {
-        eprintln!("Skipping meerkat test: REKALL_TEST_MEERKAT=0");
+    if !has_pg_vectorsearch() {
+        eprintln!("Skipping pg_vectorsearch test: REKALL_TEST_PG_VECTORSEARCH=0");
         return;
     }
 
@@ -249,7 +253,7 @@ async fn backend_meerkat_lifecycle() {
         let v = format!("[{}, {}, {}]", i as f32, (i * 2) as f32, (i * 3) as f32);
         client
             .execute(
-                &format!("INSERT INTO {table} (v) VALUES ('{v}'::vector)"),
+                &format!("INSERT INTO {table} (id, v) VALUES ({i}, '{v}'::vector)"),
                 &[],
             )
             .await
@@ -257,7 +261,7 @@ async fn backend_meerkat_lifecycle() {
     }
 
     let idx_config = IndexConfig {
-        index_type: "meerkat".to_string(),
+        index_type: "prism".to_string(),
         name: "test-mkt".to_string(),
         params: toml::Value::try_from(toml::toml! {
             nlist = 4
@@ -289,7 +293,7 @@ async fn backend_meerkat_lifecycle() {
     assert!(build_result.index_size_bytes > 0);
 
     let mut search_params = HashMap::new();
-    search_params.insert("mkt.nprobe".to_string(), toml::Value::Integer(2));
+    search_params.insert("prism.nprobe".to_string(), toml::Value::Integer(2));
     backend.set_search_params(&search_params).await.unwrap();
 
     let results = backend.query(&[0.0, 0.0, 0.0], 5).await.unwrap();

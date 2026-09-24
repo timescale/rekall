@@ -1,6 +1,6 @@
 # Suite: cohere-100m parameter-tuning sweep.
 #
-# Requires a meerkat build with the tuned defaults. The smallest of
+# Requires a pg_vectorsearch build with the tuned defaults. The smallest of
 # the three tuning suites — 100M builds are ~an hour each — so only
 # the questions worth that much compute:
 #

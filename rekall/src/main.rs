@@ -1223,12 +1223,12 @@ async fn main() -> anyhow::Result<()> {
         } => {
             let groups = resolve_run_groups(&configs, datasets.as_deref(), indexes.as_deref())?;
 
-            // [meerkat] branch: build + install the requested branch before the
+            // [pg_vectorsearch] branch: build + install the requested branch before the
             // run (once; the config is shared across a suite's groups). Runs
             // wherever rekall runs — locally or on the instance under infra run.
             if !dry_run {
                 if let Some(g) = groups.first() {
-                    prepare_meerkat(&g.config).await?;
+                    prepare_pg_vectorsearch(&g.config).await?;
                 }
             }
 
@@ -2042,12 +2042,12 @@ fn expand_tilde(p: &str) -> String {
     p.to_string()
 }
 
-/// Build + install the meerkat branch named in `[meerkat] branch` before the
+/// Build + install the pg_vectorsearch branch named in `[pg_vectorsearch] branch` before the
 /// run. Runs wherever rekall runs (local box, or the instance under
 /// `infra run`). No-op (returns None) when no branch is configured. Returns
 /// the branch built, for the run log.
-async fn prepare_meerkat(config: &BenchmarkConfig) -> anyhow::Result<Option<String>> {
-    let m = &config.meerkat;
+async fn prepare_pg_vectorsearch(config: &BenchmarkConfig) -> anyhow::Result<Option<String>> {
+    let m = &config.pg_vectorsearch;
     let Some(branch) = m.branch.clone() else {
         return Ok(None);
     };
@@ -2057,7 +2057,9 @@ async fn prepare_meerkat(config: &BenchmarkConfig) -> anyhow::Result<Option<Stri
     let meson_args = m.meson_args.join(" ");
     let sudo = if m.sudo { "sudo " } else { "" };
 
-    println!("=== meerkat: building branch '{branch}' in {src} (build_dir={build_dir}) ===");
+    println!(
+        "=== pg_vectorsearch: building branch '{branch}' in {src} (build_dir={build_dir}) ==="
+    );
 
     // Fetch + check out the branch. If origin has it (instance clone, or a
     // pushed local branch), hard-reset to origin to get its latest; otherwise
@@ -2085,25 +2087,25 @@ fi
         .arg("-c")
         .arg(&script)
         .status()
-        .map_err(|e| anyhow::anyhow!("spawn meerkat build: {e}"))?;
+        .map_err(|e| anyhow::anyhow!("spawn pg_vectorsearch build: {e}"))?;
     if !status.success() {
-        anyhow::bail!("meerkat build/install failed for branch '{branch}'");
+        anyhow::bail!("pg_vectorsearch build/install failed for branch '{branch}'");
     }
 
     if let Some(cmd) = m.restart_command.as_deref().filter(|s| !s.is_empty()) {
-        println!("=== meerkat: post-install command: {cmd} ===");
+        println!("=== pg_vectorsearch: post-install command: {cmd} ===");
         let st = std::process::Command::new("bash")
             .arg("-c")
             .arg(cmd)
             .status()
             .map_err(|e| anyhow::anyhow!("spawn restart_command: {e}"))?;
         if !st.success() {
-            anyhow::bail!("meerkat restart_command failed");
+            anyhow::bail!("pg_vectorsearch restart_command failed");
         }
     }
 
     if m.recreate_extension {
-        println!("=== meerkat: DROP + CREATE EXTENSION (SQL/metadata refresh) ===");
+        println!("=== pg_vectorsearch: DROP + CREATE EXTENSION (SQL/metadata refresh) ===");
         let pg = rekall_lib::backend::postgres::PgConnection::new(
             &config.connection,
             &config.table_name(),
@@ -2113,18 +2115,18 @@ fi
         let client = pg
             .open_connection()
             .await
-            .map_err(|e| anyhow::anyhow!("connect to recreate meerkat extension: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("connect to recreate pg_vectorsearch extension: {e}"))?;
         client
-            .execute("DROP EXTENSION IF EXISTS meerkat CASCADE", &[])
+            .execute("DROP EXTENSION IF EXISTS pg_vectorsearch CASCADE", &[])
             .await
-            .map_err(|e| anyhow::anyhow!("DROP EXTENSION meerkat: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("DROP EXTENSION pg_vectorsearch: {e}"))?;
         client
-            .execute("CREATE EXTENSION meerkat", &[])
+            .execute("CREATE EXTENSION pg_vectorsearch", &[])
             .await
-            .map_err(|e| anyhow::anyhow!("CREATE EXTENSION meerkat: {e}"))?;
+            .map_err(|e| anyhow::anyhow!("CREATE EXTENSION pg_vectorsearch: {e}"))?;
     }
 
-    println!("=== meerkat: ready (branch '{branch}') ===");
+    println!("=== pg_vectorsearch: ready (branch '{branch}') ===");
     Ok(Some(branch))
 }
 
@@ -2743,8 +2745,8 @@ fn handle_infra(command: InfraCommand) -> anyhow::Result<()> {
             let infra_cfg = load_infra_config(config.as_ref()).unwrap_or_default();
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
 
-            // Generate deploy keys for rekall and meerkat repos
-            let repo_names = vec!["rekall", "meerkat"];
+            // Generate deploy keys for rekall and pg_vectorsearch repos
+            let repo_names = vec!["rekall", "pg_vectorsearch"];
             let deploy_keys = mgr.ensure_deploy_keys(&repo_names, false)?;
             for key in &deploy_keys {
                 if key.generated {
@@ -2786,8 +2788,8 @@ iam_instance_profile = "rekall-profile"
 # git_url = "git@github.com:org/rekall.git"
 # git_ref = "main"
 
-# [infra.meerkat]
-# git_url = "git@github.com:org/meerkat.git"
+# [infra.pg_vectorsearch]
+# git_url = "git@github.com:org/pg_vectorsearch.git"
 # git_ref = "main"
 "#;
                     std::fs::write(&local_path, local_content)?;
@@ -3413,7 +3415,7 @@ iam_instance_profile = "rekall-profile"
         InfraCommand::DeployKey { config, regenerate } => {
             let infra_cfg = load_infra_config(config.as_ref())?;
             let mgr = rekall_lib::infra::InfraManager::new(&infra_cfg)?;
-            let repo_names = vec!["rekall", "meerkat"];
+            let repo_names = vec!["rekall", "pg_vectorsearch"];
             let keys = mgr.ensure_deploy_keys(&repo_names, regenerate)?;
 
             println!("Add each key to the corresponding GitHub repo");
