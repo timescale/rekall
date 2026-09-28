@@ -366,6 +366,16 @@ enum InfraCommand {
         #[arg(long)]
         instance_type: Option<String>,
 
+        /// Override the config's `spot` setting.
+        /// `--spot-instance=false` launches on-demand;
+        /// `--spot-instance=true` forces Spot.
+        #[arg(
+            long,
+            action = clap::ArgAction::Set,
+            value_name = "true|false"
+        )]
+        spot_instance: Option<bool>,
+
         /// Memorable Name tag for this instance (e.g. "perf-test").
         /// Defaults to `<name_prefix>-<YYYYMMDD-HHMMSS>` if not given.
         /// Use it later with attach/ssh/dsn via --name.
@@ -2874,6 +2884,7 @@ iam_instance_profile = "rekall-profile"
             config,
             region,
             instance_type,
+            spot_instance,
             instance_name,
         } => {
             let mut infra_cfg = load_infra_config(config.as_ref())?;
@@ -2883,10 +2894,15 @@ iam_instance_profile = "rekall-profile"
             if let Some(it) = instance_type {
                 infra_cfg.instance_type = it;
             }
+            if let Some(spot) = spot_instance {
+                infra_cfg.spot = spot;
+            }
 
             println!(
-                "Provisioning {} instance in {}...",
-                infra_cfg.instance_type, infra_cfg.region
+                "Provisioning {} {} instance in {}...",
+                if infra_cfg.spot { "Spot" } else { "on-demand" },
+                infra_cfg.instance_type,
+                infra_cfg.region
             );
             println!("  PG version: {}", infra_cfg.pg_version);
             println!("  Disk: {} GB (gp3)", infra_cfg.disk_size_gb);

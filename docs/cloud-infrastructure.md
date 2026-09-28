@@ -320,9 +320,9 @@ Spot is **incompatible with `infra resize`**: a Spot instance cannot be
 stopped or have its type changed, which is exactly what resize does (stop →
 modify type → start). `infra resize` against a Spot instance fails fast with
 a message that says so, before it touches PostgreSQL. So any config that
-walks the resize ladder must set **`spot = false`** to run on-demand. The
-launch log also prints, for every Spot launch, that resize is unavailable
-and how to opt out.
+walks the resize ladder must set **`spot = false`** to run on-demand, or
+pass **`--spot-instance=false`** to `infra up`. The launch log also prints, for
+every Spot launch, that resize is unavailable and how to opt out.
 
 #### Things that have actually gone wrong here
 

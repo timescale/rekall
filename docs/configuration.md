@@ -305,7 +305,7 @@ rekall dataset info <file.hdf5>      # inspect dataset
 rekall dataset validate <file.hdf5>  # validate dataset
 
 rekall infra init [-c config]         # generate setup resources + instructions
-rekall infra up [-c config]           # provision cloud instance
+rekall infra up [-c config] [--spot-instance=true|false]  # provision cloud instance
 rekall infra down [-c config] [-n N]  # destroy cloud instance
 rekall infra list                     # list all instances
 rekall infra status [-c config] [-n N]# show instance status
