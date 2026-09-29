@@ -1,0 +1,104 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9659699999999782,
+      "qps": 178.46377348692553,
+      "p50_latency_us": 5451.0,
+      "p95_latency_us": 7127.0,
+      "p99_latency_us": 8479.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.6859699999999949,
+      "qps": 2276.504200150248,
+      "p50_latency_us": 407.0,
+      "p95_latency_us": 650.0,
+      "p99_latency_us": 819.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.7758999999999872,
+      "qps": 1428.5408169824943,
+      "p50_latency_us": 684.0,
+      "p95_latency_us": 920.0,
+      "p99_latency_us": 1064.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.8461299999999801,
+      "qps": 895.1768497956787,
+      "p50_latency_us": 1086.0,
+      "p95_latency_us": 1436.0,
+      "p99_latency_us": 1669.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.8985999999999742,
+      "qps": 542.5277757945365,
+      "p50_latency_us": 1800.0,
+      "p95_latency_us": 2361.0,
+      "p99_latency_us": 2795.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9405299999999763,
+      "qps": 312.35678441434607,
+      "p50_latency_us": 3113.0,
+      "p95_latency_us": 4075.0,
+      "p99_latency_us": 4855.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9675499999999778,
+      "qps": 173.30350941686223,
+      "p50_latency_us": 5611.0,
+      "p95_latency_us": 7351.0,
+      "p99_latency_us": 8799.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.982969999999985,
+      "qps": 94.97343232198894,
+      "p50_latency_us": 10255.0,
+      "p95_latency_us": 13319.0,
+      "p99_latency_us": 16143.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9920699999999902,
+      "qps": 49.56063407558046,
+      "p50_latency_us": 19695.0,
+      "p95_latency_us": 25055.0,
+      "p99_latency_us": 30911.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9966499999999958,
+      "qps": 25.572236586886287,
+      "p50_latency_us": 38367.0,
+      "p95_latency_us": 47199.0,
+      "p99_latency_us": 57567.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "build_time_secs": 3960.236050222,
+      "size_bytes": 26739884032,
+      "cache": "prewarmed"
+    }
+  ]
+}
