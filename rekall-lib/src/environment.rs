@@ -364,14 +364,29 @@ fn parent_block_device(leaf: &str) -> String {
     if std::path::Path::new(&format!("/sys/block/{leaf}")).exists() {
         return leaf.to_string();
     }
-    if let Some(idx) = leaf.rfind('p') {
-        let (head, tail) = leaf.split_at(idx);
-        if tail[1..].chars().all(|c| c.is_ascii_digit()) && !tail[1..].is_empty() {
-            return head.to_string();
+    strip_partition_suffix(leaf).to_string()
+}
+
+/// The naming rules behind `parent_block_device`, with no look at the
+/// machine. A device whose name ends in a digit (`nvme0n1`, `mmcblk0`)
+/// numbers its partitions with a `p` (`nvme0n1p1`); one that ends in a
+/// letter (`sda`, `vdb`) appends the digits directly (`sda2`). A bare nvme
+/// namespace keeps its digits: they name the namespace, not a partition.
+fn strip_partition_suffix(leaf: &str) -> &str {
+    let all_digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    if let Some((head, tail)) = leaf.rsplit_once('p') {
+        if all_digits(tail) && head.ends_with(|c: char| c.is_ascii_digit()) {
+            return head;
+        }
+    }
+    if let Some(rest) = leaf.strip_prefix("nvme") {
+        if let Some((ctrl, ns)) = rest.split_once('n') {
+            if all_digits(ctrl) && all_digits(ns) {
+                return leaf;
+            }
         }
     }
     leaf.trim_end_matches(|c: char| c.is_ascii_digit())
-        .to_string()
 }
 
 /// EBS volume id from the NVMe serial, which Nitro sets to `vol<hex>` --
@@ -485,11 +500,14 @@ tmpfs /run tmpfs rw 0 0
     #[test]
     fn partition_suffix_is_stripped_to_the_parent_device() {
         // /sys/block describes whole devices, so nvme0n1p1 -> nvme0n1.
-        assert_eq!(parent_block_device("nvme0n1p1"), "nvme0n1");
-        assert_eq!(parent_block_device("sda2"), "sda");
+        assert_eq!(strip_partition_suffix("nvme0n1p1"), "nvme0n1");
+        assert_eq!(strip_partition_suffix("mmcblk0p2"), "mmcblk0");
+        assert_eq!(strip_partition_suffix("sda2"), "sda");
+        assert_eq!(strip_partition_suffix("vdb"), "vdb");
         // A bare nvme namespace has no partition to strip; the trailing
         // digits are part of the device name.
-        assert_eq!(parent_block_device("nvme0n1"), "nvme0n1");
+        assert_eq!(strip_partition_suffix("nvme0n1"), "nvme0n1");
+        assert_eq!(strip_partition_suffix("nvme10n2"), "nvme10n2");
     }
 
     #[test]
