@@ -1,3 +1,7 @@
+# commit-msg alongside pre-commit, so `pre-commit install` wires the
+# Conventional Commits check below as well as the file hooks.
+default_install_hook_types: [pre-commit, commit-msg]
+
 repos:
   # Rust hooks (format, lint, check)
   - repo: local
@@ -45,3 +49,28 @@ repos:
         args: ["--maxkb=500"]
       - id: check-merge-conflict
       - id: mixed-line-ending
+
+  # Commit messages follow Conventional Commits. The type list is the
+  # tool's default plus this repo's own bench and infra; listing types
+  # replaces the default set, so all of them are spelled out. CI runs the
+  # same hook over every commit of a pull request
+  # (scripts/ci/check-commit-messages.sh).
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args:
+          - bench
+          - build
+          - chore
+          - ci
+          - docs
+          - feat
+          - fix
+          - infra
+          - perf
+          - refactor
+          - revert
+          - style
+          - test

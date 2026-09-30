@@ -49,6 +49,10 @@ rekall search <config.toml>        # Search only
   files explicitly by name to avoid committing binaries, results, or local
   configs.
 - Review staged changes with `git diff --staged` before committing.
+- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+  (`feat(search): ...`, `fix: ...`, `bench: ...`, `infra: ...`). A commit-msg
+  hook checks this locally once `pre-commit install` has run, and CI checks
+  every commit of a pull request.
 - The `.gitignore` excludes `/target`, `results/`, `*.local.toml`, `/data/`,
   `/configs/`, `plot.*` — but explicit staging is still required as a safeguard.
 
