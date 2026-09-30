@@ -380,12 +380,21 @@ mod tests {
     use ndarray::Array2;
 
     /// Write a 2-d `train`/`test` pair in the requested element type.
+    ///
+    /// The file is closed, with every object in it, before the path is
+    /// handed back: the writer holds HDF5's exclusive file lock, and a
+    /// read-only open of the same path fails while it is held.
     fn write<T>(dir: &Path, name: &str, fill: impl Fn(usize) -> T) -> PathBuf
     where
         T: hdf5::H5Type + Clone + Default,
     {
+        use hdf5::plist::file_access::FileCloseDegree;
+
         let path = dir.join(name);
-        let file = hdf5::File::create(&path).unwrap();
+        let file = hdf5::File::with_options()
+            .with_fapl(|fapl| fapl.fclose_degree(FileCloseDegree::Strong))
+            .create(&path)
+            .unwrap();
         for (ds, rows) in [("train", 4usize), ("test", 2usize)] {
             let data =
                 Array2::from_shape_fn((rows, DIM as usize), |(r, c)| fill(r * DIM as usize + c));
@@ -396,6 +405,7 @@ mod tests {
                 .write(&data)
                 .unwrap();
         }
+        file.close().unwrap();
         path
     }
 
