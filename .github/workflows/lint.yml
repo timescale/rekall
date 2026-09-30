@@ -23,11 +23,24 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
           persist-credentials: false
+          # Full history: the commit-message check walks the pull
+          # request's commit range, which a shallow checkout cannot resolve.
+          fetch-depth: 0
 
       - name: Install HDF5 and pre-commit
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libhdf5-dev pre-commit
+
+      # Every commit of a pull request, through the same commit-msg hook a
+      # local `pre-commit install` sets up, so a commit made without the
+      # hook is caught here.
+      - name: Check commit messages
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: ./scripts/ci/check-commit-messages.sh "$BASE_SHA..$HEAD_SHA"
 
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
