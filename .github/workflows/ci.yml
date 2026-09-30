@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install HDF5
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libhdf5-dev
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      - name: Test workspace
+        run: cargo test --workspace --locked

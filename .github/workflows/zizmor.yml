@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=https://json.schemastore.org/github-workflow
+name: Zizmor
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  zizmor:
+    name: Workflow Security Check
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write  # Upload findings as code scanning alerts
+      contents: read          # Checkout
+
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@135698455da5c3b3e55f73f4419e481ab68cdd95 # v0.4.1
+        with:
+          persona: pedantic
+          online-audits: false
+          advanced-security: ${{ vars.CODE_SCANNING_ENABLED == 'true' }}
