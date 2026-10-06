@@ -45,5 +45,10 @@ jobs:
       - name: Cache Cargo artifacts
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
 
+      # cargo-test is skipped here: the CI workflow's Build and Test job
+      # already runs the full workspace test suite, so running it again
+      # here would just duplicate that work.
       - name: Run pre-commit hooks
+        env:
+          SKIP: cargo-test
         run: pre-commit run --all-files --show-diff-on-failure
