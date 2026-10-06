@@ -12,6 +12,19 @@ pub struct Hdf5Reader {
     meta: DatasetMeta,
 }
 
+/// Open an HDF5 file read-only, with HDF5's own file locking turned off.
+///
+/// Dataset files are static inputs we only ever read, never write to
+/// concurrently with another process, so the lock buys no real safety --
+/// only a well-known class of spurious "unable to lock file" (EAGAIN)
+/// failures, notably on network filesystems and when a path is reopened
+/// shortly after another handle on it closes.
+fn open_readonly(path: &Path) -> hdf5::Result<hdf5::File> {
+    hdf5::File::with_options()
+        .with_fapl(|fapl| fapl.file_locking(false))
+        .open(path)
+}
+
 /// Read the float width of a dataset's element type.
 ///
 /// `to_descriptor` maps `H5Tget_class`/`H5Tget_size`, so this is a header
@@ -54,7 +67,7 @@ pub fn source_precision(path: &Path) -> Result<SourcePrecision> {
             path: path.to_path_buf(),
         });
     }
-    let file = hdf5::File::open(path).map_err(|e| Error::Hdf5 {
+    let file = open_readonly(path).map_err(|e| Error::Hdf5 {
         path: path.to_path_buf(),
         detail: format!("cannot open file: {e}"),
     })?;
@@ -73,7 +86,7 @@ impl Hdf5Reader {
             });
         }
 
-        let file = hdf5::File::open(path).map_err(|e| Error::Hdf5 {
+        let file = open_readonly(path).map_err(|e| Error::Hdf5 {
             path: path.to_path_buf(),
             detail: format!("cannot open file: {e}"),
         })?;
@@ -130,7 +143,7 @@ impl Hdf5Reader {
             });
         }
 
-        let file = hdf5::File::open(path).map_err(|e| Error::Hdf5 {
+        let file = open_readonly(path).map_err(|e| Error::Hdf5 {
             path: path.to_path_buf(),
             detail: format!("cannot open file: {e}"),
         })?;
@@ -256,7 +269,7 @@ impl Iterator for ChunkIter {
         let n_rows = (chunk_end - self.pos) as usize;
 
         let result = (|| -> Result<VectorChunk> {
-            let file = hdf5::File::open(&self.path).map_err(|e| Error::Hdf5 {
+            let file = open_readonly(&self.path).map_err(|e| Error::Hdf5 {
                 path: self.path.clone(),
                 detail: format!("cannot reopen file: {e}"),
             })?;
@@ -322,7 +335,7 @@ impl DatasetReader for Hdf5Reader {
     }
 
     fn queries(&self) -> Result<Array2<f32>> {
-        let file = hdf5::File::open(&self.path).map_err(|e| Error::Hdf5 {
+        let file = open_readonly(&self.path).map_err(|e| Error::Hdf5 {
             path: self.path.clone(),
             detail: format!("cannot open file: {e}"),
         })?;
@@ -337,7 +350,7 @@ impl DatasetReader for Hdf5Reader {
     }
 
     fn ground_truth(&self) -> Result<Array2<i64>> {
-        let file = hdf5::File::open(&self.path).map_err(|e| Error::Hdf5 {
+        let file = open_readonly(&self.path).map_err(|e| Error::Hdf5 {
             path: self.path.clone(),
             detail: format!("cannot open file: {e}"),
         })?;
@@ -355,7 +368,7 @@ impl DatasetReader for Hdf5Reader {
     }
 
     fn ground_truth_distances(&self) -> Result<Option<Array2<f32>>> {
-        let file = hdf5::File::open(&self.path).map_err(|e| Error::Hdf5 {
+        let file = open_readonly(&self.path).map_err(|e| Error::Hdf5 {
             path: self.path.clone(),
             detail: format!("cannot open file: {e}"),
         })?;
@@ -382,8 +395,7 @@ mod tests {
     /// Write a 2-d `train`/`test` pair in the requested element type.
     ///
     /// The file is closed, with every object in it, before the path is
-    /// handed back: the writer holds HDF5's exclusive file lock, and a
-    /// read-only open of the same path fails while it is held.
+    /// handed back, so it's never returned mid-write.
     fn write<T>(dir: &Path, name: &str, fill: impl Fn(usize) -> T) -> PathBuf
     where
         T: hdf5::H5Type + Clone + Default,
