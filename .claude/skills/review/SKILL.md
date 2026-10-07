@@ -140,7 +140,7 @@ explicitly as its own concern:
 Check whether this repo's docs still match what the branch actually
 implements — not just whether the feature's own new docs were written,
 but whether any *existing* doc describing the touched area is now stale.
-`README.md`, `DESIGN.md`, `docs/configuration.md` (every config key and
+`README.md`, `docs/configuration.md` (every config key and
 default) and `docs/cloud-infrastructure.md` (the `infra` commands and
 provisioning) are where to look, and CLAUDE.md's own "Documentation
 Maintenance" section names them — but the bar is accuracy, not presence:

@@ -550,23 +550,40 @@ is lost, terminate the instance manually in the AWS console.
 
 ```
 rekall infra init [-c config.toml]         # generate all setup resources
-  --cloudformation                          # IAM template as CloudFormation
+  --terraform                               # IAM template as Terraform HCL
+                                            # (default is CloudFormation YAML)
 
+rekall infra show [-c config.toml]         # effective [pg_config], no AWS calls
 rekall infra up [-c config.toml]           # provision instance
-  --region <region>                         # override region
-  --instance-type <type>                    # override instance type
+  --region <region>
+  --instance-type <type>
+  --spot-instance=true|false
+  -n, --instance-name <name>
 
-rekall infra down [-c config.toml] [-n name]   # destroy instance
-rekall infra status [-c config.toml] [-n name] # show instance status
-rekall infra list                              # list all instances
-rekall infra ssh [-c config.toml] [-n name]    # SSH into instance
-rekall infra dsn [-c config.toml] [-n name]    # print connection string
+rekall infra run [-c config.toml] <benchmarks...>   # upload + run in tmux
+  --wait [--poll-secs N]                   # block until the remote run exits
+  --no-publish                             # remote runs publish by default
+  --clean-run --rebuild --comment "..."
+  --s3-dataset <s3-uri>
+rekall infra load [-c config.toml] <benchmarks...>  # upload + load only
+  --parallelism N --s3-dataset <s3-uri>
+
+rekall infra resize -c <target.toml>       # stop, change type, restart
+rekall infra down [-c config.toml] [-n name] [-i id]
+rekall infra status [-c config.toml] [-n name] [-i id]
+rekall infra list [--region <region>]
+rekall infra ssh|attach|dsn [-c config.toml] [-n name] [-i id]
+rekall infra provision [-c config.toml]    # re-run deploy keys + builds
 
 rekall infra deploy-key [-c config.toml]   # generate/show deploy key
-  --regenerate                              # force new key
-rekall infra iam-policy [-c config.toml]   # print IAM template
-  --cloudformation                          # as CloudFormation YAML
+  --regenerate
+rekall infra iam-policy [-c config.toml]   # Terraform HCL by default
+  --cloudformation                          # CloudFormation YAML instead
 ```
+
+Instance-targeting flags (`-c`, `--suite`, `-n`/`--instance-name`, `-i`)
+apply to `run`, `load`, `resize`, `down`, `status`, `ssh`, `attach`, `dsn`,
+and `provision`. `-c` is required for `resize` (it is the target shape).
 
 ## Troubleshooting
 
