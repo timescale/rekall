@@ -2,6 +2,7 @@ use crate::metrics::{
     compute_pareto, IndexBuildResult, PgRuntimeInfo, RunEnvironment, RunSummary, SearchResult,
 };
 use crate::output::OutputSink;
+use crate::phase::search::SearchResults;
 
 pub fn run(
     dataset: &str,
@@ -9,12 +10,13 @@ pub fn run(
     config: serde_json::Value,
     pg_runtime: Option<PgRuntimeInfo>,
     index_builds: Vec<IndexBuildResult>,
-    search_results: Vec<SearchResult>,
+    results: SearchResults,
     outputs: &mut [Box<dyn OutputSink>],
 ) {
-    let pareto = compute_pareto(&search_results);
+    let pareto = compute_pareto(&results.search);
 
-    let summary_results: Vec<SearchResult> = search_results
+    let summary_results: Vec<SearchResult> = results
+        .search
         .into_iter()
         .map(|mut r| {
             r.query_results = Vec::new();
@@ -29,6 +31,7 @@ pub fn run(
         pg_runtime,
         index_builds,
         search_results: summary_results,
+        concurrency_results: results.concurrency,
         pareto: pareto.clone(),
     };
 

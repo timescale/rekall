@@ -260,12 +260,20 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
     // Always union per-index extensions (with their git commits) into the base,
     // so a meerkat commit recorded per-build is never lost — even when the base
     // came from a results.json whose early pg_runtime capture predates the
-    // extension's creation.
+    // extension's creation. Concurrency results only ever live in per-index
+    // files, so they are gathered here too, whichever base was used.
+    let mut concurrency_files = Vec::new();
     for p in &gz {
         if let Ok(s) = read_summary_file(p) {
             merge_pg_runtime(&mut base.pg_runtime, s.pg_runtime);
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            concurrency_files.push((name, s.concurrency_results));
         }
     }
+    base.concurrency_results = crate::metrics::latest_concurrency_results(concurrency_files);
 
     // Surface a run comment (`rekall run --comment`) recorded by ANY arm:
     // the base summary comes from the alphabetically-first file, which is
@@ -628,6 +636,74 @@ mod tests {
         assert_eq!(loaded.config["search"]["k"], serde_json::json!(10));
     }
 
+    fn concurrency(name: &str, clients: usize, qps: f64) -> crate::metrics::ConcurrencyResult {
+        crate::metrics::test_concurrency_result(name, 40, clients, qps)
+    }
+
+    fn write_gz(dir: &Path, name: &str, s: &RunSummary) {
+        use std::io::Write as _;
+        let f = std::fs::File::create(dir.join(name)).unwrap();
+        let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
+        enc.write_all(&serde_json::to_vec(s).unwrap()).unwrap();
+        enc.finish().unwrap();
+    }
+
+    #[test]
+    fn load_run_summary_merges_concurrency_results_keeping_newest() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = || summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+
+        write_gz(dir.path(), "hnsw-20260610-000000.json.gz", &base());
+        let mut older = base();
+        older.concurrency_results = vec![concurrency("hnsw", 16, 100.0)];
+        write_gz(
+            dir.path(),
+            "hnsw-concurrency-20260610-000100.json.gz",
+            &older,
+        );
+        let mut newer = base();
+        newer.concurrency_results = vec![
+            concurrency("hnsw", 16, 200.0),
+            concurrency("hnsw", 32, 300.0),
+        ];
+        write_gz(
+            dir.path(),
+            "hnsw-concurrency-20260611-000000.json.gz",
+            &newer,
+        );
+
+        let loaded = load_run_summary(dir.path()).unwrap();
+        let got: Vec<(usize, f64)> = loaded
+            .concurrency_results
+            .iter()
+            .map(|r| (r.clients, r.throughput_qps))
+            .collect();
+        assert_eq!(got, vec![(16, 200.0), (32, 300.0)]);
+        // Concurrency files carry no sweep results, so nothing is duplicated.
+        assert!(loaded.search_results.is_empty());
+    }
+
+    #[test]
+    fn load_run_summary_reads_concurrency_results_alongside_results_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        std::fs::write(
+            dir.path().join("results.json"),
+            serde_json::to_vec(&base).unwrap(),
+        )
+        .unwrap();
+        let mut conc = base.clone();
+        conc.concurrency_results = vec![concurrency("hnsw", 16, 100.0)];
+        write_gz(
+            dir.path(),
+            "hnsw-concurrency-20260610-000100.json.gz",
+            &conc,
+        );
+
+        let loaded = load_run_summary(dir.path()).unwrap();
+        assert_eq!(loaded.concurrency_results.len(), 1);
+    }
+
     fn summary(dataset: &str, ts: &str, instance: Option<&str>, hostname: &str) -> RunSummary {
         RunSummary {
             dataset: dataset.to_string(),
@@ -656,6 +732,7 @@ mod tests {
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: Vec::new(),
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         }
     }

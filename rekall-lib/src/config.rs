@@ -290,8 +290,118 @@ pub struct SearchConfig {
     /// Interval for the continuous block-device sampling (ms).
     #[serde(default = "default_io_sample_interval_ms")]
     pub io_sample_interval_ms: u64,
+    /// Concurrent client counts measured at each recall target's operating
+    /// point, after the single-client sweep. Empty disables concurrency.
+    #[serde(default = "default_clients")]
+    pub clients: Vec<ClientCount>,
+    /// Recall targets whose operating points are measured under concurrency.
+    #[serde(default = "default_concurrency_recall_targets")]
+    pub concurrency_recall_targets: Vec<f64>,
     #[serde(default)]
     pub sweep: Vec<SweepConfig>,
+}
+
+/// A resolved concurrent client count and the `search.clients` entry that
+/// produced it.
+pub type ClientLevel = (usize, ClientCount);
+
+/// Most clients a fixed `search.clients` entry may ask for. Each client is a
+/// PostgreSQL backend of its own, and this is far past what one server
+/// serves without a connection pooler, so a larger count is a typo.
+pub const MAX_CLIENTS: usize = 10_000;
+
+/// Largest CPU multiple a `search.clients` entry may ask for, far past the
+/// 2x oversubscription the default measures.
+pub const MAX_CPU_MULTIPLE: f64 = 64.0;
+
+/// One `search.clients` entry: a fixed number of clients, or a multiple of
+/// the rekall host's CPU count written as `"2x"` (fractions like `"1.5x"`
+/// allowed).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ClientCount {
+    Fixed(usize),
+    CpuMultiple(f64),
+}
+
+impl ClientCount {
+    /// Number of clients this entry means on a host with `cpus` CPUs.
+    pub fn resolve(self, cpus: usize) -> usize {
+        match self {
+            ClientCount::Fixed(n) => n,
+            ClientCount::CpuMultiple(m) => ((m * cpus as f64).round() as usize).max(1),
+        }
+    }
+
+    fn parse(spec: &str) -> std::result::Result<Self, String> {
+        let invalid = || {
+            format!(
+                "invalid search.clients entry \"{spec}\": expected a positive \
+                 integer or a CPU multiple like \"2x\""
+            )
+        };
+        let multiple: f64 = spec
+            .strip_suffix('x')
+            .ok_or_else(invalid)?
+            .parse()
+            .map_err(|_| invalid())?;
+        if !(multiple.is_finite() && multiple > 0.0) {
+            return Err(invalid());
+        }
+        if multiple > MAX_CPU_MULTIPLE {
+            return Err(format!(
+                "search.clients entry \"{spec}\" is above the {MAX_CPU_MULTIPLE}x \
+                 limit on CPU multiples"
+            ));
+        }
+        Ok(ClientCount::CpuMultiple(multiple))
+    }
+}
+
+impl std::fmt::Display for ClientCount {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClientCount::Fixed(n) => write!(f, "{n}"),
+            ClientCount::CpuMultiple(m) => write!(f, "{m}x"),
+        }
+    }
+}
+
+impl Serialize for ClientCount {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> std::result::Result<S::Ok, S::Error> {
+        match self {
+            ClientCount::Fixed(n) => s.serialize_u64(*n as u64),
+            ClientCount::CpuMultiple(_) => s.serialize_str(&self.to_string()),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ClientCount {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Raw {
+            Count(i64),
+            Spec(String),
+        }
+        match Raw::deserialize(d)? {
+            Raw::Count(n) if n > MAX_CLIENTS as i64 => Err(serde::de::Error::custom(format!(
+                "search.clients entry {n} is above the limit of {MAX_CLIENTS} clients"
+            ))),
+            Raw::Count(n) if n > 0 => Ok(ClientCount::Fixed(n as usize)),
+            Raw::Count(n) => Err(serde::de::Error::custom(format!(
+                "invalid search.clients entry {n}: client counts must be positive"
+            ))),
+            Raw::Spec(s) => ClientCount::parse(&s).map_err(serde::de::Error::custom),
+        }
+    }
+}
+
+fn default_clients() -> Vec<ClientCount> {
+    vec![ClientCount::CpuMultiple(1.0), ClientCount::CpuMultiple(2.0)]
+}
+
+fn default_concurrency_recall_targets() -> Vec<f64> {
+    vec![0.95, 0.99]
 }
 
 fn default_cache_drop_command() -> String {
@@ -329,8 +439,28 @@ impl Default for SearchConfig {
             cache_drop_command: default_cache_drop_command(),
             io_stats: default_io_stats(),
             io_sample_interval_ms: default_io_sample_interval_ms(),
+            clients: default_clients(),
+            concurrency_recall_targets: default_concurrency_recall_targets(),
             sweep: Vec::new(),
         }
+    }
+}
+
+impl SearchConfig {
+    /// Concurrent client levels on a host with `cpus` CPUs, ascending and
+    /// deduplicated, each paired with the first entry that produced it.
+    /// Levels of one client are dropped since the single-client baseline
+    /// already measures them.
+    pub fn concurrency_levels(&self, cpus: usize) -> Vec<ClientLevel> {
+        let mut levels: Vec<ClientLevel> = Vec::new();
+        for spec in &self.clients {
+            let n = spec.resolve(cpus);
+            if n > 1 && !levels.iter().any(|(m, _)| *m == n) {
+                levels.push((n, *spec));
+            }
+        }
+        levels.sort_by_key(|(n, _)| *n);
+        levels
     }
 }
 
@@ -399,6 +529,28 @@ impl OutputConfig {
     pub fn index_results_path(&self, index_name: &str, timestamp: &str) -> String {
         format!("{}/{}-{}.json.gz", self.results_dir, index_name, timestamp)
     }
+
+    /// Output path for a series' concurrency results, kept apart from its
+    /// sweep results so measuring concurrency never rewrites the sweep.
+    /// Format: {results_dir}/{index_name}-concurrency-{timestamp}.json.gz
+    pub fn concurrency_results_path(&self, index_name: &str, timestamp: &str) -> String {
+        format!(
+            "{}/{}-concurrency-{}.json.gz",
+            self.results_dir, index_name, timestamp
+        )
+    }
+}
+
+/// The series a concurrency results file belongs to, from a file name made
+/// by `OutputConfig::concurrency_results_path`. `None` for any other file.
+pub fn concurrency_file_series(file_name: &str) -> Option<&str> {
+    let stem = file_name.strip_suffix(".json.gz")?;
+    let (series, timestamp) = stem.rsplit_once("-concurrency-")?;
+    let is_timestamp = timestamp.len() == 15
+        && timestamp
+            .char_indices()
+            .all(|(i, c)| if i == 8 { c == '-' } else { c.is_ascii_digit() });
+    is_timestamp.then_some(series)
 }
 
 impl Default for OutputConfig {
@@ -821,6 +973,14 @@ impl BenchmarkConfig {
                 return Err(Error::SweepIndexNotFound {
                     name: query.index.clone(),
                 });
+            }
+        }
+        for target in &self.search.concurrency_recall_targets {
+            if !(*target > 0.0 && *target <= 1.0) {
+                return Err(Error::Config(format!(
+                    "search.concurrency_recall_targets: {target} is not a \
+                     recall in (0, 1]"
+                )));
             }
         }
         Ok(())
@@ -1733,6 +1893,184 @@ index = "nonexistent"
         assert_eq!(cfg.search.runs, 3);
         assert_eq!(cfg.search.warmup, 100);
         assert_eq!(cfg.output.format, vec!["table"]);
+        assert_eq!(
+            cfg.search.clients,
+            vec![ClientCount::CpuMultiple(1.0), ClientCount::CpuMultiple(2.0)]
+        );
+        assert_eq!(cfg.search.concurrency_recall_targets, vec![0.95, 0.99]);
+    }
+
+    fn parse_search(search: &str) -> Result<BenchmarkConfig> {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(
+            tmp.path(),
+            format!("{MINIMAL_CONFIG}\n[search]\n{search}\n"),
+        )
+        .unwrap();
+        BenchmarkConfig::from_file(tmp.path())
+    }
+
+    #[test]
+    fn clients_accepts_integers_and_cpu_multiples() {
+        let cfg = parse_search(r#"clients = [4, "1x", "1.5x", "2x"]"#).unwrap();
+        assert_eq!(
+            cfg.search.clients,
+            vec![
+                ClientCount::Fixed(4),
+                ClientCount::CpuMultiple(1.0),
+                ClientCount::CpuMultiple(1.5),
+                ClientCount::CpuMultiple(2.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn clients_empty_disables_concurrency() {
+        let cfg = parse_search("clients = []").unwrap();
+        assert!(cfg.search.concurrency_levels(16).is_empty());
+    }
+
+    #[test]
+    fn clients_rejects_bad_entries_naming_the_key() {
+        for bad in [
+            r#"clients = [0]"#,
+            r#"clients = [-2]"#,
+            r#"clients = ["x"]"#,
+            r#"clients = ["0x"]"#,
+            r#"clients = ["-1x"]"#,
+            r#"clients = ["2"]"#,
+            r#"clients = ["twox"]"#,
+            r#"clients = ["infx"]"#,
+        ] {
+            let msg = parse_search(bad).unwrap_err().to_string();
+            assert!(msg.contains("search.clients"), "{bad}: {msg}");
+        }
+    }
+
+    #[test]
+    fn clients_rejects_counts_too_high_to_be_meant() {
+        for bad in [
+            r#"clients = [10001]"#,
+            r#"clients = ["65x"]"#,
+            r#"clients = ["1e300x"]"#,
+        ] {
+            let msg = parse_search(bad).unwrap_err().to_string();
+            assert!(msg.contains("search.clients"), "{bad}: {msg}");
+            assert!(msg.contains("limit"), "{bad}: {msg}");
+        }
+        // The limits themselves are allowed.
+        let cfg = parse_search(r#"clients = [10000, "64x"]"#).unwrap();
+        assert_eq!(
+            cfg.search.clients,
+            vec![ClientCount::Fixed(10_000), ClientCount::CpuMultiple(64.0)]
+        );
+    }
+
+    #[test]
+    fn concurrency_recall_targets_rejects_values_outside_unit_interval() {
+        for bad in ["[0.0]", "[1.5]", "[-0.5]", "[0.95, nan]"] {
+            let msg = parse_search(&format!("concurrency_recall_targets = {bad}"))
+                .unwrap_err()
+                .to_string();
+            assert!(msg.contains("concurrency_recall_targets"), "{bad}: {msg}");
+        }
+        assert!(parse_search("concurrency_recall_targets = [1.0]").is_ok());
+    }
+
+    #[test]
+    fn client_count_serializes_back_to_its_config_form() {
+        let json = serde_json::to_value(vec![
+            ClientCount::Fixed(8),
+            ClientCount::CpuMultiple(2.0),
+            ClientCount::CpuMultiple(1.5),
+        ])
+        .unwrap();
+        assert_eq!(json, serde_json::json!([8, "2x", "1.5x"]));
+        let back: Vec<ClientCount> = serde_json::from_value(json).unwrap();
+        assert_eq!(back[2], ClientCount::CpuMultiple(1.5));
+    }
+
+    #[test]
+    fn client_count_resolves_against_cpu_count() {
+        assert_eq!(ClientCount::Fixed(5).resolve(64), 5);
+        assert_eq!(ClientCount::CpuMultiple(2.0).resolve(48), 96);
+        // 1.5 × 5 = 7.5 rounds half away from zero.
+        assert_eq!(ClientCount::CpuMultiple(1.5).resolve(5), 8);
+        // A tiny multiple never resolves to zero clients.
+        assert_eq!(ClientCount::CpuMultiple(0.1).resolve(2), 1);
+    }
+
+    #[test]
+    fn concurrency_levels_sorted_deduped_and_skip_single_client() {
+        let search = SearchConfig {
+            clients: vec![
+                ClientCount::CpuMultiple(2.0),
+                ClientCount::Fixed(8),
+                ClientCount::CpuMultiple(1.0),
+                ClientCount::Fixed(1),
+            ],
+            ..SearchConfig::default()
+        };
+        // 8 CPUs: "2x" = 16, 8 and "1x" collide (first listed wins), 1 is
+        // the baseline.
+        assert_eq!(
+            search.concurrency_levels(8),
+            vec![
+                (8, ClientCount::Fixed(8)),
+                (16, ClientCount::CpuMultiple(2.0)),
+            ]
+        );
+    }
+
+    #[test]
+    fn concurrency_levels_on_single_cpu_host() {
+        // Default ["1x", "2x"] on one CPU: "1x" is the baseline, "2x" = 2.
+        let search = SearchConfig::default();
+        assert_eq!(
+            search.concurrency_levels(1),
+            vec![(2, ClientCount::CpuMultiple(2.0))]
+        );
+    }
+
+    #[test]
+    fn concurrency_results_path_is_separate_from_the_sweep_file() {
+        let out = OutputConfig {
+            results_dir: "results/run".to_string(),
+            ..OutputConfig::default()
+        };
+        assert_eq!(
+            out.concurrency_results_path("hnsw-m16", "20260610-000000"),
+            "results/run/hnsw-m16-concurrency-20260610-000000.json.gz"
+        );
+        assert_ne!(
+            out.concurrency_results_path("hnsw-m16", "20260610-000000"),
+            out.index_results_path("hnsw-m16", "20260610-000000")
+        );
+    }
+
+    #[test]
+    fn concurrency_file_series_reads_back_the_series_name() {
+        let out = OutputConfig::default();
+        let path = out.concurrency_results_path("mkt-n16000-concurrency-x", "20260610-093000");
+        let name = std::path::Path::new(&path)
+            .file_name()
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(
+            concurrency_file_series(name),
+            Some("mkt-n16000-concurrency-x")
+        );
+        // A sweep file, or a series merely named like one, is not.
+        assert_eq!(
+            concurrency_file_series("hnsw-20260610-093000.json.gz"),
+            None
+        );
+        assert_eq!(
+            concurrency_file_series("hnsw-concurrency-latest.json.gz"),
+            None
+        );
+        assert_eq!(concurrency_file_series("ground-truth.json.gz"), None);
     }
 
     #[test]

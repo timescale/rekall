@@ -275,6 +275,123 @@ pub struct SearchResult {
     pub io: Option<SearchIoStats>,
 }
 
+/// How recall was counted: distance-based (ann-benchmarks, a result that
+/// ties the k-th true neighbour's distance counts) or by exact neighbour ID.
+/// A published run is all one basis, distance-based when ground-truth
+/// distances were available at publish time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum RecallBasis {
+    Distance,
+    Id,
+}
+
+impl RecallBasis {
+    /// Human wording for table captions.
+    pub fn describe(self) -> &'static str {
+        match self {
+            RecallBasis::Distance => "distance-based (ann-benchmarks, tie-aware)",
+            RecallBasis::Id => "ID-based",
+        }
+    }
+}
+
+/// One measurement with several concurrent clients at a recall target's
+/// operating point. Kept apart from `SearchResult` so single-client
+/// reports, plots and Pareto frontiers never mix in results measured
+/// under load.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ConcurrencyResult {
+    pub index_name: String,
+    pub index_type: String,
+    #[serde(default)]
+    pub data_type: Option<String>,
+    /// Recall targets these params are the operating point for.
+    pub recall_targets: Vec<f64>,
+    pub search_params: serde_json::Value,
+    pub clients: usize,
+    /// The `search.clients` entry that resolved to `clients` (e.g. "2x").
+    /// `None` for the single-client baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clients_spec: Option<String>,
+    /// CPUs on the rekall host when `clients` was resolved.
+    pub cpu_count: usize,
+    pub k: usize,
+    pub num_queries: usize,
+    pub num_runs: usize,
+    /// Mean recall over the first pass through the query set, on
+    /// `recall_basis`.
+    pub avg_recall: f64,
+    /// Distance-based when the dataset has ground-truth distances, as in
+    /// the published reports, else ID-based.
+    pub recall_basis: RecallBasis,
+    /// Sum over clients of (queries it finished before the first client
+    /// found no query left / time of the last of them): the rate while
+    /// every client is busy, with no query cut in half.
+    pub throughput_qps: f64,
+    /// `queries_finished_total / wall_time_total_secs`, drain included.
+    pub qps_wall: f64,
+    /// Time from the start until the first client found no query left.
+    pub wall_time_till_first_empty_secs: f64,
+    /// Time from the start until the last client finished.
+    pub wall_time_total_secs: f64,
+    pub queries_finished_till_first_empty: u64,
+    pub queries_finished_total: u64,
+    pub avg_latency_us: f64,
+    pub p50_latency_us: f64,
+    pub p95_latency_us: f64,
+    pub p99_latency_us: f64,
+    pub p999_latency_us: f64,
+    /// CPU time (user + system) rekall itself used during the timed run.
+    pub client_cpu_secs: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub io: Option<SearchIoStats>,
+}
+
+impl ConcurrencyResult {
+    /// Whether this result measured `clients` clients on `index_name` at
+    /// `search_params`, with the same k and query count. Used to resume
+    /// and to deduplicate results found in several files.
+    pub fn measures(
+        &self,
+        index_name: &str,
+        search_params: &serde_json::Value,
+        clients: usize,
+        k: usize,
+        num_queries: usize,
+    ) -> bool {
+        self.index_name == index_name
+            && self.search_params == *search_params
+            && self.clients == clients
+            && self.k == k
+            && self.num_queries == num_queries
+    }
+}
+
+/// Each series' concurrency results from its newest concurrency file only:
+/// a series' newest file is its complete current set, so results for
+/// operating points it no longer selects are left behind in older files.
+/// `files` are (file name, results) in name order; names end in a
+/// timestamp, so later is newer. Other result files are ignored.
+pub fn latest_concurrency_results(
+    files: Vec<(String, Vec<ConcurrencyResult>)>,
+) -> Vec<ConcurrencyResult> {
+    let mut latest: Vec<(String, Vec<ConcurrencyResult>)> = Vec::new();
+    for (name, results) in files {
+        let Some(series) = crate::config::concurrency_file_series(&name) else {
+            continue;
+        };
+        latest.retain(|(s, _)| s != series);
+        latest.push((series.to_string(), results));
+    }
+    latest
+        .into_iter()
+        .flat_map(|(_, results)| results)
+        .collect()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IndexBuildResult {
     pub index_name: String,
@@ -339,6 +456,8 @@ pub struct RunSummary {
     pub index_builds: Vec<IndexBuildResult>,
     #[serde(default)]
     pub search_results: Vec<SearchResult>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub concurrency_results: Vec<ConcurrencyResult>,
     #[serde(default)]
     pub pareto: Vec<ParetoPoint>,
 }
@@ -392,6 +511,48 @@ pub fn recall_distance_based(
     hits as f64 / k as f64
 }
 
+/// Tie tolerance for distance-based recall, as in ann-benchmarks.
+pub const DISTANCE_RECALL_EPSILON: f64 = 1e-3;
+
+/// Distance-based recall averaged over a sweep point's per-query results.
+/// `gt_row(qi)` gives query `qi`'s ground-truth neighbours and distances;
+/// queries it has no row for are skipped. `None` when no query has one.
+pub fn mean_recall_distance_based<'a>(
+    query_results: &[QueryResult],
+    k: usize,
+    gt_row: impl Fn(usize) -> Option<(&'a [i64], &'a [f32])>,
+) -> Option<f64> {
+    let mut total = 0.0;
+    let mut counted = 0usize;
+    for (qi, qr) in query_results.iter().enumerate() {
+        if let Some((neighbors, distances)) = gt_row(qi) {
+            total += recall_distance_based(
+                &qr.neighbors,
+                neighbors,
+                distances,
+                k,
+                DISTANCE_RECALL_EPSILON,
+            );
+            counted += 1;
+        }
+    }
+    (counted > 0).then(|| total / counted as f64)
+}
+
+/// The operating point at a recall target: the highest-QPS item whose
+/// recall reaches `target`. `None` when no item reaches it.
+pub fn operating_point<T>(
+    items: impl IntoIterator<Item = T>,
+    target: f64,
+    recall: impl Fn(&T) -> f64,
+    qps: impl Fn(&T) -> f64,
+) -> Option<T> {
+    items
+        .into_iter()
+        .filter(|item| recall(item) >= target)
+        .max_by(|a, b| qps(a).total_cmp(&qps(b)))
+}
+
 pub struct LatencyCollector {
     histogram: Histogram<u64>,
 }
@@ -428,6 +589,13 @@ impl LatencyCollector {
     pub fn reset(&mut self) {
         self.histogram.reset();
     }
+
+    /// Add every latency recorded in `other`, as if recorded here.
+    pub fn merge(&mut self, other: &LatencyCollector) {
+        self.histogram
+            .add(&other.histogram)
+            .expect("collectors share the same histogram bounds");
+    }
 }
 
 pub fn compute_pareto(results: &[SearchResult]) -> Vec<ParetoPoint> {
@@ -458,6 +626,46 @@ pub fn compute_pareto(results: &[SearchResult]) -> Vec<ParetoPoint> {
     }
 
     points
+}
+
+/// A concurrency result for tests: `clients` clients on series `name` at
+/// `prism.nprobe = nprobe`, measuring `qps`.
+#[cfg(test)]
+pub(crate) fn test_concurrency_result(
+    name: &str,
+    nprobe: i64,
+    clients: usize,
+    qps: f64,
+) -> ConcurrencyResult {
+    ConcurrencyResult {
+        index_name: name.to_string(),
+        index_type: "prism".to_string(),
+        data_type: None,
+        recall_targets: vec![0.95],
+        search_params: serde_json::json!({ "prism.nprobe": nprobe }),
+        clients,
+        clients_spec: Some("2x".to_string()),
+        cpu_count: 8,
+        k: 10,
+        num_queries: 1000,
+        num_runs: 3,
+        avg_recall: 0.96,
+        recall_basis: RecallBasis::Distance,
+        throughput_qps: qps,
+        qps_wall: qps,
+        wall_time_till_first_empty_secs: 1.0,
+        wall_time_total_secs: 1.0,
+        queries_finished_till_first_empty: 1000,
+        queries_finished_total: 1000,
+        avg_latency_us: 0.0,
+        p50_latency_us: 0.0,
+        p95_latency_us: 0.0,
+        p99_latency_us: 0.0,
+        p999_latency_us: 0.0,
+        client_cpu_secs: 0.0,
+        cache: None,
+        io: None,
+    }
 }
 
 #[cfg(test)]
@@ -720,5 +928,134 @@ mod tests {
         assert!(frontier.contains(&"a"));
         assert!(frontier.contains(&"d"));
         assert!(frontier.contains(&"e"));
+    }
+    #[test]
+    fn latest_concurrency_results_keep_each_series_newest_file() {
+        let file = |name: &str, results: Vec<ConcurrencyResult>| (name.to_string(), results);
+        let latest = latest_concurrency_results(vec![
+            // a's older file still has a point a's newer file dropped.
+            file(
+                "a-concurrency-20260610-000000.json.gz",
+                vec![
+                    test_concurrency_result("a", 10, 16, 100.0),
+                    test_concurrency_result("a", 20, 16, 200.0),
+                ],
+            ),
+            file(
+                "a-concurrency-20260611-000000.json.gz",
+                vec![test_concurrency_result("a", 20, 16, 300.0)],
+            ),
+            // b's newest file is empty: no point reaches a target any more.
+            file(
+                "b-concurrency-20260610-000000.json.gz",
+                vec![test_concurrency_result("b", 10, 16, 400.0)],
+            ),
+            file("b-concurrency-20260612-000000.json.gz", vec![]),
+            file(
+                "c-concurrency-20260610-000000.json.gz",
+                vec![test_concurrency_result("c", 10, 16, 500.0)],
+            ),
+            // Sweep files never contribute.
+            file(
+                "c-20260613-000000.json.gz",
+                vec![test_concurrency_result("c", 10, 16, 999.0)],
+            ),
+        ]);
+        let qps: Vec<(&str, f64)> = latest
+            .iter()
+            .map(|r| (r.index_name.as_str(), r.throughput_qps))
+            .collect();
+        assert_eq!(qps, vec![("a", 300.0), ("c", 500.0)]);
+    }
+
+    #[test]
+    fn run_summary_without_concurrency_results_still_reads() {
+        let old = r#"{"dataset": "d", "search_results": [], "pareto": []}"#;
+        let summary: RunSummary = serde_json::from_str(old).unwrap();
+        assert!(summary.concurrency_results.is_empty());
+        // And an empty list is not written back out.
+        let json = serde_json::to_value(&summary).unwrap();
+        assert!(json.get("concurrency_results").is_none());
+    }
+
+    #[test]
+    fn concurrency_result_round_trips() {
+        let r = test_concurrency_result("a", 10, 16, 123.0);
+        let back: ConcurrencyResult =
+            serde_json::from_value(serde_json::to_value(&r).unwrap()).unwrap();
+        assert!(back.measures("a", &r.search_params, 16, 10, 1000));
+        assert_eq!(back.clients_spec.as_deref(), Some("2x"));
+        assert_eq!(back.throughput_qps, 123.0);
+    }
+
+    #[test]
+    fn operating_point_takes_highest_qps_reaching_target() {
+        let points = [(0.94, 900.0), (0.95, 500.0), (0.97, 700.0), (0.99, 100.0)];
+        let op = operating_point(points.iter(), 0.95, |p| p.0, |p| p.1);
+        assert_eq!(op, Some(&(0.97, 700.0)));
+        assert_eq!(
+            operating_point(points.iter(), 0.995, |p| p.0, |p| p.1),
+            None
+        );
+    }
+
+    #[test]
+    fn mean_recall_distance_based_averages_rows_with_ground_truth() {
+        // k = 2. Query 0 returns both true neighbours (recall 1.0); query 1
+        // returns one of them (0.5); query 2 has no ground-truth row and is
+        // skipped rather than counted as zero.
+        let neighbors = [vec![1_i64, 2, 3], vec![4, 5, 6]];
+        let distances = [vec![0.1_f32, 0.2, 0.9], vec![0.1, 0.2, 0.9]];
+        let results = [
+            QueryResult {
+                neighbors: vec![2, 1],
+                recall: 0.0,
+            },
+            QueryResult {
+                neighbors: vec![4, 9],
+                recall: 0.0,
+            },
+            QueryResult {
+                neighbors: vec![7, 8],
+                recall: 0.0,
+            },
+        ];
+        let mean = mean_recall_distance_based(&results, 2, |qi| {
+            Some((neighbors.get(qi)?.as_slice(), distances.get(qi)?.as_slice()))
+        });
+        assert_eq!(mean, Some(0.75));
+    }
+
+    #[test]
+    fn mean_recall_distance_based_none_without_ground_truth() {
+        let results = [QueryResult {
+            neighbors: vec![1],
+            recall: 0.0,
+        }];
+        assert_eq!(mean_recall_distance_based(&results, 1, |_| None), None);
+    }
+    #[test]
+    fn latency_collector_merge_matches_recording_everything_in_one() {
+        // A skewed distribution split unevenly across three clients.
+        let values: Vec<u64> = (1..=2000).map(|i| i * i % 7919 + 1).collect();
+        let mut direct = LatencyCollector::new();
+        let mut parts = [
+            LatencyCollector::new(),
+            LatencyCollector::new(),
+            LatencyCollector::new(),
+        ];
+        for (i, v) in values.iter().enumerate() {
+            direct.record(*v);
+            parts[i % 7 % 3].record(*v);
+        }
+        let mut merged = LatencyCollector::new();
+        for p in &parts {
+            merged.merge(p);
+        }
+        assert_eq!(merged.count(), 2000);
+        assert_eq!(merged.mean_us(), direct.mean_us());
+        for p in [50.0, 95.0, 99.0, 99.9] {
+            assert_eq!(merged.percentile_us(p), direct.percentile_us(p), "p{p}");
+        }
     }
 }

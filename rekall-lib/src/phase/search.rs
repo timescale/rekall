@@ -1,17 +1,27 @@
 use std::collections::HashMap;
 use std::io::{Read as _, Write as _};
+use std::sync::Arc;
 use std::time::Instant;
 
+use ndarray::Array2;
 use tracing::info;
 
-use crate::backend::BackendRegistry;
-use crate::config::{BenchmarkConfig, CacheMode};
+use crate::backend::search_monitor::{force_stats_flush, SearchIoMonitor};
+use crate::backend::{BackendRegistry, IndexBackend};
+use crate::config::{
+    BenchmarkConfig, CacheMode, ClientCount, ClientLevel, IndexConfig, QueryConfig,
+};
 use crate::dataset::hdf5::Hdf5Reader;
 use crate::dataset::DatasetReader;
 use crate::error::{Error, Result};
 use crate::metrics::{
-    compute_recall, IndexBuildResult, LatencyCollector, PgRuntimeInfo, QueryResult, RunEnvironment,
-    RunSummary, SearchResult,
+    compute_recall, latest_concurrency_results, mean_recall_distance_based, recall_distance_based,
+    ConcurrencyResult, IndexBuildResult, LatencyCollector, PgRuntimeInfo, QueryResult, RecallBasis,
+    RunEnvironment, RunSummary, SearchResult, DISTANCE_RECALL_EPSILON,
+};
+use crate::phase::concurrency::{
+    free_connection_slots, queries_per_run, run_timed, select_operating_points,
+    split_levels_by_fit, warm_up, ClientFailure, QueryFn, RecallFn, SESSION_WARMUP_QUERIES,
 };
 use crate::progress::{ProgressEvent, ProgressTx};
 
@@ -74,15 +84,32 @@ fn is_completed(
     })
 }
 
+/// Sweep and concurrency results, as saved in a results directory or
+/// returned by the search phase.
+#[derive(Debug, Clone, Default)]
+pub struct SearchResults {
+    pub search: Vec<SearchResult>,
+    /// One copy of each measurement, the newest.
+    pub concurrency: Vec<ConcurrencyResult>,
+}
+
+impl SearchResults {
+    pub fn extend(&mut self, other: SearchResults) {
+        self.search.extend(other.search);
+        self.concurrency.extend(other.concurrency);
+    }
+}
+
 /// Load previously completed results from per-index result files in results_dir.
 /// Scans for {index_name}-*.json and {index_name}-*.json.gz files.
-pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
+pub fn load_existing_results(config: &BenchmarkConfig) -> SearchResults {
     let dir = &config.output.results_dir;
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return Vec::new();
+        return SearchResults::default();
     };
 
-    let mut all = Vec::new();
+    let mut search = Vec::new();
+    let mut concurrency = Vec::new();
 
     let mut files: Vec<_> = entries
         .filter_map(|e| e.ok())
@@ -98,10 +125,18 @@ pub fn load_existing_results(config: &BenchmarkConfig) -> Vec<SearchResult> {
         let Some(summary) = read_json_file(path) else {
             continue;
         };
-        all.extend(summary.search_results);
+        search.extend(summary.search_results);
+        let name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        concurrency.push((name, summary.concurrency_results));
     }
 
-    all
+    SearchResults {
+        search,
+        concurrency: latest_concurrency_results(concurrency),
+    }
 }
 
 /// Probe the live PG runtime (version, settings, installed extensions with
@@ -221,6 +256,7 @@ fn save_index_results(
         pg_runtime: pg_runtime.cloned(),
         index_builds,
         search_results: index_results,
+        concurrency_results: Vec::new(),
         pareto: Vec::new(),
     };
 
@@ -240,7 +276,7 @@ pub async fn run(
     pg_runtime: Option<&PgRuntimeInfo>,
     index_builds: &[IndexBuildResult],
     rerun: bool,
-) -> Result<Vec<SearchResult>> {
+) -> Result<SearchResults> {
     let dataset_path = config.dataset.resolved_path();
     let reader = Hdf5Reader::open(
         &dataset_path,
@@ -248,9 +284,10 @@ pub async fn run(
         config.dataset.dimension,
     )?;
 
-    let queries = reader.queries()?;
-    let ground_truth = reader.ground_truth()?;
-    let gt_distances = reader.ground_truth_distances()?;
+    // Shared with the concurrent clients' tasks.
+    let queries = Arc::new(reader.queries()?);
+    let ground_truth = Arc::new(reader.ground_truth()?);
+    let gt_distances = reader.ground_truth_distances()?.map(Arc::new);
 
     let num_queries = config
         .search
@@ -260,16 +297,24 @@ pub async fn run(
 
     let k = config.search.k;
 
-    save_ground_truth(config, &ground_truth, gt_distances.as_ref(), num_queries, k);
+    save_ground_truth(
+        config,
+        &ground_truth,
+        gt_distances.as_deref(),
+        num_queries,
+        k,
+    );
 
     // With --rerun, ignore previously-saved results so every sweep point is
     // re-measured. Otherwise the run is resumable: completed points are
     // loaded and skipped (see `is_completed`).
-    let mut all_results = if rerun {
-        Vec::new()
+    let existing = if rerun {
+        SearchResults::default()
     } else {
         load_existing_results(config)
     };
+    let mut all_results = existing.search;
+    let existing_concurrency = existing.concurrency;
 
     // Series this call will actually (re)write. `save_index_results` rewrites
     // a series' whole file from `all_results` each time one of its points
@@ -291,6 +336,13 @@ pub async fn run(
             r.query_results = Vec::new();
         }
     }
+    // Returned for the series this call searches: what was already on disk
+    // plus what it measures.
+    let mut concurrency_results: Vec<ConcurrencyResult> = existing_concurrency
+        .iter()
+        .filter(|r| active_series.contains(r.index_name.as_str()))
+        .cloned()
+        .collect();
 
     let timestamp = chrono::Local::now().format("%Y%m%d-%H%M%S").to_string();
 
@@ -345,6 +397,13 @@ pub async fn run(
         }
     }
 
+    let cpu_count = crate::environment::collect_cpu_count();
+    let concurrency_levels = if num_queries > 0 {
+        concurrency_levels_that_fit(config, progress, cpu_count).await
+    } else {
+        Vec::new()
+    };
+
     for query in &config.effective_queries() {
         // `filter_index` is a physical-index filter (used by the interleaved
         // build+search path); match it against the index this query targets.
@@ -384,18 +443,7 @@ pub async fn run(
             }
         }
 
-        let backend = registry
-            .create(
-                &config.connection,
-                &config.table_name(),
-                config.dataset.dimension,
-                config.dataset.metric,
-                idx_config,
-                None,
-                query.mode,
-                None,
-            )
-            .await?;
+        let backend = create_series_backend(config, registry, idx_config, query).await?;
 
         if !backend.index_exists().await? {
             return Err(Error::IndexNotFound {
@@ -432,19 +480,16 @@ pub async fn run(
         // snapshots PG counters and samples the data-dir block device
         // around each sweep point's timed runs. The backend pid pins
         // pg_stat_get_backend_io to the connection running the queries.
+        let backend_pid = if config.search.io_stats {
+            backend_pids(std::slice::from_ref(&backend)).await
+        } else {
+            Vec::new()
+        };
         let io_monitor = if config.search.io_stats {
-            let backend_pid = backend
-                .pg()
-                .client()
-                .query_one("SELECT pg_backend_pid()", &[])
-                .await
-                .ok()
-                .map(|r| r.get::<_, i32>(0));
-            let m = crate::backend::search_monitor::SearchIoMonitor::new(
+            let m = SearchIoMonitor::new(
                 &config.connection.dsn,
                 &active_idx,
                 &config.table_name(),
-                backend_pid,
                 std::time::Duration::from_millis(config.search.io_sample_interval_ms),
             )
             .await;
@@ -483,18 +528,15 @@ pub async fn run(
             let broadest = broadest_params(&param_combos);
             backend.set_search_params(&idx_config.gucs).await?;
             backend.set_search_params(&broadest).await?;
-            for qi in 0..config.search.warmup.min(num_queries) {
-                let q = queries.row(qi).to_vec();
-                if let Err(e) = backend.query(&q, k).await {
-                    report_crash(
-                        config,
-                        progress,
-                        &format!("search '{}' broad warmup query #{qi}", query.name),
-                        &e,
-                    );
-                    return Err(e);
-                }
-            }
+            warm_backend(
+                config,
+                progress,
+                backend.as_ref(),
+                &queries,
+                config.search.warmup.min(num_queries),
+                &format!("search '{}' broad warmup", query.name),
+            )
+            .await?;
         }
 
         for params in &param_combos {
@@ -520,86 +562,33 @@ pub async fn run(
             backend.set_search_params(&idx_config.gucs).await?;
             backend.set_search_params(params).await?;
 
-            let mut effective_cache = match config.search.cache {
-                CacheMode::Warm => "warm",
-                CacheMode::Cold => "cold",
-                CacheMode::DiskCold => "disk-cold",
-            };
-            match config.search.cache {
+            // Warmup queries fill shared buffers; cold modes skip them and
+            // evict instead.
+            let effective_cache = match config.search.cache {
                 CacheMode::Warm => {
-                    // Warmup queries to fill shared buffers
-                    for qi in 0..config.search.warmup.min(num_queries) {
-                        let q = queries.row(qi).to_vec();
-                        if let Err(e) = backend.query(&q, k).await {
-                            report_crash(
-                                config,
-                                progress,
-                                &format!("search '{}' warmup query #{qi}", query.name),
-                                &e,
-                            );
-                            return Err(e);
-                        }
-                    }
+                    warm_backend(
+                        config,
+                        progress,
+                        backend.as_ref(),
+                        &queries,
+                        config.search.warmup.min(num_queries),
+                        &format!("search '{}' warmup", query.name),
+                    )
+                    .await?;
+                    "warm"
                 }
                 CacheMode::Cold | CacheMode::DiskCold => {
-                    // Evict shared buffers before measurement.
-                    // Skip warmup to measure cold-cache performance.
-                    let mut pg_evict = crate::backend::postgres::PgConnection::new(
-                        &config.connection,
-                        &config.table_name(),
-                        config.dataset.dimension,
-                        config.dataset.metric,
-                    );
-                    pg_evict.set_physical_index(idx_config.physical_index.clone());
-                    pg_evict.connect().await?;
-                    let idx_sql = pg_evict.index_sql_name(&query.index);
-                    pg_evict
-                        .evict_relation_buffers(&config.table_name())
-                        .await?;
-                    pg_evict.evict_relation_buffers(&idx_sql).await?;
-
-                    if config.search.cache == CacheMode::DiskCold {
-                        // Shared buffers alone leave the OS page cache warm;
-                        // drop it so first reads genuinely hit disk. A denied
-                        // command degrades this point to cold — logged and
-                        // recorded so reports say what actually happened.
-                        match crate::oscache::drop_os_caches(&config.search.cache_drop_command) {
-                            Ok(()) => {
-                                let _ = progress.send(ProgressEvent::Message {
-                                    text: "Evicted shared buffers + dropped \
-                                           OS page caches (disk-cold mode)"
-                                        .to_string(),
-                                });
-                            }
-                            Err(msg) => {
-                                effective_cache = "cold (OS cache drop failed)";
-                                tracing::warn!(
-                                    "disk-cold requested but OS cache drop failed: {msg}"
-                                );
-                                let _ = progress.send(ProgressEvent::Message {
-                                    text: format!(
-                                        "WARNING: OS cache drop failed ({msg}) — \
-                                         this point measured with shared buffers \
-                                         evicted ONLY"
-                                    ),
-                                });
-                            }
-                        }
-                    } else {
-                        let _ = progress.send(ProgressEvent::Message {
-                            text: "Evicted shared buffers (cold mode)".to_string(),
-                        });
-                    }
+                    evict_for_cold_run(config, progress, idx_config, &query.index).await?
                 }
-            }
+            };
 
             // Open the I/O measurement window: flush the query
             // backend's pending stats first so warmup/eviction I/O
             // stays out of the deltas.
             let io_point = match &io_monitor {
                 Some(m) => {
-                    crate::backend::search_monitor::force_stats_flush(backend.pg().client()).await;
-                    Some(m.begin().await)
+                    force_stats_flush(backend.pg().client()).await;
+                    Some(m.begin(&backend_pid).await)
                 }
                 None => None,
             };
@@ -663,7 +652,7 @@ pub async fn run(
             // reports the best run), hence queries = num_queries × runs.
             let io_stats = match (&io_monitor, io_point) {
                 (Some(m), Some(p)) => {
-                    crate::backend::search_monitor::force_stats_flush(backend.pg().client()).await;
+                    force_stats_flush(backend.pg().client()).await;
                     Some(m.finish(p, (num_queries * config.search.runs) as u64).await)
                 }
                 _ => None,
@@ -745,6 +734,40 @@ pub async fn run(
             );
         }
 
+        if !concurrency_levels.is_empty() {
+            let series = ConcurrencySeries {
+                config,
+                registry,
+                progress,
+                query,
+                idx_config,
+                data_type: data_type.clone(),
+                queries: queries.clone(),
+                recall: SeriesRecall {
+                    neighbors: ground_truth.clone(),
+                    distances: gt_distances.clone(),
+                    k,
+                },
+                num_queries,
+                levels: &concurrency_levels,
+                cpu_count,
+                io_monitor: io_monitor.as_ref(),
+                timestamp: &timestamp,
+                environment,
+                pg_runtime,
+            };
+            let current = measure_series_concurrency(
+                &series,
+                backend,
+                &param_combos,
+                &all_results,
+                &existing_concurrency,
+            )
+            .await?;
+            concurrency_results.retain(|r| r.index_name != query.name);
+            concurrency_results.extend(current);
+        }
+
         // This series is done and fully durable in its own file (each point
         // above rewrote it with the complete accumulated set). Nothing else
         // in this call touches `query.name` again, so drop its per-query
@@ -770,7 +793,789 @@ pub async fn run(
         let _ = pg_cleanup.enable_index(&idx_sql).await;
     }
 
-    Ok(all_results)
+    Ok(SearchResults {
+        search: all_results,
+        concurrency: concurrency_results,
+    })
+}
+
+/// Open a search connection for a query series, set up like every other
+/// connection measuring it: same backend, query mode and physical index.
+async fn create_series_backend(
+    config: &BenchmarkConfig,
+    registry: &BackendRegistry,
+    idx_config: &IndexConfig,
+    query: &QueryConfig,
+) -> Result<Box<dyn IndexBackend>> {
+    registry
+        .create(
+            &config.connection,
+            &config.table_name(),
+            config.dataset.dimension,
+            config.dataset.metric,
+            idx_config,
+            None,
+            query.mode,
+            None,
+        )
+        .await
+}
+
+/// Run the first `count` queries untimed on `backend` to fill the caches.
+async fn warm_backend(
+    config: &BenchmarkConfig,
+    progress: &ProgressTx,
+    backend: &dyn IndexBackend,
+    queries: &Array2<f32>,
+    count: usize,
+    context: &str,
+) -> Result<()> {
+    for qi in 0..count {
+        let q = queries.row(qi).to_vec();
+        if let Err(e) = backend.query(&q, config.search.k).await {
+            report_crash(config, progress, &format!("{context} query #{qi}"), &e);
+            return Err(e);
+        }
+    }
+    Ok(())
+}
+
+/// Evict the table's and index's shared buffers, and in disk-cold mode the
+/// OS page cache too. Returns the cache state reached, which is plain cold
+/// when the OS cache drop is denied.
+async fn evict_for_cold_run(
+    config: &BenchmarkConfig,
+    progress: &ProgressTx,
+    idx_config: &IndexConfig,
+    index_name: &str,
+) -> Result<&'static str> {
+    let mut pg_evict = crate::backend::postgres::PgConnection::new(
+        &config.connection,
+        &config.table_name(),
+        config.dataset.dimension,
+        config.dataset.metric,
+    );
+    pg_evict.set_physical_index(idx_config.physical_index.clone());
+    pg_evict.connect().await?;
+    let idx_sql = pg_evict.index_sql_name(index_name);
+    pg_evict
+        .evict_relation_buffers(&config.table_name())
+        .await?;
+    pg_evict.evict_relation_buffers(&idx_sql).await?;
+
+    if config.search.cache != CacheMode::DiskCold {
+        let _ = progress.send(ProgressEvent::Message {
+            text: "Evicted shared buffers (cold mode)".to_string(),
+        });
+        return Ok("cold");
+    }
+    // Shared buffers alone leave the OS page cache warm; drop it so first
+    // reads genuinely hit disk. A denied command degrades this point to
+    // cold, logged and recorded so reports say what actually happened.
+    match crate::oscache::drop_os_caches(&config.search.cache_drop_command) {
+        Ok(()) => {
+            let _ = progress.send(ProgressEvent::Message {
+                text: "Evicted shared buffers + dropped OS page caches (disk-cold mode)"
+                    .to_string(),
+            });
+            Ok("disk-cold")
+        }
+        Err(msg) => {
+            tracing::warn!("disk-cold requested but OS cache drop failed: {msg}");
+            let _ = progress.send(ProgressEvent::Message {
+                text: format!(
+                    "WARNING: OS cache drop failed ({msg}) — this point measured \
+                     with shared buffers evicted ONLY"
+                ),
+            });
+            Ok("cold (OS cache drop failed)")
+        }
+    }
+}
+
+/// PostgreSQL backend pids of the clients' connections, for per-backend I/O.
+async fn backend_pids(clients: &[Box<dyn IndexBackend>]) -> Vec<i32> {
+    let mut pids = Vec::with_capacity(clients.len());
+    for client in clients {
+        if let Ok(row) = client
+            .pg()
+            .client()
+            .query_one("SELECT pg_backend_pid()", &[])
+            .await
+        {
+            pids.push(row.get::<_, i32>(0));
+        }
+    }
+    pids
+}
+
+/// Flush every client's pending I/O stats, all at once since each flush
+/// may fall back to a one-second settle sleep.
+async fn flush_stats(clients: &[Box<dyn IndexBackend>]) {
+    futures_util::future::join_all(clients.iter().map(|c| force_stats_flush(c.pg().client())))
+        .await;
+}
+
+/// The `search.clients` levels on this host whose connections fit in
+/// PostgreSQL's free connection slots. Levels that don't fit are skipped
+/// with a warning. If the slots can't be read, every level is kept.
+async fn concurrency_levels_that_fit(
+    config: &BenchmarkConfig,
+    progress: &ProgressTx,
+    cpu_count: usize,
+) -> Vec<ClientLevel> {
+    let levels = config.search.concurrency_levels(cpu_count);
+    if levels.is_empty() {
+        return levels;
+    }
+    let available = match free_slots(config).await {
+        Ok(n) => n,
+        Err(e) => {
+            // A connection error's own text carries the DSN, password and all.
+            let reason = match e {
+                Error::PgConnect { source, .. } => source.to_string(),
+                other => other.to_string(),
+            };
+            tracing::warn!(
+                "could not read PostgreSQL's free connection slots ({reason}); \
+                 measuring every search.clients level"
+            );
+            return levels;
+        }
+    };
+    let (fit, skipped) = split_levels_by_fit(&levels, available);
+    for (n, spec) in skipped {
+        let text = format!(
+            "Skipping {n} concurrent clients (search.clients \"{spec}\"): they need \
+             {} connections with rekall's own, but PostgreSQL has {available} free. \
+             Raise max_connections to measure them.",
+            n.saturating_add(crate::phase::concurrency::OWN_CONNECTIONS)
+        );
+        tracing::warn!("{text}");
+        let _ = progress.send(ProgressEvent::Message { text });
+    }
+    fit
+}
+
+/// Free connection slots on the server. Counts its own probe connection as
+/// open, so it errs one slot low.
+async fn free_slots(config: &BenchmarkConfig) -> Result<usize> {
+    let mut pg = crate::backend::postgres::PgConnection::new(
+        &config.connection,
+        &config.table_name(),
+        config.dataset.dimension,
+        config.dataset.metric,
+    );
+    pg.connect().await?;
+    let row = pg
+        .client()
+        .query_one(
+            "SELECT current_setting('max_connections')::int8, \
+                    current_setting('superuser_reserved_connections')::int8 \
+                      + COALESCE(current_setting('reserved_connections', true)::int8, 0), \
+                    (SELECT rolsuper FROM pg_roles WHERE rolname = current_user), \
+                    (SELECT count(*) FROM pg_stat_activity \
+                      WHERE backend_type = 'client backend')",
+            &[],
+        )
+        .await?;
+    Ok(free_connection_slots(
+        row.get(0),
+        row.get(1),
+        row.get(2),
+        row.get(3),
+    ))
+}
+
+/// What measuring a query series under concurrency needs from the search
+/// phase.
+struct ConcurrencySeries<'a> {
+    config: &'a BenchmarkConfig,
+    registry: &'a BackendRegistry,
+    progress: &'a ProgressTx,
+    query: &'a QueryConfig,
+    idx_config: &'a IndexConfig,
+    data_type: Option<String>,
+    queries: Arc<Array2<f32>>,
+    recall: SeriesRecall,
+    num_queries: usize,
+    levels: &'a [ClientLevel],
+    cpu_count: usize,
+    io_monitor: Option<&'a SearchIoMonitor>,
+    timestamp: &'a str,
+    environment: Option<&'a RunEnvironment>,
+    pg_runtime: Option<&'a PgRuntimeInfo>,
+}
+
+/// A sweep point chosen for concurrent measurement.
+struct OperatingPoint<'a> {
+    params: &'a HashMap<String, toml::Value>,
+    params_json: serde_json::Value,
+    recall_targets: Vec<f64>,
+    /// The sweep's recall here on the series' basis, which the concurrent
+    /// runs should reproduce. `None` when the sweep kept no per-query
+    /// results to count it from.
+    sweep_recall: Option<f64>,
+}
+
+/// Counts recall for a series' concurrency measurement on one basis:
+/// distance-based when the dataset has ground-truth distances, as in the
+/// published reports, else by neighbour ID.
+#[derive(Clone)]
+struct SeriesRecall {
+    neighbors: Arc<Array2<i64>>,
+    distances: Option<Arc<Array2<f32>>>,
+    k: usize,
+}
+
+impl SeriesRecall {
+    fn basis(&self) -> RecallBasis {
+        match self.distances {
+            Some(_) => RecallBasis::Distance,
+            None => RecallBasis::Id,
+        }
+    }
+
+    /// Recall of the IDs returned for query-set entry `qi`.
+    fn of_query(&self, qi: usize, ids: &[i64]) -> f64 {
+        let neighbors = self.neighbors.row(qi).to_vec();
+        match &self.distances {
+            Some(d) => recall_distance_based(
+                ids,
+                &neighbors,
+                &d.row(qi).to_vec(),
+                self.k,
+                DISTANCE_RECALL_EPSILON,
+            ),
+            None => compute_recall(ids, &neighbors, self.k),
+        }
+    }
+
+    /// A sweep point's mean recall, counted from its per-query results.
+    /// `None` when it kept none.
+    fn of_sweep_point(&self, result: &SearchResult) -> Option<f64> {
+        let Some(distances) = &self.distances else {
+            return Some(result.avg_recall);
+        };
+        let (neighbors, n_cols) = (self.neighbors.as_slice()?, self.neighbors.ncols());
+        let (distances, d_cols) = (distances.as_slice()?, distances.ncols());
+        mean_recall_distance_based(&result.query_results, self.k, |qi| {
+            Some((
+                neighbors.get(qi * n_cols..(qi + 1) * n_cols)?,
+                distances.get(qi * d_cols..(qi + 1) * d_cols)?,
+            ))
+        })
+    }
+}
+
+/// Query function running query-set entry `qi` on a search connection.
+// The client type is the boxed backend the pool owns, so `&Box` is the
+// reference the runner hands out.
+#[allow(clippy::borrowed_box)]
+fn backend_query_fn(queries: Arc<Array2<f32>>, k: usize) -> QueryFn<Box<dyn IndexBackend>> {
+    Arc::new(move |backend: &Box<dyn IndexBackend>, qi: usize| {
+        let q = queries.row(qi).to_vec();
+        Box::pin(async move { backend.query(&q, k).await })
+    })
+}
+
+/// Measure a series' operating points under concurrent load, once its
+/// single-client sweep is done. Each recall target's operating point gets a
+/// single-client baseline, measured on the sweep's own connection, and then
+/// each client level. Results already on disk are skipped. Returns the
+/// results measured.
+async fn measure_series_concurrency(
+    series: &ConcurrencySeries<'_>,
+    mut backend: Box<dyn IndexBackend>,
+    param_combos: &[HashMap<String, toml::Value>],
+    all_results: &[SearchResult],
+    existing: &[ConcurrencyResult],
+) -> Result<Vec<ConcurrencyResult>> {
+    let (config, progress, query) = (series.config, series.progress, series.query);
+    let k = config.search.k;
+    let message = |text: String| {
+        info!("{text}");
+        let _ = progress.send(ProgressEvent::Message { text });
+    };
+
+    let candidates: Vec<(&HashMap<String, toml::Value>, &SearchResult, Option<f64>)> = param_combos
+        .iter()
+        .filter_map(|combo| {
+            let json = serde_json::to_value(combo).unwrap_or_default();
+            let sweep = all_results.iter().find(|r| {
+                r.index_name == query.name
+                    && r.search_params == json
+                    && r.k == k
+                    && r.num_queries == series.num_queries
+            })?;
+            let recall = series.recall.of_sweep_point(sweep);
+            Some((combo, sweep, recall))
+        })
+        .collect();
+    let selection = select_operating_points(
+        &candidates,
+        &config.search.concurrency_recall_targets,
+        // A point without per-query results falls back to its ID-based
+        // recall, which never exceeds the distance-based one, so it can only
+        // understate whether the point reaches a target.
+        |c| c.2.unwrap_or(c.1.avg_recall),
+        |c| c.1.qps,
+    );
+    for target in &selection.unreached {
+        message(format!(
+            "No sweep point of '{}' reaches recall {target}; not measuring it under concurrency",
+            query.name
+        ));
+    }
+
+    let query_fn = backend_query_fn(series.queries.clone(), k);
+    let recall_fn: RecallFn = {
+        let recall = series.recall.clone();
+        Arc::new(move |qi, ids| recall.of_query(qi, ids))
+    };
+
+    // The series' current set: earlier results for the points still
+    // selected, relabelled with the targets they serve now, plus what this
+    // call measures. It replaces the series' earlier file as a whole.
+    let earlier: Vec<&ConcurrencyResult> = existing
+        .iter()
+        .filter(|r| r.index_name == query.name)
+        .collect();
+    let points: Vec<(&serde_json::Value, &[f64])> = selection
+        .points
+        .iter()
+        .map(|p| {
+            (
+                &candidates[p.candidate].1.search_params,
+                p.recall_targets.as_slice(),
+            )
+        })
+        .collect();
+    let conditions = MeasurementConditions {
+        k,
+        num_queries: series.num_queries,
+        num_runs: config.search.runs.max(1),
+        cache: requested_cache_label(config.search.cache),
+    };
+    let mut current = carried_over(&earlier, &points, &conditions);
+    let unchanged = current.len() == earlier.len()
+        && current.iter().all(|c| {
+            earlier.iter().any(|e| {
+                e.measures(&c.index_name, &c.search_params, c.clients, k, c.num_queries)
+                    && e.recall_targets == c.recall_targets
+            })
+        });
+    if !unchanged {
+        save_series_concurrency(series, &current);
+    }
+
+    let mut pool: Vec<Box<dyn IndexBackend>> = Vec::new();
+    // Most clients the server accepted, once it refused one.
+    let mut client_cap = usize::MAX;
+    for selected in &selection.points {
+        let (params, sweep, sweep_recall) = candidates[selected.candidate];
+        let point = OperatingPoint {
+            params,
+            params_json: sweep.search_params.clone(),
+            recall_targets: selected.recall_targets.clone(),
+            sweep_recall,
+        };
+        let is_measured = |clients: usize| {
+            current.iter().any(|r| {
+                r.measures(
+                    &query.name,
+                    &point.params_json,
+                    clients,
+                    k,
+                    series.num_queries,
+                )
+            })
+        };
+        let baseline_missing = !is_measured(1);
+        let mut missing_levels: Vec<ClientLevel> = series
+            .levels
+            .iter()
+            .copied()
+            .filter(|(n, _)| !is_measured(*n) && *n <= client_cap)
+            .collect();
+        if !baseline_missing && missing_levels.is_empty() {
+            message(format!(
+                "Skipping concurrency for '{}' {} (already measured)",
+                query.name, point.params_json
+            ));
+            continue;
+        }
+
+        // The baseline's cache preparation also warms the data for the
+        // client levels after it.
+        backend.set_search_params(&series.idx_config.gucs).await?;
+        backend.set_search_params(point.params).await?;
+        let cache = match config.search.cache {
+            CacheMode::Warm => {
+                warm_backend(
+                    config,
+                    progress,
+                    backend.as_ref(),
+                    &series.queries,
+                    config.search.warmup.min(series.num_queries),
+                    &format!("concurrency '{}' warmup", query.name),
+                )
+                .await?;
+                "warm"
+            }
+            CacheMode::Cold | CacheMode::DiskCold => {
+                evict_for_cold_run(config, progress, series.idx_config, &query.index).await?
+            }
+        };
+        if baseline_missing {
+            let (mut clients, result) = measure_clients(
+                series,
+                &point,
+                vec![backend],
+                None,
+                cache,
+                &query_fn,
+                &recall_fn,
+            )
+            .await?;
+            backend = clients.pop().expect("the baseline client is handed back");
+            record_result(series, &mut current, result);
+        }
+
+        let Some(&(widest, _)) = missing_levels.last() else {
+            continue;
+        };
+        while pool.len() < widest {
+            match open_pool_client(series, pool.len(), widest).await? {
+                PoolClient::Opened(client) => pool.push(client),
+                PoolClient::OutOfSlots(reason) => {
+                    client_cap = pool.len();
+                    let skipped: Vec<String> = missing_levels
+                        .iter()
+                        .filter(|(n, _)| *n > client_cap)
+                        .map(|(n, spec)| format!("{n} (\"{spec}\")"))
+                        .collect();
+                    let text = format!(
+                        "Skipping {} concurrent clients for '{}': PostgreSQL refused \
+                         connection {} ({reason}). Raise max_connections to measure them.",
+                        skipped.join(", "),
+                        query.name,
+                        client_cap + 1
+                    );
+                    tracing::warn!("{text}");
+                    let _ = progress.send(ProgressEvent::Message { text });
+                    missing_levels.retain(|(n, _)| *n <= client_cap);
+                    break;
+                }
+            }
+        }
+        for client in &pool {
+            client.set_search_params(&series.idx_config.gucs).await?;
+            client.set_search_params(point.params).await?;
+        }
+        for (n, spec) in missing_levels {
+            let clients: Vec<_> = pool.drain(..n).collect();
+            let clients = warm_up(
+                clients,
+                series.num_queries,
+                SESSION_WARMUP_QUERIES,
+                query_fn.clone(),
+            )
+            .await
+            .map_err(|f| client_failure(series, f, n))?;
+            let cache = match config.search.cache {
+                CacheMode::Warm => "warm",
+                CacheMode::Cold | CacheMode::DiskCold => {
+                    evict_for_cold_run(config, progress, series.idx_config, &query.index).await?
+                }
+            };
+            let (clients, result) = measure_clients(
+                series,
+                &point,
+                clients,
+                Some(spec),
+                cache,
+                &query_fn,
+                &recall_fn,
+            )
+            .await?;
+            pool.extend(clients);
+            record_result(series, &mut current, result);
+        }
+    }
+    Ok(current)
+}
+
+/// What a concurrency measurement must have been taken under to stand for
+/// the current config.
+struct MeasurementConditions {
+    k: usize,
+    num_queries: usize,
+    num_runs: usize,
+    cache: &'static str,
+}
+
+/// The cache state a measurement records when the configured mode was
+/// applied as asked.
+fn requested_cache_label(mode: CacheMode) -> &'static str {
+    match mode {
+        CacheMode::Warm => "warm",
+        CacheMode::Cold => "cold",
+        CacheMode::DiskCold => "disk-cold",
+    }
+}
+
+/// Earlier results that still stand for the series: those at a selected
+/// point and taken under the current conditions, relabelled with the
+/// targets their point serves now. Anything else is measured again. A
+/// disk-cold point that fell back to plain cold is retried.
+fn carried_over(
+    earlier: &[&ConcurrencyResult],
+    points: &[(&serde_json::Value, &[f64])],
+    conditions: &MeasurementConditions,
+) -> Vec<ConcurrencyResult> {
+    let mut current = Vec::new();
+    for (params, targets) in points {
+        for r in earlier {
+            if r.search_params == **params
+                && r.k == conditions.k
+                && r.num_queries == conditions.num_queries
+                && r.num_runs == conditions.num_runs
+                && r.cache.as_deref() == Some(conditions.cache)
+            {
+                let mut r = (*r).clone();
+                r.recall_targets = targets.to_vec();
+                current.push(r);
+            }
+        }
+    }
+    current
+}
+
+/// A concurrent client, or the server's refusal when it is out of
+/// connection slots.
+enum PoolClient {
+    Opened(Box<dyn IndexBackend>),
+    OutOfSlots(String),
+}
+
+/// Open concurrent client `index` of `wanted`. Running out of connection
+/// slots is reported rather than failed, so the caller can skip the levels
+/// that need more. Other connection errors leave out the DSN, which may hold
+/// a password.
+// Pool clients connect like the sweep's connection, so a backend with a
+// derived column would re-run its DDL per client; none has one today.
+async fn open_pool_client(
+    series: &ConcurrencySeries<'_>,
+    index: usize,
+    wanted: usize,
+) -> Result<PoolClient> {
+    match create_series_backend(
+        series.config,
+        series.registry,
+        series.idx_config,
+        series.query,
+    )
+    .await
+    {
+        Ok(client) => Ok(PoolClient::Opened(client)),
+        Err(Error::PgConnect { source, .. })
+            if source.code() == Some(&tokio_postgres::error::SqlState::TOO_MANY_CONNECTIONS) =>
+        {
+            Ok(PoolClient::OutOfSlots(source.to_string()))
+        }
+        Err(Error::PgConnect { source, .. }) => Err(Error::Config(format!(
+            "search.clients: cannot open concurrent client {} of {wanted}: {source}",
+            index + 1
+        ))),
+        Err(other) => Err(other),
+    }
+}
+
+/// Report a failed client query like any other search crash, and return
+/// its error.
+fn client_failure(series: &ConcurrencySeries<'_>, failure: ClientFailure, clients: usize) -> Error {
+    report_crash(
+        series.config,
+        series.progress,
+        &format!(
+            "concurrency '{}' with {clients} clients query #{}",
+            series.query.name, failure.query_index
+        ),
+        &failure.error,
+    );
+    failure.error
+}
+
+/// Time `clients` at an operating point over `search.runs` runs, keeping
+/// the run with the highest wall-clock QPS, the figure reports lead with.
+/// Hands the clients back.
+async fn measure_clients(
+    series: &ConcurrencySeries<'_>,
+    point: &OperatingPoint<'_>,
+    mut clients: Vec<Box<dyn IndexBackend>>,
+    spec: Option<ClientCount>,
+    cache: &str,
+    query_fn: &QueryFn<Box<dyn IndexBackend>>,
+    recall_fn: &RecallFn,
+) -> Result<(Vec<Box<dyn IndexBackend>>, ConcurrencyResult)> {
+    let config = series.config;
+    let n = clients.len();
+    let total = queries_per_run(series.num_queries, n);
+    let runs = config.search.runs.max(1);
+
+    let io_point = match series.io_monitor {
+        Some(monitor) => {
+            let pids = backend_pids(&clients).await;
+            flush_stats(&clients).await;
+            Some(monitor.begin(&pids).await)
+        }
+        None => None,
+    };
+
+    let mut best: Option<(
+        crate::phase::concurrency::Throughput,
+        LatencyCollector,
+        f64,
+        f64,
+    )> = None;
+    for _ in 0..runs {
+        let run = run_timed(
+            clients,
+            series.num_queries,
+            total,
+            query_fn.clone(),
+            recall_fn.clone(),
+        )
+        .await
+        .map_err(|f| client_failure(series, f, n))?;
+        clients = run.clients;
+        if best
+            .as_ref()
+            .is_none_or(|b| run.throughput.qps_wall > b.0.qps_wall)
+        {
+            best = Some((run.throughput, run.latencies, run.avg_recall, run.cpu_secs));
+        }
+    }
+
+    // The stats cover every run, hence total × runs queries.
+    let io = match (series.io_monitor, io_point) {
+        (Some(monitor), Some(p)) => {
+            flush_stats(&clients).await;
+            Some(monitor.finish(p, total * runs as u64).await)
+        }
+        _ => None,
+    };
+
+    let (throughput, latencies, avg_recall, client_cpu_secs) =
+        best.expect("search.runs is at least one");
+    let result = ConcurrencyResult {
+        index_name: series.query.name.clone(),
+        index_type: series.idx_config.index_type.clone(),
+        data_type: series.data_type.clone(),
+        recall_targets: point.recall_targets.clone(),
+        search_params: point.params_json.clone(),
+        clients: n,
+        clients_spec: spec.map(|s| s.to_string()),
+        cpu_count: series.cpu_count,
+        k: config.search.k,
+        num_queries: series.num_queries,
+        num_runs: runs,
+        avg_recall,
+        recall_basis: series.recall.basis(),
+        throughput_qps: throughput.throughput_qps,
+        qps_wall: throughput.qps_wall,
+        wall_time_till_first_empty_secs: throughput.wall_time_till_first_empty_secs,
+        wall_time_total_secs: throughput.wall_time_total_secs,
+        queries_finished_till_first_empty: throughput.queries_finished_till_first_empty,
+        queries_finished_total: throughput.queries_finished_total,
+        avg_latency_us: latencies.mean_us(),
+        p50_latency_us: latencies.percentile_us(50.0),
+        p95_latency_us: latencies.percentile_us(95.0),
+        p99_latency_us: latencies.percentile_us(99.0),
+        p999_latency_us: latencies.percentile_us(99.9),
+        client_cpu_secs,
+        cache: Some(cache.to_string()),
+        io,
+    };
+    if let Some(sweep_recall) = point.sweep_recall {
+        if (result.avg_recall - sweep_recall).abs() > 0.005 {
+            let text = format!(
+                "WARNING: '{}' {} with {n} clients returned recall {:.4}, but the \
+                 single-client sweep measured {sweep_recall:.4} at the same params",
+                result.index_name, result.search_params, result.avg_recall
+            );
+            tracing::warn!("{text}");
+            let _ = series.progress.send(ProgressEvent::Message { text });
+        }
+    }
+    Ok((clients, result))
+}
+
+/// Add a measurement to the series' current set, save the set, and report
+/// the measurement with its scaling over the single-client baseline.
+fn record_result(
+    series: &ConcurrencySeries<'_>,
+    current: &mut Vec<ConcurrencyResult>,
+    result: ConcurrencyResult,
+) {
+    let baseline_qps = current
+        .iter()
+        .find(|r| {
+            r.measures(
+                &result.index_name,
+                &result.search_params,
+                1,
+                result.k,
+                result.num_queries,
+            )
+        })
+        .map(|r| r.qps_wall);
+    let scaling = match baseline_qps {
+        Some(base) if result.clients > 1 && base > 0.0 => {
+            format!(" (x{:.2} over 1 client)", result.qps_wall / base)
+        }
+        _ => String::new(),
+    };
+    let text = format!(
+        "Concurrency '{}' {} with {} clients: {:.0} QPS{scaling}, p99 {:.0} us",
+        result.index_name,
+        result.search_params,
+        result.clients,
+        result.qps_wall,
+        result.p99_latency_us
+    );
+    info!("{text}");
+    let _ = series.progress.send(ProgressEvent::Message { text });
+
+    current.push(result);
+    save_series_concurrency(series, current);
+}
+
+/// Write the series' current concurrency set as its newest concurrency
+/// file, which the loaders take as the whole set.
+fn save_series_concurrency(series: &ConcurrencySeries<'_>, current: &[ConcurrencyResult]) {
+    let summary = RunSummary {
+        dataset: series.config.dataset.name.clone(),
+        environment: series.environment.cloned(),
+        config: serde_json::to_value(series.config).unwrap_or(serde_json::Value::Null),
+        pg_runtime: series.pg_runtime.cloned(),
+        index_builds: Vec::new(),
+        search_results: Vec::new(),
+        concurrency_results: current.to_vec(),
+        pareto: Vec::new(),
+    };
+    let path = series
+        .config
+        .output
+        .concurrency_results_path(&series.query.name, series.timestamp);
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match write_json_gz(&path, &summary) {
+        Ok(()) => info!("Concurrency results saved to {path}"),
+        Err(e) => tracing::error!("Failed to save concurrency results to {path}: {e}"),
+    }
 }
 
 /// The sweep's most expensive parameter combination: for each swept key,
@@ -843,6 +1648,91 @@ fn expand_sweep_params(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn carried_over_keeps_only_selected_points_measured_the_same_way() {
+        use crate::metrics::test_concurrency_result as result;
+        let with = |nprobe: i64, runs: usize, cache: &str| {
+            let mut r = result("a", nprobe, 16, 100.0);
+            r.num_runs = runs;
+            r.cache = Some(cache.to_string());
+            r
+        };
+        let kept = with(10, 3, "warm");
+        let earlier_results = [
+            kept.clone(),
+            // A point the selection no longer picks.
+            with(20, 3, "warm"),
+            // The selected point, but best of 1 or measured cold.
+            with(10, 1, "warm"),
+            with(10, 3, "cold"),
+        ];
+        let earlier: Vec<&ConcurrencyResult> = earlier_results.iter().collect();
+        let params = kept.search_params.clone();
+        let conditions = MeasurementConditions {
+            k: kept.k,
+            num_queries: kept.num_queries,
+            num_runs: 3,
+            cache: "warm",
+        };
+        let current = carried_over(&earlier, &[(&params, &[0.99][..])], &conditions);
+        assert_eq!(current.len(), 1);
+        assert_eq!(current[0].search_params, params);
+        assert_eq!(current[0].num_runs, 3);
+        // Relabelled with the target its point serves now.
+        assert_eq!(current[0].recall_targets, vec![0.99]);
+    }
+
+    #[test]
+    fn load_existing_results_returns_deduped_concurrency_results() {
+        let dir = tempfile::tempdir().unwrap();
+        let config: BenchmarkConfig = toml::from_str(&format!(
+            r#"
+[dataset]
+name = "d"
+metric = "angular"
+dimension = 3
+
+[output]
+results_dir = "{}"
+"#,
+            dir.path().display()
+        ))
+        .unwrap();
+        let concurrency = |clients: usize, qps: f64| {
+            crate::metrics::test_concurrency_result("hnsw", 40, clients, qps)
+        };
+        let write = |name: &str, results: Vec<ConcurrencyResult>| {
+            let summary = RunSummary {
+                dataset: "d".to_string(),
+                environment: None,
+                config: serde_json::Value::Null,
+                pg_runtime: None,
+                index_builds: Vec::new(),
+                search_results: Vec::new(),
+                concurrency_results: results,
+                pareto: Vec::new(),
+            };
+            write_json_gz(dir.path().join(name).to_str().unwrap(), &summary).unwrap();
+        };
+        write(
+            "hnsw-concurrency-20260610-000000.json.gz",
+            vec![concurrency(16, 100.0)],
+        );
+        write(
+            "hnsw-concurrency-20260611-000000.json.gz",
+            vec![concurrency(16, 200.0), concurrency(32, 300.0)],
+        );
+
+        let existing = load_existing_results(&config);
+        assert!(existing.search.is_empty());
+        let got: Vec<(usize, f64)> = existing
+            .concurrency
+            .iter()
+            .map(|r| (r.clients, r.throughput_qps))
+            .collect();
+        assert_eq!(got, vec![(16, 200.0), (32, 300.0)]);
+    }
 
     #[test]
     fn expand_empty_params() {

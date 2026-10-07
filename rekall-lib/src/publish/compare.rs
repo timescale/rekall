@@ -51,11 +51,7 @@ pub fn group_by_config(points: &[SweepPoint]) -> BTreeMap<String, Vec<&SweepPoin
 /// The operating point at a recall target: the highest-QPS point with
 /// recall ≥ target. `None` when no point reaches the target.
 pub fn operating_point<'a>(points: &[&'a SweepPoint], target: f64) -> Option<&'a SweepPoint> {
-    points
-        .iter()
-        .filter(|p| p.recall >= target)
-        .max_by(|a, b| a.qps.total_cmp(&b.qps))
-        .copied()
+    crate::metrics::operating_point(points.iter().copied(), target, |p| p.recall, |p| p.qps)
 }
 
 /// One catalog comparison sample: Meerkat's QPS gain/loss at an exact recall.

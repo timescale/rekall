@@ -782,6 +782,12 @@ fn cmd_report(
         );
     }
 
+    if let Some(table) = rekall_lib::output::stdout::concurrency_table(&summary.concurrency_results)
+    {
+        println!("\n=== Concurrency ===");
+        println!("{table}");
+    }
+
     // Index build times (from the authoritative build-*.json files).
     if !summary.index_builds.is_empty() {
         println!("\n=== Index Build Times ===");
@@ -953,6 +959,7 @@ fn cmd_recall(
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: all_results,
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         };
 
@@ -3516,5 +3523,29 @@ fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>
             "    - {} [{mode}]{on} ({n_combos} parameter combinations)",
             query.name,
         );
+    }
+
+    if phase.is_none_or(|p| p == "search") {
+        let cpus = rekall_lib::environment::collect_cpu_count();
+        let levels = cfg.search.concurrency_levels(cpus);
+        if levels.is_empty() {
+            println!("\n  Concurrency: off");
+        } else {
+            let clients: Vec<String> = levels
+                .iter()
+                .map(|(n, spec)| format!("{n} (\"{spec}\")"))
+                .collect();
+            let targets: Vec<String> = cfg
+                .search
+                .concurrency_recall_targets
+                .iter()
+                .map(|t| t.to_string())
+                .collect();
+            println!(
+                "\n  Concurrency: {} clients at recall targets {} ({cpus} CPUs on this host)",
+                clients.join(", "),
+                targets.join(", "),
+            );
+        }
     }
 }

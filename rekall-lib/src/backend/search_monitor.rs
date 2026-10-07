@@ -194,6 +194,7 @@ struct BackendIoRaw {
 /// In-flight state for one sweep point, returned by [`SearchIoMonitor::begin`].
 pub struct ActivePoint {
     started: Instant,
+    backend_pids: Vec<i32>,
     pg_before: PgIoSnapshot,
     disk_before: Option<DiskCounters>,
     sampler: Option<(
@@ -209,7 +210,6 @@ pub struct SearchIoMonitor {
     client: Client,
     index_sql_name: String,
     table_name: String,
-    backend_pid: Option<i32>,
     devices: Vec<String>,
     device_resolved: bool,
     track_io_timing: bool,
@@ -218,15 +218,11 @@ pub struct SearchIoMonitor {
 }
 
 impl SearchIoMonitor {
-    /// `backend_pid` is the pid of the connection that will run the
-    /// timed queries (`SELECT pg_backend_pid()` on it); `None` skips
-    /// the per-backend layer. Returns `None` if the monitor connection
-    /// can't be opened.
+    /// Returns `None` if the monitor connection can't be opened.
     pub async fn new(
         dsn: &str,
         index_sql_name: &str,
         table_name: &str,
-        backend_pid: Option<i32>,
         interval: Duration,
     ) -> Option<Self> {
         let (client, connection) = tokio_postgres::connect(dsn, tokio_postgres::NoTls)
@@ -276,7 +272,6 @@ impl SearchIoMonitor {
             client,
             index_sql_name: index_sql_name.to_string(),
             table_name: table_name.to_string(),
-            backend_pid,
             devices,
             device_resolved,
             track_io_timing,
@@ -285,7 +280,7 @@ impl SearchIoMonitor {
         })
     }
 
-    async fn pg_snapshot(&self) -> PgIoSnapshot {
+    async fn pg_snapshot(&self, backend_pids: &[i32]) -> PgIoSnapshot {
         let mut snap = PgIoSnapshot::default();
 
         if let Ok(Some(row)) = self
@@ -314,35 +309,34 @@ impl SearchIoMonitor {
             snap.heap_hit = row.get(1);
         }
 
-        if self.has_backend_io {
-            if let Some(pid) = self.backend_pid {
-                // Byte columns are numeric (uint64 range) — cast for i64
-                // decoding; realistic benchmark values fit comfortably.
-                if let Ok(Some(row)) = self
-                    .client
-                    .query_opt(
-                        "SELECT COALESCE(sum(reads), 0)::int8, \
-                                COALESCE(sum(read_bytes), 0)::int8, \
-                                COALESCE(sum(hits), 0)::int8, \
-                                COALESCE(sum(writes), 0)::int8, \
-                                COALESCE(sum(write_bytes), 0)::int8, \
-                                COALESCE(sum(evictions), 0)::int8, \
-                                COALESCE(sum(read_time), 0)::float8 \
-                         FROM pg_stat_get_backend_io($1)",
-                        &[&pid],
-                    )
-                    .await
-                {
-                    snap.backend = Some(BackendIoRaw {
-                        reads: row.get(0),
-                        read_bytes: row.get(1),
-                        hits: row.get(2),
-                        writes: row.get(3),
-                        write_bytes: row.get(4),
-                        evictions: row.get(5),
-                        read_time_ms: row.get(6),
-                    });
-                }
+        if self.has_backend_io && !backend_pids.is_empty() {
+            // Byte columns are numeric (uint64 range) — cast for i64
+            // decoding; realistic benchmark values fit comfortably.
+            if let Ok(Some(row)) = self
+                .client
+                .query_opt(
+                    "SELECT COALESCE(sum(io.reads), 0)::int8, \
+                            COALESCE(sum(io.read_bytes), 0)::int8, \
+                            COALESCE(sum(io.hits), 0)::int8, \
+                            COALESCE(sum(io.writes), 0)::int8, \
+                            COALESCE(sum(io.write_bytes), 0)::int8, \
+                            COALESCE(sum(io.evictions), 0)::int8, \
+                            COALESCE(sum(io.read_time), 0)::float8 \
+                     FROM unnest($1::int4[]) AS b(pid), \
+                          LATERAL pg_stat_get_backend_io(b.pid) AS io",
+                    &[&backend_pids],
+                )
+                .await
+            {
+                snap.backend = Some(BackendIoRaw {
+                    reads: row.get(0),
+                    read_bytes: row.get(1),
+                    hits: row.get(2),
+                    writes: row.get(3),
+                    write_bytes: row.get(4),
+                    evictions: row.get(5),
+                    read_time_ms: row.get(6),
+                });
             }
         }
 
@@ -358,9 +352,12 @@ impl SearchIoMonitor {
 
     /// Snapshot the PG counters, record the disk baseline, and start
     /// the continuous device sampler. Call after warmup/cache eviction
-    /// (and after flushing the query backend's stats).
-    pub async fn begin(&self) -> ActivePoint {
-        let pg_before = self.pg_snapshot().await;
+    /// (and after flushing the query backends' stats). `backend_pids` are
+    /// the connections that will run the timed queries; their own I/O is
+    /// summed. Keep them open until `finish`, since PG drops a backend's
+    /// stats when it exits.
+    pub async fn begin(&self, backend_pids: &[i32]) -> ActivePoint {
+        let pg_before = self.pg_snapshot(backend_pids).await;
         let disk_before = self.read_disk();
 
         let sampler = disk_before.map(|baseline| {
@@ -397,6 +394,7 @@ impl SearchIoMonitor {
 
         ActivePoint {
             started: Instant::now(),
+            backend_pids: backend_pids.to_vec(),
             pg_before,
             disk_before,
             sampler,
@@ -418,7 +416,7 @@ impl SearchIoMonitor {
             None => Vec::new(),
         };
 
-        let pg_after = self.pg_snapshot().await;
+        let pg_after = self.pg_snapshot(&point.backend_pids).await;
         let before = &point.pg_before;
 
         let backend = match (pg_after.backend, before.backend) {

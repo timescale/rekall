@@ -12,7 +12,7 @@
 use std::path::Path;
 
 use crate::config::DatasetConfig;
-use crate::metrics::{recall_distance_based, RunSummary, SearchResult};
+use crate::metrics::{mean_recall_distance_based, RunSummary, SearchResult};
 
 /// Ground-truth neighbour IDs and their distances, one row per query.
 pub struct GroundTruth {
@@ -115,28 +115,18 @@ fn from_ground_truth_json(path: &Path) -> Option<GroundTruth> {
 /// dropped (can't be recomputed). Returns the rebuilt results (query_results
 /// cleared) ready for plotting.
 pub fn recompute(summary: &RunSummary, gt: &GroundTruth) -> Vec<SearchResult> {
-    const EPSILON: f64 = 1e-3;
     let mut out = Vec::new();
     for r in &summary.search_results {
-        if r.query_results.is_empty() {
+        let Some(recall) = mean_recall_distance_based(&r.query_results, r.k, |qi| {
+            Some((
+                gt.neighbors.get(qi)?.as_slice(),
+                gt.distances.get(qi)?.as_slice(),
+            ))
+        }) else {
             continue;
-        }
-        let nq = r.query_results.len().min(gt.neighbors.len());
-        if nq == 0 {
-            continue;
-        }
-        let mut total = 0.0;
-        for qi in 0..nq {
-            total += recall_distance_based(
-                &r.query_results[qi].neighbors,
-                &gt.neighbors[qi],
-                &gt.distances[qi],
-                r.k,
-                EPSILON,
-            );
-        }
+        };
         let mut updated = r.clone();
-        updated.avg_recall = total / nq as f64;
+        updated.avg_recall = recall;
         updated.query_results = Vec::new();
         out.push(updated);
     }

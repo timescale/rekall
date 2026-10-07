@@ -1,3 +1,4 @@
+pub mod concurrency;
 pub mod index;
 pub mod init;
 pub mod load;

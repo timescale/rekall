@@ -16,26 +16,7 @@ use super::distance;
 
 pub const SUMMARY_FILE: &str = "summary.json";
 
-/// Basis of the recall values in a run's published numbers. A run is all one
-/// basis, never a mix: distance-based (ann-benchmarks tie-aware recompute)
-/// when ground truth was available at publish time, else the ID-based
-/// `avg_recall` recorded at benchmark time.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum RecallBasis {
-    Distance,
-    Id,
-}
-
-impl RecallBasis {
-    /// Human wording for table captions.
-    pub fn describe(self) -> &'static str {
-        match self {
-            RecallBasis::Distance => "distance-based (ann-benchmarks, tie-aware)",
-            RecallBasis::Id => "ID-based",
-        }
-    }
-}
+pub use crate::metrics::RecallBasis;
 
 /// Search results carrying their FINAL recall values, computed once per
 /// publish and shared by report generation, `summary.json`, and the run-page
@@ -221,6 +202,7 @@ mod tests {
                 cache: Some("prewarmed".into()),
             }],
             search_results: vec![search_result("mkt-n1000", 0.91, 3000.0)],
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         }
     }

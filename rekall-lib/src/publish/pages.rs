@@ -1400,6 +1400,7 @@ mod tests {
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: Vec::new(),
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         }
     }

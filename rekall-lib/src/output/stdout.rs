@@ -4,7 +4,10 @@ use std::time::Instant;
 use tabled::settings::Style;
 use tabled::{Table, Tabled};
 
-use crate::metrics::{IndexBuildResult, ParetoPoint, PgRuntimeInfo, RunSummary, SearchResult};
+use crate::metrics::{
+    ConcurrencyResult, IndexBuildResult, ParetoPoint, PgRuntimeInfo, RecallBasis, RunSummary,
+    SearchResult,
+};
 use crate::progress::ProgressEvent;
 
 use super::OutputSink;
@@ -346,7 +349,116 @@ impl OutputSink for StdoutSink {
         let mut table = Table::new(&rows);
         table.with(Style::rounded());
         println!("{table}");
+
+        if let Some(table) = concurrency_table(&summary.concurrency_results) {
+            println!("\n=== Concurrency: {} ===\n", summary.dataset);
+            println!("{table}");
+        }
     }
+}
+
+/// One row of the concurrency table.
+#[derive(Tabled)]
+struct ConcurrencyRow {
+    #[tabled(rename = "Index")]
+    index: String,
+    #[tabled(rename = "Params")]
+    params: String,
+    #[tabled(rename = "Recall targets")]
+    targets: String,
+    #[tabled(rename = "Clients")]
+    clients: String,
+    #[tabled(rename = "Recall")]
+    recall: String,
+    #[tabled(rename = "QPS(wall)")]
+    qps_wall: String,
+    #[tabled(rename = "QPS(busy)")]
+    qps_busy: String,
+    #[tabled(rename = "vs 1 client")]
+    scaling: String,
+    #[tabled(rename = "p50 (us)")]
+    p50_us: String,
+    #[tabled(rename = "p99 (us)")]
+    p99_us: String,
+    #[tabled(rename = "rekall cores")]
+    rekall_cores: String,
+}
+
+/// Rows for the concurrency table, by series and recall target, with client
+/// counts ascending. QPS(wall) covers the whole run and QPS(busy) the time
+/// every client was busy; scaling is wall-clock QPS over the same point's
+/// single-client baseline; rekall cores is the CPU rekall itself used,
+/// averaged over the run. `mark_id` tags ID-based recall values, for a
+/// table that mixes bases.
+fn concurrency_rows(results: &[ConcurrencyResult], mark_id: bool) -> Vec<ConcurrencyRow> {
+    let mut sorted: Vec<&ConcurrencyResult> = results.iter().collect();
+    let lowest_target = |r: &ConcurrencyResult| {
+        r.recall_targets
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, f64::min)
+    };
+    sorted.sort_by(|a, b| {
+        a.index_name
+            .cmp(&b.index_name)
+            .then(lowest_target(a).total_cmp(&lowest_target(b)))
+            .then(a.clients.cmp(&b.clients))
+    });
+    sorted
+        .into_iter()
+        .map(|r| {
+            let baseline = results
+                .iter()
+                .find(|b| b.measures(&r.index_name, &r.search_params, 1, r.k, r.num_queries))
+                .map(|b| b.qps_wall);
+            let targets: Vec<String> = r.recall_targets.iter().map(|t| t.to_string()).collect();
+            ConcurrencyRow {
+                index: r.index_name.clone(),
+                params: r.search_params.to_string(),
+                targets: targets.join(", "),
+                clients: match &r.clients_spec {
+                    Some(spec) => format!("{} ({spec})", r.clients),
+                    None => r.clients.to_string(),
+                },
+                recall: if mark_id && r.recall_basis == RecallBasis::Id {
+                    format!("{:.4} (ID)", r.avg_recall)
+                } else {
+                    format!("{:.4}", r.avg_recall)
+                },
+                qps_wall: format!("{:.0}", r.qps_wall),
+                qps_busy: format!("{:.0}", r.throughput_qps),
+                scaling: match baseline {
+                    Some(base) if base > 0.0 => format!("x{:.2}", r.qps_wall / base),
+                    _ => "-".to_string(),
+                },
+                p50_us: format!("{:.0}", r.p50_latency_us),
+                p99_us: format!("{:.0}", r.p99_latency_us),
+                rekall_cores: if r.wall_time_total_secs > 0.0 {
+                    format!("{:.2}", r.client_cpu_secs / r.wall_time_total_secs)
+                } else {
+                    "-".to_string()
+                },
+            }
+        })
+        .collect()
+}
+
+/// The concurrency results as a table with a note on its recall basis, or
+/// `None` when there are none.
+pub fn concurrency_table(results: &[ConcurrencyResult]) -> Option<String> {
+    let first = results.first()?.recall_basis;
+    let mixed = results.iter().any(|r| r.recall_basis != first);
+    let mut table = Table::new(concurrency_rows(results, mixed));
+    table.with(Style::rounded());
+    let note = if mixed {
+        format!(
+            "Recall is {}, as in published reports, except where marked (ID).",
+            RecallBasis::Distance.describe()
+        )
+    } else {
+        format!("Recall is {}.", first.describe())
+    };
+    Some(format!("{table}\n{note}"))
 }
 
 #[cfg(test)]
@@ -388,5 +500,66 @@ mod tests {
         let mut s = noninteractive();
         s.interactive = true;
         assert!(!s.should_log_progress(true, 1.0));
+    }
+
+    #[test]
+    fn concurrency_rows_group_by_target_with_scaling_over_the_baseline() {
+        use crate::metrics::test_concurrency_result as result;
+        let mut baseline = result("a", 10, 1, 1000.0);
+        baseline.clients_spec = None;
+        let mut sixteen = result("a", 10, 16, 8000.0);
+        // 0.5 s of rekall CPU over a 0.25 s run is two cores.
+        sixteen.client_cpu_secs = 0.5;
+        sixteen.wall_time_total_secs = 0.25;
+        // A lower target sorts first, though its params string sorts later.
+        let mut low_target = result("a", 200, 16, 300.0);
+        low_target.recall_targets = vec![0.90];
+        let rows = concurrency_rows(
+            &[result("b", 10, 16, 500.0), sixteen, low_target, baseline],
+            false,
+        );
+
+        let order: Vec<(&str, &str, &str)> = rows
+            .iter()
+            .map(|r| (r.index.as_str(), r.targets.as_str(), r.clients.as_str()))
+            .collect();
+        assert_eq!(
+            order,
+            [
+                ("a", "0.9", "16 (2x)"),
+                ("a", "0.95", "1"),
+                ("a", "0.95", "16 (2x)"),
+                ("b", "0.95", "16 (2x)")
+            ]
+        );
+        // nprobe 200 and series b have no baseline of their own.
+        assert_eq!(rows[0].scaling, "-");
+        assert_eq!(rows[1].scaling, "x1.00");
+        assert_eq!(rows[2].scaling, "x8.00");
+        assert_eq!(rows[2].rekall_cores, "2.00");
+        assert_eq!(rows[3].scaling, "-");
+    }
+
+    #[test]
+    fn concurrency_table_is_none_without_results() {
+        assert!(concurrency_table(&[]).is_none());
+    }
+
+    #[test]
+    fn concurrency_table_states_one_basis_and_marks_id_rows_only_when_mixed() {
+        use crate::metrics::test_concurrency_result as result;
+        let distance = concurrency_table(&[result("a", 10, 16, 1.0)]).unwrap();
+        assert!(distance.ends_with("Recall is distance-based (ann-benchmarks, tie-aware)."));
+        assert!(!distance.contains("(ID)"));
+
+        let mut id_based = result("b", 10, 16, 1.0);
+        id_based.recall_basis = RecallBasis::Id;
+        let only_id = concurrency_table(std::slice::from_ref(&id_based)).unwrap();
+        assert!(only_id.ends_with("Recall is ID-based."));
+        assert!(!only_id.contains("(ID)"));
+
+        let mixed = concurrency_table(&[result("a", 10, 16, 1.0), id_based]).unwrap();
+        assert!(mixed.contains("0.9600 (ID)"));
+        assert!(mixed.ends_with("except where marked (ID)."));
     }
 }
