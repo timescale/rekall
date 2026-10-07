@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-10-07/c8i.xlarge-145332",
+  "dataset": "cohere-1m",
+  "date": "2026-10-07",
+  "time": "14:53:32",
+  "timestamp": "2026-10-07T14:53:32+0000",
+  "instance_type": "c8i.xlarge",
+  "hostname": "ip-172-31-46-11",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 4,
+  "memory_gb": 7.6,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "f33a98a",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (f172898)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9984399999999974,
+  "qps_at_peak": 193.8695764525548,
+  "num_indexes": 2,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-10-07/c8i.xlarge-145332/",
+  "comment": "Testing concurrent clients"
+}

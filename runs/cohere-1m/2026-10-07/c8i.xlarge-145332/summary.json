@@ -1,0 +1,380 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.8786499999999813,
+      "qps": 786.5192488395102,
+      "p50_latency_us": 1111.0,
+      "p95_latency_us": 2315.0,
+      "p99_latency_us": 2995.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9375799999999804,
+      "qps": 759.114113829162,
+      "p50_latency_us": 1286.0,
+      "p95_latency_us": 1903.0,
+      "p99_latency_us": 2295.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9702399999999843,
+      "qps": 504.85672166239226,
+      "p50_latency_us": 1980.0,
+      "p95_latency_us": 2741.0,
+      "p99_latency_us": 3087.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9861399999999887,
+      "qps": 310.29791268179554,
+      "p50_latency_us": 3245.0,
+      "p95_latency_us": 4383.0,
+      "p99_latency_us": 4703.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9893099999999898,
+      "qps": 267.9175702298355,
+      "p50_latency_us": 3765.0,
+      "p95_latency_us": 5075.0,
+      "p99_latency_us": 5407.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.991239999999991,
+      "qps": 230.527492547392,
+      "p50_latency_us": 4371.0,
+      "p95_latency_us": 5875.0,
+      "p99_latency_us": 6307.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.9944999999999922,
+      "qps": 143.19964982530422,
+      "p50_latency_us": 7047.0,
+      "p95_latency_us": 9399.0,
+      "p99_latency_us": 9983.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.996299999999994,
+      "qps": 77.2513529821275,
+      "p50_latency_us": 13127.0,
+      "p95_latency_us": 17247.0,
+      "p99_latency_us": 18383.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.997109999999995,
+      "qps": 40.87220467328704,
+      "p50_latency_us": 24863.0,
+      "p95_latency_us": 32319.0,
+      "p99_latency_us": 34527.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall": 0.997269999999995,
+      "qps": 33.38917517064476,
+      "p50_latency_us": 30623.0,
+      "p95_latency_us": 39327.0,
+      "p99_latency_us": 41919.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9523499999999804,
+      "qps": 1023.1454950750376,
+      "p50_latency_us": 834.0,
+      "p95_latency_us": 1851.0,
+      "p99_latency_us": 2987.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.8754099999999827,
+      "qps": 3143.0687162827317,
+      "p50_latency_us": 301.0,
+      "p95_latency_us": 465.0,
+      "p99_latency_us": 570.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9272099999999794,
+      "qps": 1842.8909651717545,
+      "p50_latency_us": 526.0,
+      "p95_latency_us": 691.0,
+      "p99_latency_us": 913.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9617299999999795,
+      "qps": 1018.4444361158318,
+      "p50_latency_us": 950.0,
+      "p95_latency_us": 1257.0,
+      "p99_latency_us": 1566.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.983609999999986,
+      "qps": 620.1624230192386,
+      "p50_latency_us": 1566.0,
+      "p95_latency_us": 2029.0,
+      "p99_latency_us": 2529.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9942299999999923,
+      "qps": 346.0073639363241,
+      "p50_latency_us": 2767.0,
+      "p95_latency_us": 3909.0,
+      "p99_latency_us": 4595.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9984399999999974,
+      "qps": 193.8695764525548,
+      "p50_latency_us": 4991.0,
+      "p95_latency_us": 6623.0,
+      "p99_latency_us": 7311.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "build_time_secs": 1240.603787383,
+      "size_bytes": 2047885312,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "build_time_secs": 137.787408377,
+      "size_bytes": 279470080,
+      "cache": "prewarmed"
+    }
+  ],
+  "load_points": [
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9552499999999908,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 4,
+      "qps_wall": 766.1655784982702,
+      "throughput_qps": 766.1655784982702,
+      "p50_latency_us": 1272.0,
+      "p95_latency_us": 1911.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9552499999999916,
+      "recall_basis": "distance",
+      "clients": 4,
+      "clients_spec": "1x",
+      "cpu_count": 4,
+      "qps_wall": 2535.168572724581,
+      "throughput_qps": 2535.732316315291,
+      "p50_latency_us": 1538.0,
+      "p95_latency_us": 2251.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9552499999999896,
+      "recall_basis": "distance",
+      "clients": 8,
+      "clients_spec": "2x",
+      "cpu_count": 4,
+      "qps_wall": 2546.0601828081903,
+      "throughput_qps": 2546.6352894565243,
+      "p50_latency_us": 3065.0,
+      "p95_latency_us": 5407.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9933899999999966,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 4,
+      "qps_wall": 312.09888808051943,
+      "throughput_qps": 312.09888808051943,
+      "p50_latency_us": 3217.0,
+      "p95_latency_us": 4399.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.993389999999996,
+      "recall_basis": "distance",
+      "clients": 4,
+      "clients_spec": "1x",
+      "cpu_count": 4,
+      "qps_wall": 1061.807200399615,
+      "throughput_qps": 1061.9641072464835,
+      "p50_latency_us": 3787.0,
+      "p95_latency_us": 5123.0
+    },
+    {
+      "index_name": "hnsw-m24-halfvec",
+      "index_type": "pgvector-hnsw",
+      "data_type": "halfvec",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9933899999999968,
+      "recall_basis": "distance",
+      "clients": 8,
+      "clients_spec": "2x",
+      "cpu_count": 4,
+      "qps_wall": 1095.4062778776174,
+      "throughput_qps": 1095.7599086863224,
+      "p50_latency_us": 7115.0,
+      "p95_latency_us": 11391.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9672999999999878,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 4,
+      "qps_wall": 1180.6637020385292,
+      "throughput_qps": 1180.6637020385292,
+      "p50_latency_us": 831.0,
+      "p95_latency_us": 1063.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9672999999999864,
+      "recall_basis": "distance",
+      "clients": 4,
+      "clients_spec": "1x",
+      "cpu_count": 4,
+      "qps_wall": 3032.1805040971403,
+      "throughput_qps": 3032.5310790463177,
+      "p50_latency_us": 1227.0,
+      "p95_latency_us": 1964.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9672999999999872,
+      "recall_basis": "distance",
+      "clients": 8,
+      "clients_spec": "2x",
+      "cpu_count": 4,
+      "qps_wall": 3482.5306132018973,
+      "throughput_qps": 3483.341329808062,
+      "p50_latency_us": 2205.0,
+      "p95_latency_us": 3823.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905299999999928,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 4,
+      "qps_wall": 658.9910930400101,
+      "throughput_qps": 658.9910930400101,
+      "p50_latency_us": 1474.0,
+      "p95_latency_us": 1896.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905299999999928,
+      "recall_basis": "distance",
+      "clients": 4,
+      "clients_spec": "1x",
+      "cpu_count": 4,
+      "qps_wall": 1820.5117309412176,
+      "throughput_qps": 1820.5900691475783,
+      "p50_latency_us": 2073.0,
+      "p95_latency_us": 3165.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905299999999916,
+      "recall_basis": "distance",
+      "clients": 8,
+      "clients_spec": "2x",
+      "cpu_count": 4,
+      "qps_wall": 2008.8334445108476,
+      "throughput_qps": 2009.1454191471605,
+      "p50_latency_us": 3877.0,
+      "p95_latency_us": 6835.0
+    }
+  ]
+}

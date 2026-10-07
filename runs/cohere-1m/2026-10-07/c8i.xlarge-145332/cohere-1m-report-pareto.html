@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">“Testing concurrent clients”<br>cohere-1m  |  2026-10-07  |  c8i.xlarge, Intel(R) Xeon(R) 6975P-C, 4 vCPU, 8 GB<br>PG 18.6  |  shared_buffers=2 GB  |  work_mem=64 MB  |  max_parallel_maintenance_workers=2  |  pgvector 0.8.7</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.9496640017299447, 2.544601493996532, 2.995049984183925, 3.2240674465530033, 4.094558084268194, 5.14929648769907, 6.461508239652094],
+                y: [3143.0687162827317, 1842.8909651717545, 1023.1454950750376, 1018.4444361158318, 620.1624230192386, 346.0073639363241, 193.8695764525548],
+                customdata: [0.8754099999999827, 0.9272099999999794, 0.9523499999999804, 0.9617299999999795, 0.983609999999986, 0.9942299999999924, 0.9984399999999974],
+                text: ["<br>Disk read/query: 1.2 kB<br>Blks read/query: -143.4 (idx -145.0, heap 1.6)<br>Buffer hit: 94.5%<br>Disk busy: 15%","<br>Disk read/query: 244 B<br>Blks read/query: -282.9 (idx -285.5, heap 2.6)<br>Buffer hit: 89.5%<br>Disk busy: 2%","<br>Disk read/query: 24.0 kB<br>Blks read/query: -449.4 (idx -459.2, heap 9.8)<br>Buffer hit: 78.4%<br>Disk busy: 50%","<br>Disk read/query: 629 B<br>Blks read/query: -547.6 (idx -556.1, heap 8.5)<br>Buffer hit: 79.6%<br>Disk busy: 3%","<br>Disk read/query: 1.5 kB<br>Blks read/query: -1038.3 (idx -1048.9, heap 10.5)<br>Buffer hit: 76.2%<br>Disk busy: 4%","<br>Disk read/query: 1.7 kB<br>Blks read/query: -2026.1 (idx -2037.7, heap 11.6)<br>Buffer hit: 75.7%<br>Disk busy: 3%","<br>Disk read/query: 1.6 kB<br>Blks read/query: -3922.9 (idx -3937.2, heap 14.3)<br>Buffer hit: 72.9%<br>Disk busy: 2%"],
+                name: "PRISM",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "PRISM",
+                hovertemplate: "<b>PRISM</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.9797077064680693, 2.7094163506942497, 3.484378253608468, 4.2647913385903555, 4.527699005397455, 4.728760779676453, 5.19749200605417, 5.595715597398995, 5.843604592742706, 5.900719936537374],
+                y: [786.5192488395102, 759.114113829162, 504.85672166239226, 310.29791268179554, 267.9175702298355, 230.527492547392, 143.19964982530422, 77.2513529821275, 40.87220467328704, 33.38917517064476],
+                customdata: [0.8786499999999813, 0.9375799999999804, 0.9702399999999844, 0.9861399999999888, 0.9893099999999898, 0.991239999999991, 0.9944999999999922, 0.996299999999994, 0.997109999999995, 0.997269999999995],
+                text: ["<br>Disk read/query: 15.9 kB<br>Blks read/query: 14.2 (idx 5.3, heap 8.9)<br>Buffer hit: 97.8%<br>Disk busy: 47%","<br>Disk read/query: 846 B<br>Blks read/query: 13.5 (idx 4.3, heap 9.1)<br>Buffer hit: 98.5%<br>Disk busy: 3%","<br>Disk read/query: 242 B<br>Blks read/query: 11.0 (idx 1.7, heap 9.3)<br>Buffer hit: 99.2%<br>Disk busy: 1%","<br>Disk read/query: 92 B<br>Blks read/query: 9.6 (idx 0.2, heap 9.3)<br>Buffer hit: 99.6%<br>Disk busy: 0%","<br>Disk read/query: 18 B<br>Blks read/query: 9.4 (idx 0.1, heap 9.3)<br>Buffer hit: 99.7%<br>Disk busy: 0%","<br>Disk read/query: 99 B<br>Blks read/query: 9.4 (idx 0.0, heap 9.4)<br>Buffer hit: 99.7%<br>Disk busy: 0%","<br>Disk read/query: 120 B<br>Blks read/query: 9.4 (idx 0.0, heap 9.4)<br>Buffer hit: 99.8%<br>Disk busy: 0%","<br>Disk read/query: 37 B<br>Blks read/query: 9.4 (idx 0.0, heap 9.4)<br>Buffer hit: 99.9%<br>Disk busy: 0%","<br>Disk read/query: 10 B<br>Blks read/query: 9.4 (idx 0.0, heap 9.4)<br>Buffer hit: 99.9%<br>Disk busy: 0%","<br>Disk read/query: 46 B<br>Blks read/query: 9.4 (idx 0.0, heap 9.4)<br>Buffer hit: 100.0%<br>Disk busy: 0%"],
+                name: "pgvector HNSW (halfvec)",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "pgvector HNSW (halfvec)",
+                hovertemplate: "<b>pgvector HNSW (halfvec)</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
