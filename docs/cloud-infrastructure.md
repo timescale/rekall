@@ -209,6 +209,7 @@ PG settings are computed automatically from the instance type:
 | `work_mem` | 256 MB | |
 | `max_wal_size` / `min_wal_size` | 16 GB / 2 GB | fewer, larger checkpoints during bulk load |
 | `max_parallel_maintenance_workers` | physical cores, capped at 32 | pgvector uses this directly as its HNSW build worker count; pinned to physical cores because SMT siblings contend on the shared graph |
+| `max_connections` | 2 × vCPU + 50 | room for the search phase's concurrent clients (`search.clients` defaults to `["1x", "2x"]`) plus rekall's own connections |
 
 Computed in `InfraConfig::effective_pg_config`. **If you change a formula,
 change this table** — it drifted out of step for months (see the history

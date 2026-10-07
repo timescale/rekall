@@ -552,6 +552,11 @@ impl InfraConfig {
                 vcpus.div_ceil(2).to_string(),
             );
 
+            // The search phase's concurrency test opens up to 2×vCPU query
+            // clients (`search.clients` default "2x"); the extra 50 covers
+            // rekall's own management and monitor connections and psql.
+            set("max_connections", (vcpus * 2 + 50).to_string());
+
             // EBS gp3 / NVMe-class storage; JIT off for vector workloads (its
             // compile cost rarely pays off for ANN queries) — both per jkatz.
             set("effective_io_concurrency", "200".to_string());
@@ -876,6 +881,7 @@ git_ref = "feat/parallel-build"
         assert_eq!(pg["max_parallel_maintenance_workers"], "7"); // vCPU-1 (no SMT)
         assert_eq!(pg["max_parallel_workers"], "8");
         assert_eq!(pg["max_worker_processes"], "16");
+        assert_eq!(pg["max_connections"], "66"); // 2·8 clients + 50
         assert_eq!(pg["maintenance_io_concurrency"], "200");
         assert_eq!(pg["jit"], "off");
     }
@@ -898,6 +904,7 @@ git_ref = "feat/parallel-build"
         };
         let pg = big.effective_pg_config();
         assert_eq!(pg["max_parallel_maintenance_workers"], "32"); // 96/2 → cap 32
+        assert_eq!(pg["max_connections"], "242"); // 2·96 clients + 50
         assert_eq!(pg["maintenance_work_mem"], "314572MB"); // 2·RAM/5
     }
 
