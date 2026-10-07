@@ -40,7 +40,7 @@ anywhere else. Check before planning:
 - `gh issue list --search <keywords>` and `gh pr list --state all --search
   <keywords>` — a past PR often carries design discussion, a rejected
   approach, or a caveat that never made it into docs or code comments.
-- `DESIGN.md`, `docs/`, the suites under `benchmarks/` (a config there
+- `docs/`, the suites under `benchmarks/` (a config there
   may already exercise what the feature is for), and any project memory
   covering the area.
 

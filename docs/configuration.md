@@ -205,13 +205,13 @@ control order).
 
 ```bash
 # All configs in the directory
-rekall run configs/cohere-1m/
+rekall run configs/cohere-1m-comparison/
 
-# Only pg_vectorsearch configs (shell glob)
-rekall run configs/cohere-1m/mkt-*.toml
+# Only PRISM configs (shell glob)
+rekall run configs/cohere-1m-comparison/mkt-*.toml
 
 # Multiple groups
-rekall run configs/group1/ configs/group2/mkt-*.toml
+rekall run configs/cohere-1m-comparison/ configs/cohere-10m-comparison/mkt-*.toml
 ```
 
 When individual files are specified, `base.toml` is still loaded from
@@ -266,7 +266,7 @@ This avoids expensive rebuilds when re-running benchmarks with the same
 index configs. Use `--rebuild` to force rebuilding all indexes:
 
 ```bash
-rekall run configs/cohere-1m/ --rebuild
+rekall run configs/cohere-1m-comparison/ --rebuild
 ```
 
 ## Run Traceability
@@ -285,35 +285,46 @@ included in JSON output under `config` and `pg_runtime` keys.
 ## CLI Reference
 
 ```
-rekall run <paths...>                # run benchmark(s)
-  --phase <phase>                    # run only: init, load, index, search, report
+rekall run <suite-or-paths...>       # all phases
+  --datasets <files...> --indexes <files-or-dirs...>
+  --phase init|load|index|search|report
   --index <name>                     # only this index
-  --rebuild                          # force rebuild existing indexes
-  --dry-run                          # show what would run
+  --rebuild                          # rebuild indexes that already exist
+  --reload                           # drop and reload the table
+  --clean-run                        # archive the results dir, then start fresh
+  --publish                          # upload to S3 and publish pages
+  --comment "..."
+  --dry-run
 
-rekall init <config>                 # create tables only
-rekall load <config>                 # load dataset only
-  --parallelism <N>
-rekall index <config>                # build indexes only
-  --name <name>
-rekall search <config>               # search only
-  --index <name>
-rekall report <config>               # generate report
+rekall init <config>
+rekall load <config> [--parallelism N]
+rekall index <config> [--name N]
+rekall search <config> [--index N] [--rerun]
+rekall report <results-dir> [--dataset <hdf5>] [-o <dir>]
+rekall publish <results-dir>         # --dry-run, --force, --s3-only, --no-pages
+rekall recall <results...> --ground-truth <hdf5-or-json>
+rekall plot <results...> -o plot.svg
 
-rekall config [<config>]             # show config(s)
-rekall dataset info <file.hdf5>      # inspect dataset
-rekall dataset validate <file.hdf5>  # validate dataset
+rekall config [<config>]
+rekall setup                         # ~/.config/rekall/config.toml
+rekall dataset info|validate|truth|sql|compare <file.hdf5>
 
-rekall infra init [-c config]         # generate setup resources + instructions
-rekall infra up [-c config] [--spot-instance=true|false]  # provision cloud instance
-rekall infra down [-c config] [-n N]  # destroy cloud instance
-rekall infra list                     # list all instances
-rekall infra status [-c config] [-n N]# show instance status
-rekall infra ssh [-c config] [-n N]   # SSH into instance
-rekall infra dsn [-c config] [-n N]   # print connection string
-rekall infra deploy-key [-c config]   # generate deploy key for GitHub
-rekall infra iam-policy [-c config]   # print IAM template
+rekall infra init [-c config] [--terraform]
+rekall infra up [-c config] [--spot-instance=true|false] [-n name]
+rekall infra run [-c config] <benchmarks...> [--wait] [--no-publish]
+rekall infra load [-c config] <benchmarks...>
+rekall infra resize -c <target.toml> [-n name]
+rekall infra down|status|ssh|attach|dsn [-c config] [-n name]
+rekall infra list
+rekall infra show [-c config]
+rekall infra provision [-c config]
+rekall infra deploy-key [-c config]
+rekall infra iam-policy [-c config] [--cloudformation]
 ```
+
+`rekall report` and `rekall publish` take a results directory of per-index
+`*.json.gz` files, not a benchmark config. `rekall search` skips sweep
+points already saved in that directory; `--rerun` measures them again.
 
 ## Heap storage precision (`[load] storage`)
 

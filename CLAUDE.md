@@ -100,7 +100,6 @@ it did in the past. Readers care about understanding the code as it is.
 Keep documentation up-to-date with code changes:
 
 - `README.md`: features, quick start, and the commands a user runs.
-- `DESIGN.md`: architecture, phases, and the backend and sink traits.
 - `docs/configuration.md`: every config key and its default. A new or
   changed key is not done until it is documented here.
 - `docs/cloud-infrastructure.md`: the `infra` commands and provisioning.
