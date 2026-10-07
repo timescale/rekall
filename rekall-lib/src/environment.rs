@@ -53,7 +53,8 @@ fn collect_cpu_model() -> String {
     String::from("unknown")
 }
 
-fn collect_cpu_count() -> usize {
+/// CPUs available to this process, honoring cgroup and affinity limits.
+pub fn collect_cpu_count() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)

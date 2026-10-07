@@ -48,6 +48,8 @@ k = 10
 runs = 3                  # best-of-N runs kept
 warmup = 100              # warmup queries before measurement
 num_queries = 2000        # omit to use all queries in dataset
+clients = ["1x", "2x"]    # concurrent clients; see "Concurrent Clients"
+concurrency_recall_targets = [0.95, 0.99]
 
 [[search.sweep]]
 index = "mkt-fs16"
@@ -65,8 +67,10 @@ results_dir = "results/cohere-1m"
 ```
 
 Each searched index writes a timestamped `{index}-{ts}.json.gz` under
-`results_dir` (the source of truth). The consolidated view is produced on
-demand by `rekall report <results_dir>` / `rekall publish <results_dir>`.
+`results_dir` (the source of truth), and its concurrent-client results go
+in a separate `{index}-concurrency-{ts}.json.gz`. The consolidated view is
+produced on demand by `rekall report <results_dir>` /
+`rekall publish <results_dir>`.
 
 ## Index Params vs GUCs
 
@@ -104,6 +108,52 @@ Multiple params create a Cartesian product:
 GUC names are validated before the sweep starts. A typo like
 `prism.nprob` gives a clear error instead of silently using the wrong
 parameter.
+
+## Concurrent Clients
+
+After a query series' single-client sweep, rekall measures it again with
+several clients querying at once. This runs only at the operating point
+for each recall target: the highest-QPS sweep point whose recall reaches
+the target. Recall is distance-based when the dataset has ground-truth
+distances, the same basis the published reports use.
+
+| Key | Default | Meaning |
+|-----|---------|---------|
+| `clients` | `["1x", "2x"]` | Client counts to measure. `"Nx"` is N times the CPU count of the host running rekall (fractions like `"1.5x"` allowed, up to `"64x"`); plain integers are fixed counts, up to 10,000. `[]` turns concurrency off. |
+| `concurrency_recall_targets` | `[0.95, 0.99]` | Recall targets whose operating points are measured. A target no sweep point reaches is skipped with a warning. |
+
+Counts that resolve to the same number run once. A count of 1 is covered
+by the single-client baseline measured right before the concurrent runs,
+and is not measured on its own: with only `clients = [1]`, or `["1x"]` on
+a one-CPU host, nothing runs. The CPU count is the rekall host's, which
+matches the database's when both run on one machine, as `rekall infra`
+sets them up; use plain integers when PostgreSQL runs elsewhere.
+
+PostgreSQL's `max_connections` must leave room for the largest count plus
+rekall's own few connections; `rekall infra` provisions `2 × vCPU + 50`.
+A count that does not fit, by the server's count of free slots or because
+the server refuses a client connection, is skipped with a warning and the
+run goes on. Each client is a separate backend with its own memory, which
+comes out of what the OS can use as page cache.
+
+Each operating point adds a baseline and one run per count, each of
+`search.runs` repetitions over the query set, cycled until there are at
+least ten queries per client. That is a few points per query series, small
+next to the sweep itself, though a high-recall baseline can take minutes
+on a large index.
+
+Each measurement reports two throughputs. `qps_wall` is every query over
+the whole run, and it is what the reports lead with and what picks the
+best of `search.runs`. `throughput_qps` adds up each client's own rate over
+the queries it finished before the first client ran out of work, so it
+leaves out the drain at the end, when fewer clients are still busy. Close
+together, they say the run was long enough for the client count.
+
+Rerunning on a results directory measures only what is missing. A
+series' newest concurrency file is its complete set: when the sweep or
+the targets change which points are selected, results for points no
+longer selected are dropped from it, and results taken with a different
+`search.runs` or `search.cache` are measured again.
 
 ## Local Overrides
 

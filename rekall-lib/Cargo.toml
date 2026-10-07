@@ -33,6 +33,7 @@ reqwest = { workspace = true }
 aws-config = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 half = { version = "2.7.1", default-features = false }
+libc = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

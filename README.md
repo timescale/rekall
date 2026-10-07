@@ -27,6 +27,10 @@ find? Total recall means you found them all.
   unless `--reload`. Completed search points are skipped on the next run.
 - **Prepared statements**: binary vector encoding with prepared queries for
   minimal measurement overhead.
+- **Concurrent clients**: each index's 95% and 99% recall operating points
+  are also measured with as many clients as the host has CPUs, and twice
+  that, next to a single-client baseline. See `search.clients` in
+  [docs/configuration.md](docs/configuration.md).
 - **Reports**: recall-vs-QPS (Pareto and per-config), build times, and a
   summary table, as HTML and SVG, from a results directory.
 - **Publishing**: archive a run to S3 and publish GitHub Pages reports.

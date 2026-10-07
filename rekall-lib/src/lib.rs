@@ -22,8 +22,9 @@ use backend::DataLoader;
 use config::{BenchmarkConfig, CacheMode};
 use dataset::DatasetReader;
 use error::Result;
-use metrics::{IndexBuildResult, PgRuntimeInfo, RunEnvironment, SearchResult};
+use metrics::{IndexBuildResult, PgRuntimeInfo, RunEnvironment};
 use output::OutputSink;
+use phase::search::SearchResults;
 use phase::Phase;
 use progress::{progress_channel, ProgressEvent};
 use tokio_postgres::CancelToken;
@@ -217,7 +218,7 @@ impl Agent {
         let mut run_env = environment::collect(self.comment.clone());
 
         let mut index_builds: Vec<IndexBuildResult> = Vec::new();
-        let mut search_results: Vec<SearchResult> = Vec::new();
+        let mut search_results = SearchResults::default();
         let mut pg_runtime: Option<PgRuntimeInfo> = None;
 
         if phases
@@ -625,7 +626,7 @@ impl Agent {
         phase: Phase,
         filter_index: Option<&str>,
         index_builds: &mut Vec<IndexBuildResult>,
-        search_results: &mut Vec<SearchResult>,
+        search_results: &mut SearchResults,
         run_env: &RunEnvironment,
         pg_runtime: &Option<PgRuntimeInfo>,
     ) -> Result<()> {
@@ -697,7 +698,7 @@ impl Agent {
                 let restore_result = self.restore_phase_pg_config("search", plan).await;
                 let results = search_result?;
                 restore_result?;
-                for result in &results {
+                for result in &results.search {
                     for output in self.outputs.iter_mut() {
                         output.on_search_result(result);
                     }
@@ -735,7 +736,7 @@ impl Agent {
         filter_index: Option<&str>,
         rebuild: bool,
         index_builds: &mut Vec<IndexBuildResult>,
-        search_results: &mut Vec<SearchResult>,
+        search_results: &mut SearchResults,
         run_env: &RunEnvironment,
         pg_runtime: &Option<PgRuntimeInfo>,
     ) -> Result<()> {
@@ -940,7 +941,7 @@ impl Agent {
         &mut self,
         index_configs: &[config::IndexConfig],
         index_builds: &[IndexBuildResult],
-        search_results: &mut Vec<SearchResult>,
+        search_results: &mut SearchResults,
         run_env: &RunEnvironment,
         pg_runtime: &Option<PgRuntimeInfo>,
     ) -> Result<()> {
@@ -1040,7 +1041,7 @@ impl Agent {
             }
 
             let results = search_handle.await.unwrap()?;
-            for result in &results {
+            for result in &results.search {
                 for output in self.outputs.iter_mut() {
                     output.on_search_result(result);
                 }
@@ -1067,7 +1068,7 @@ impl Agent {
         environment: Option<RunEnvironment>,
         pg_runtime: Option<PgRuntimeInfo>,
         index_builds: Vec<IndexBuildResult>,
-    ) -> Result<Vec<SearchResult>> {
+    ) -> Result<SearchResults> {
         let (tx, mut rx) = progress_channel();
         let config = self.config.clone();
         let registry = backend::BackendRegistry::new();

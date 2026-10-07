@@ -680,6 +680,7 @@ mod tests {
             }),
             index_builds: Vec::new(),
             search_results: Vec::new(),
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         }
     }
@@ -744,6 +745,7 @@ mod tests {
                 result_with_io("a", 0.9, 100 * 65536),
                 result("meerkat", None, "no-io"), // dropped: no io stats
             ],
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         };
         let opts = PlotOptions {
@@ -773,6 +775,7 @@ mod tests {
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: vec![result_with_io("a", 0.9, 0)],
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         };
         let opts = PlotOptions {
@@ -795,6 +798,7 @@ mod tests {
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: vec![result_with_io("a", 0.9, 100 * 4096), result("x", None, "b")],
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         };
         let opts = PlotOptions {
@@ -828,6 +832,7 @@ mod tests {
             pg_runtime: None,
             index_builds: Vec::new(),
             search_results: Vec::new(),
+            concurrency_results: Vec::new(),
             pareto: Vec::new(),
         };
         assert!(build_caption(&[bare]).is_none());

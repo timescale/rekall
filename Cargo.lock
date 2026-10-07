@@ -2599,6 +2599,7 @@ dependencies = [
  "hdf5-metno",
  "hdrhistogram",
  "indicatif",
+ "libc",
  "minijinja",
  "ndarray",
  "postgres-types",
