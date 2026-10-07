@@ -93,12 +93,38 @@ pub struct BuildInfo {
     pub cache: Option<String>,
 }
 
+/// One measurement with concurrent clients at a recall target's operating
+/// point.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadPoint {
+    pub index_name: String,
+    pub index_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_type: Option<String>,
+    pub recall_targets: Vec<f64>,
+    pub recall: f64,
+    pub recall_basis: RecallBasis,
+    pub clients: usize,
+    /// The `search.clients` entry, e.g. "2x"; `None` for the single-client
+    /// baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clients_spec: Option<String>,
+    pub cpu_count: usize,
+    pub qps_wall: f64,
+    pub throughput_qps: f64,
+    pub p50_latency_us: f64,
+    pub p95_latency_us: f64,
+}
+
 /// The `summary.json` payload.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompactSummary {
     pub recall_basis: RecallBasis,
     pub points: Vec<SweepPoint>,
     pub builds: Vec<BuildInfo>,
+    /// Absent from runs without concurrency measurements.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub load_points: Vec<LoadPoint>,
 }
 
 impl CompactSummary {
@@ -128,10 +154,30 @@ impl CompactSummary {
                 cache: b.cache.clone(),
             })
             .collect();
+        let load_points = summary
+            .concurrency_results
+            .iter()
+            .map(|r| LoadPoint {
+                index_name: r.index_name.clone(),
+                index_type: r.index_type.clone(),
+                data_type: r.data_type.clone(),
+                recall_targets: r.recall_targets.clone(),
+                recall: r.avg_recall,
+                recall_basis: r.recall_basis,
+                clients: r.clients,
+                clients_spec: r.clients_spec.clone(),
+                cpu_count: r.cpu_count,
+                qps_wall: r.qps_wall,
+                throughput_qps: r.throughput_qps,
+                p50_latency_us: r.p50_latency_us,
+                p95_latency_us: r.p95_latency_us,
+            })
+            .collect();
         CompactSummary {
             recall_basis: finals.basis,
             points,
             builds,
+            load_points,
         }
     }
 }
@@ -149,6 +195,38 @@ pub fn write_summary_json(dir: &Path, cs: &CompactSummary) -> Result<()> {
 pub fn read_summary_json(dir: &Path) -> Option<CompactSummary> {
     let s = std::fs::read_to_string(dir.join(SUMMARY_FILE)).ok()?;
     serde_json::from_str(&s).ok()
+}
+
+/// A load point for tests: `clients` clients on `name` at `recall`, serving
+/// the given recall targets.
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn test_load_point(
+    name: &str,
+    index_type: &str,
+    recall_targets: &[f64],
+    recall: f64,
+    clients: usize,
+    clients_spec: Option<&str>,
+    qps_wall: f64,
+    throughput_qps: f64,
+) -> LoadPoint {
+    LoadPoint {
+        index_name: name.into(),
+        index_type: index_type.into(),
+        data_type: None,
+        recall_targets: recall_targets.to_vec(),
+        recall,
+        recall_basis: RecallBasis::Distance,
+        clients,
+        clients_spec: clients_spec.map(str::to_string),
+        cpu_count: 8,
+        qps_wall,
+        throughput_qps,
+        // Each client waits on one query at a time; the tail is twice that.
+        p50_latency_us: clients as f64 / throughput_qps * 1e6,
+        p95_latency_us: 2.0 * clients as f64 / throughput_qps * 1e6,
+    }
 }
 
 #[cfg(test)]

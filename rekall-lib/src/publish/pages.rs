@@ -412,6 +412,153 @@ fn fmt_delta(pct: f64, lower_is_better: bool) -> String {
     format!("<span class=\"{class}\">{pct:+.0}%</span>")
 }
 
+/// Row label of the throughput-under-load table: the recall target and
+/// client count, with the `search.clients` entry it came from.
+fn load_row_label(row: &compare::LoadRow) -> String {
+    let clients = match row.clients_spec.as_deref() {
+        None => "1 client".to_string(),
+        Some(spec) if spec.ends_with('x') => format!(
+            "{} clients <span class=\"faint\">({} of {} CPUs)</span>",
+            row.clients,
+            esc(spec),
+            row.cpu_count
+        ),
+        Some(_) => format!("{} clients", row.clients),
+    };
+    format!("{:.2} · {clients}", row.target)
+}
+
+/// The throughput-under-load table: each column's operating point for a
+/// recall target measured with concurrent clients, as wall-clock QPS with
+/// the all-clients-busy throughput in parentheses, and the p50 and p95
+/// latency below. Empty string when the run has no concurrency
+/// measurements.
+fn render_load_table(
+    compact: &CompactSummary,
+    model: &compare::RunTableModel,
+    header: &dyn Fn(&mut String, &str),
+) -> String {
+    let rows = compare::build_load_rows(compact, model);
+    let Some(first) = compact.load_points.first() else {
+        return String::new();
+    };
+    if rows.is_empty() {
+        return String::new();
+    }
+    let delta_col = model.meerkat_col.is_some();
+    let mut b = String::new();
+    b.push_str("<h2>Throughput under load</h2>");
+    header(&mut b, "Recall · clients");
+    for row in &rows {
+        // Best competitor (or best overall in Configs mode) by wall-clock QPS.
+        let best = row
+            .cells
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !(delta_col && Some(*i) == model.meerkat_col))
+            .filter_map(|(i, c)| c.as_ref().map(|c| (i, c.qps_wall)))
+            .max_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(i, _)| i);
+        b.push_str(&format!("<tr><td>{}</td>", load_row_label(row)));
+        for (i, cell) in row.cells.iter().enumerate() {
+            match cell {
+                Some(c) => {
+                    let wall = fmt_thousands(c.qps_wall);
+                    let wall = if best == Some(i) {
+                        format!("<b>{wall}</b>")
+                    } else {
+                        wall
+                    };
+                    let speedup = c
+                        .speedup
+                        .map(|x| format!(" · {x:.1}\u{d7}"))
+                        .unwrap_or_default();
+                    b.push_str(&format!(
+                        "<td>{wall} <span class=\"faint\">({})</span>{speedup}<br>\
+                         p50 {} · p95 {}</td>",
+                        fmt_thousands(c.throughput_qps),
+                        fmt_ms(c.p50_us),
+                        fmt_ms(c.p95_us)
+                    ));
+                }
+                None => b.push_str("<td>—</td>"),
+            }
+        }
+        if delta_col {
+            let pair = model
+                .meerkat_col
+                .zip(best)
+                .and_then(|(m, c)| Some((row.cells[m].as_ref()?, row.cells[c].as_ref()?)));
+            match pair {
+                Some((m, c)) => b.push_str(&format!(
+                    "<td>{}</td>",
+                    fmt_delta((m.qps_wall / c.qps_wall - 1.0) * 100.0, false)
+                )),
+                None => b.push_str("<td>—</td>"),
+            }
+        }
+        b.push_str("</tr>");
+    }
+    b.push_str("</table>");
+
+    b.push_str(&format!(
+        "<p class=\"sub\">Each configuration is measured at its operating point \
+         for the target: its fastest sweep point whose recall reaches it. Values \
+         are measured there, not interpolated, so the recall can be above the \
+         target. Each cell is wall-clock QPS over the whole run, then in \
+         parentheses the throughput while every client is busy, which leaves \
+         out the drain at the end, and below them the p50 and p95 query \
+         latency over all clients. With more than one client, N\u{d7} is the \
+         speedup: wall-clock QPS over the same configuration's single-client \
+         wall-clock QPS at that target. Ideal scaling matches the client count \
+         until the host's CPUs saturate, after which it flattens. Clients are concurrent connections from \
+         rekall, and CPU counts are the rekall host's. Wall-clock QPS includes \
+         rekall's own work between queries, so the 1-client row reads a little \
+         below QPS at recall, which comes from query latency. Recall is {}.</p>",
+        esc(first.recall_basis.describe())
+    ));
+    // One note per column, target and config. Client counts are named only
+    // when a column's best config differs between them.
+    let mut groups: Vec<(usize, f64, &str, f64, Vec<usize>)> = Vec::new();
+    for row in &rows {
+        for (i, cell) in row.cells.iter().enumerate() {
+            let Some(c) = cell else { continue };
+            match groups
+                .iter_mut()
+                .find(|g| g.0 == i && g.1 == row.target && g.2 == c.config)
+            {
+                Some(g) => g.4.push(row.clients),
+                None => groups.push((i, row.target, &c.config, c.recall, vec![row.clients])),
+            }
+        }
+    }
+    let notes: Vec<String> = groups
+        .iter()
+        .map(|(i, target, config, recall, clients)| {
+            let shared = groups
+                .iter()
+                .filter(|g| g.0 == *i && g.1 == *target)
+                .count()
+                > 1;
+            let which = if shared {
+                let counts: Vec<String> = clients.iter().map(|n| n.to_string()).collect();
+                format!(" with {} clients", counts.join(", "))
+            } else {
+                String::new()
+            };
+            format!(
+                "{} @{target:.2}{which}: {config} (r={recall:.3})",
+                model.columns[*i]
+            )
+        })
+        .collect();
+    b.push_str(&format!(
+        "<p class=\"sub\">Measured on config — {}</p>",
+        esc(&notes.join(" · "))
+    ));
+    b
+}
+
 /// The three run-page summary tables (QPS at recall, latency at recall,
 /// index build), rendered from the compact summary. Empty string when the
 /// run recorded no search points.
@@ -512,6 +659,9 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         b.push_str("</tr>");
     }
     b.push_str("</table>");
+
+    // --- Throughput under load ---------------------------------------------
+    b.push_str(&render_load_table(compact, &model, &header));
 
     // --- Latency at recall -------------------------------------------------
     b.push_str("<h2>Latency at recall</h2>");
@@ -1103,6 +1253,7 @@ mod tests {
             recall_basis: RecallBasis::Distance,
             points,
             builds,
+            load_points: Vec::new(),
         }
     }
 
@@ -1331,6 +1482,118 @@ mod tests {
     }
 
     #[test]
+    fn run_tables_show_throughput_under_load_after_qps_at_recall() {
+        use crate::publish::summary::test_load_point as load;
+        let mut cs = versus_compact();
+        cs.load_points = vec![
+            load(
+                "mkt-n16000",
+                "meerkat",
+                &[0.90],
+                0.90,
+                1,
+                None,
+                3000.0,
+                3000.0,
+            ),
+            load(
+                "mkt-n16000",
+                "meerkat",
+                &[0.90],
+                0.90,
+                8,
+                Some("1x"),
+                12000.0,
+                12500.0,
+            ),
+            load(
+                "hnsw-m24",
+                "pgvector-hnsw",
+                &[0.90],
+                0.90,
+                8,
+                Some("1x"),
+                8000.0,
+                8400.0,
+            ),
+        ];
+        let html = render_run_tables(&cs);
+
+        let qps = html.find("<h2>QPS at recall</h2>").unwrap();
+        let load_at = html.find("<h2>Throughput under load</h2>").unwrap();
+        let latency = html.find("<h2>Latency at recall</h2>").unwrap();
+        assert!(qps < load_at && load_at < latency);
+        let table = &html[load_at..latency];
+
+        assert!(table.contains("<td>0.90 · 1 client</td>"));
+        assert!(table.contains("0.90 · 8 clients <span class=\"faint\">(1x of 8 CPUs)</span>"));
+        // Wall-clock QPS, then the all-clients-busy throughput in parentheses.
+        // Latency below: p50 = 8 clients / 12,500 QPS = 0.64 ms, p95 twice that.
+        // Speedup over Meerkat's own single client: 12,000 / 3,000 = 4.0x.
+        assert!(table.contains(
+            "<td>12,000 <span class=\"faint\">(12,500)</span> · 4.0\u{d7}<br>\
+             p50 0.64 ms · p95 1.28 ms</td>"
+        ));
+        // The best competitor is bolded, and Meerkat leads it by 12000/8000.
+        // HNSW has no single-client baseline here, so no speedup.
+        assert!(table.contains(
+            "<td><b>8,000</b> <span class=\"faint\">(8,400)</span><br>p50 0.95 ms · p95 1.90 ms</td>"
+        ));
+        // The baseline row itself carries no speedup.
+        assert!(table.contains(
+            "<td>3,000 <span class=\"faint\">(3,000)</span><br>p50 0.33 ms · p95 0.67 ms</td>"
+        ));
+        assert!(table.contains("is the speedup"));
+        assert!(table.contains("class=\"pos\">+50%"));
+        // No competitor baseline, so no delta on the single-client row.
+        let baseline_row = &table[table.find("1 client</td>").unwrap()..];
+        let baseline_row = &baseline_row[..baseline_row.find("</tr>").unwrap()];
+        assert!(!baseline_row.contains("class=\"pos\""));
+        assert!(table.contains("not interpolated"));
+        // One footnote per family and target, since a single config served
+        // every client count.
+        assert!(table.contains("PRISM @0.90: mkt-n16000 (r=0.900)"));
+        assert!(table.contains("pgvector HNSW @0.90: hnsw-m24 (r=0.900)"));
+        assert_eq!(table.matches("mkt-n16000 (r=").count(), 1);
+    }
+
+    #[test]
+    fn load_table_footnote_names_client_counts_when_configs_differ() {
+        use crate::publish::summary::test_load_point as load;
+        let mut cs = versus_compact();
+        cs.load_points = vec![
+            load(
+                "mkt-n16000",
+                "meerkat",
+                &[0.90],
+                0.90,
+                8,
+                Some("1x"),
+                12000.0,
+                12500.0,
+            ),
+            load(
+                "mkt-other",
+                "meerkat",
+                &[0.90],
+                0.91,
+                16,
+                Some("2x"),
+                14000.0,
+                15000.0,
+            ),
+        ];
+        let html = render_run_tables(&cs);
+        assert!(html.contains("PRISM @0.90 with 8 clients: mkt-n16000 (r=0.900)"));
+        assert!(html.contains("PRISM @0.90 with 16 clients: mkt-other (r=0.910)"));
+    }
+
+    #[test]
+    fn run_tables_without_load_points_have_no_load_table() {
+        assert!(!render_run_tables(&versus_compact()).contains("Throughput under load"));
+    }
+
+    #[test]
     fn run_tables_empty_run_renders_nothing() {
         assert_eq!(render_run_tables(&empty_compact()), "");
     }
@@ -1351,11 +1614,92 @@ mod tests {
         let mut m = meta("cohere-5m", "2026-06-10", "09:56:42");
         m.comment = Some("sample page for layout review".into());
         let run = std::env::temp_dir().join("rekall-sample-run-page.html");
-        std::fs::write(
-            &run,
-            render_run_page(&summary_for(&m), &m, &versus_compact(), &[]),
-        )
-        .unwrap();
+        let mut cs = versus_compact();
+        cs.load_points = {
+            use crate::publish::summary::test_load_point as load;
+            let (mkt, hnsw) = ("mkt-n16000", "hnsw-m24");
+            vec![
+                load(mkt, "meerkat", &[0.90], 0.90, 1, None, 3000.0, 3000.0),
+                load(
+                    mkt,
+                    "meerkat",
+                    &[0.90],
+                    0.90,
+                    48,
+                    Some("1x"),
+                    52000.0,
+                    54500.0,
+                ),
+                load(
+                    mkt,
+                    "meerkat",
+                    &[0.90],
+                    0.90,
+                    96,
+                    Some("2x"),
+                    61000.0,
+                    66000.0,
+                ),
+                load(
+                    hnsw,
+                    "pgvector-hnsw",
+                    &[0.90],
+                    0.90,
+                    1,
+                    None,
+                    2000.0,
+                    2000.0,
+                ),
+                load(
+                    hnsw,
+                    "pgvector-hnsw",
+                    &[0.90],
+                    0.90,
+                    48,
+                    Some("1x"),
+                    36000.0,
+                    37800.0,
+                ),
+                load(
+                    hnsw,
+                    "pgvector-hnsw",
+                    &[0.90],
+                    0.90,
+                    96,
+                    Some("2x"),
+                    40000.0,
+                    44000.0,
+                ),
+                load(mkt, "meerkat", &[0.95], 0.96, 1, None, 1500.0, 1500.0),
+                load(
+                    mkt,
+                    "meerkat",
+                    &[0.95],
+                    0.96,
+                    48,
+                    Some("1x"),
+                    27000.0,
+                    28100.0,
+                ),
+                load(
+                    mkt,
+                    "meerkat",
+                    &[0.95],
+                    0.96,
+                    96,
+                    Some("2x"),
+                    31000.0,
+                    33500.0,
+                ),
+            ]
+            .into_iter()
+            .map(|mut p| {
+                p.cpu_count = 48;
+                p
+            })
+            .collect()
+        };
+        std::fs::write(&run, render_run_page(&summary_for(&m), &m, &cs, &[])).unwrap();
         let mut with = entry(m);
         with.summary = Some(versus_compact());
         let old = entry(meta("cohere-5m", "2026-06-09", "08:00:00"));
