@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 
 use crate::metrics::family_label;
 
-use super::summary::{BuildInfo, CompactSummary, SweepPoint};
+use super::summary::{BuildInfo, CompactSummary, LoadPoint, SweepPoint};
 
 /// Recall targets the run-page tables report at.
 pub const RECALL_TARGETS: &[f64] = &[0.90, 0.95, 0.99];
@@ -439,6 +439,108 @@ pub fn build_table_model(cs: &CompactSummary, targets: &[f64]) -> Option<RunTabl
     })
 }
 
+/// A column's measurement at one recall target and client level: its best
+/// config's, by wall-clock QPS.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadCell {
+    pub config: String,
+    /// Recall of the operating point measured, at or above the target.
+    pub recall: f64,
+    pub qps_wall: f64,
+    pub throughput_qps: f64,
+    pub p50_us: f64,
+    pub p95_us: f64,
+    /// Wall-clock QPS over the same config's single-client wall-clock QPS
+    /// at the same target. `None` on the single-client row, or when that
+    /// baseline is missing.
+    pub speedup: Option<f64>,
+}
+
+/// One row of the throughput-under-load table: a recall target at one
+/// client count, with cells parallel to `RunTableModel::columns`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoadRow {
+    pub target: f64,
+    pub clients: usize,
+    /// The `search.clients` entry, e.g. "2x"; `None` for the baseline.
+    pub clients_spec: Option<String>,
+    /// CPUs of the host that resolved `clients_spec`.
+    pub cpu_count: usize,
+    pub cells: Vec<Option<LoadCell>>,
+}
+
+/// A config's single-client wall-clock QPS at a recall target's operating
+/// point, when it was measured and is positive.
+fn baseline_qps_wall(cs: &CompactSummary, config: &str, target: f64) -> Option<f64> {
+    cs.load_points
+        .iter()
+        .find(|p| p.index_name == config && p.clients == 1 && p.recall_targets.contains(&target))
+        .map(|p| p.qps_wall)
+        .filter(|qps| *qps > 0.0)
+}
+
+/// Rows for the throughput-under-load table, ordered by recall target and
+/// then client count, grouped into the same columns as `model`. Unlike the
+/// at-recall tables nothing is interpolated: each cell is a measurement at
+/// its config's operating point for the target.
+pub fn build_load_rows(cs: &CompactSummary, model: &RunTableModel) -> Vec<LoadRow> {
+    let column_of = |p: &LoadPoint| match model.mode {
+        ColumnMode::Families => family_label(&p.index_type, p.data_type.as_deref()),
+        ColumnMode::Configs => p.index_name.clone(),
+    };
+
+    let mut keys: Vec<(f64, usize, Option<String>, usize)> = Vec::new();
+    for p in &cs.load_points {
+        for &target in &p.recall_targets {
+            if !keys
+                .iter()
+                .any(|(t, n, _, _)| *t == target && *n == p.clients)
+            {
+                keys.push((target, p.clients, p.clients_spec.clone(), p.cpu_count));
+            }
+        }
+    }
+    keys.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+
+    keys.into_iter()
+        .filter_map(|(target, clients, clients_spec, cpu_count)| {
+            let cells: Vec<Option<LoadCell>> = model
+                .columns
+                .iter()
+                .map(|column| {
+                    cs.load_points
+                        .iter()
+                        .filter(|p| {
+                            p.clients == clients
+                                && p.recall_targets.contains(&target)
+                                && column_of(p) == *column
+                        })
+                        .max_by(|a, b| a.qps_wall.total_cmp(&b.qps_wall))
+                        .map(|p| LoadCell {
+                            config: p.index_name.clone(),
+                            recall: p.recall,
+                            qps_wall: p.qps_wall,
+                            throughput_qps: p.throughput_qps,
+                            p50_us: p.p50_latency_us,
+                            p95_us: p.p95_latency_us,
+                            speedup: (clients > 1)
+                                .then(|| baseline_qps_wall(cs, &p.index_name, target))
+                                .flatten()
+                                .map(|base| p.qps_wall / base),
+                        })
+                })
+                .collect();
+            cells.iter().any(Option::is_some).then_some(LoadRow {
+                target,
+                clients,
+                clients_spec,
+                cpu_count,
+                cells,
+            })
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -472,6 +574,7 @@ mod tests {
             recall_basis: RecallBasis::Distance,
             points,
             builds,
+            load_points: Vec::new(),
         }
     }
 
@@ -789,5 +892,171 @@ mod tests {
                 .map(String::from)
                 .collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn load_rows_take_each_familys_best_config_per_target_and_clients() {
+        use crate::publish::summary::test_load_point as load;
+        let mut cs = summary(
+            vec![
+                point("mkt", "meerkat", 0.96, 1500.0),
+                point("hnsw-a", "pgvector-hnsw", 0.96, 900.0),
+                point("hnsw-b", "pgvector-hnsw", 0.995, 500.0),
+            ],
+            vec![],
+        );
+        cs.load_points = vec![
+            load("mkt", "meerkat", &[0.95], 0.96, 1, None, 1500.0, 1500.0),
+            load(
+                "mkt",
+                "meerkat",
+                &[0.95],
+                0.96,
+                16,
+                Some("2x"),
+                9000.0,
+                9500.0,
+            ),
+            load(
+                "hnsw-a",
+                "pgvector-hnsw",
+                &[0.95],
+                0.96,
+                16,
+                Some("2x"),
+                5000.0,
+                5200.0,
+            ),
+            load(
+                "hnsw-b",
+                "pgvector-hnsw",
+                &[0.95, 0.99],
+                0.995,
+                16,
+                Some("2x"),
+                4000.0,
+                4100.0,
+            ),
+        ];
+        let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
+        assert_eq!(m.columns, vec!["PRISM", "pgvector HNSW"]);
+        let rows = build_load_rows(&cs, &m);
+
+        let keys: Vec<(f64, usize)> = rows.iter().map(|r| (r.target, r.clients)).collect();
+        assert_eq!(keys, vec![(0.95, 1), (0.95, 16), (0.99, 16)]);
+        // No competitor baseline at 0.95.
+        assert_eq!(rows[0].cells[0].as_ref().unwrap().qps_wall, 1500.0);
+        assert!(rows[0].cells[1].is_none());
+        // Two HNSW configs serve 0.95 with 16 clients; the faster one wins.
+        let hnsw = rows[1].cells[1].as_ref().unwrap();
+        assert_eq!((hnsw.config.as_str(), hnsw.qps_wall), ("hnsw-a", 5000.0));
+        // Meerkat's 16 clients over its own single client: 9000 / 1500.
+        assert_eq!(rows[1].cells[0].as_ref().unwrap().speedup, Some(6.0));
+        // No speedup on the baseline row, nor without a baseline.
+        assert_eq!(rows[0].cells[0].as_ref().unwrap().speedup, None);
+        assert_eq!(hnsw.speedup, None);
+        assert_eq!(rows[1].clients_spec.as_deref(), Some("2x"));
+        // Only hnsw-b reaches 0.99.
+        assert!(rows[2].cells[0].is_none());
+        assert_eq!(rows[2].cells[1].as_ref().unwrap().config, "hnsw-b");
+        assert_eq!(rows[2].cells[1].as_ref().unwrap().throughput_qps, 4100.0);
+    }
+
+    #[test]
+    fn load_rows_use_config_columns_in_a_single_family_run() {
+        use crate::publish::summary::test_load_point as load;
+        let mut cs = summary(
+            vec![
+                point("mkt-a", "meerkat", 0.96, 1500.0),
+                point("mkt-b", "meerkat", 0.96, 1200.0),
+            ],
+            vec![],
+        );
+        cs.load_points = vec![
+            load(
+                "mkt-a",
+                "meerkat",
+                &[0.95],
+                0.96,
+                8,
+                Some("1x"),
+                7000.0,
+                7100.0,
+            ),
+            load(
+                "mkt-b",
+                "meerkat",
+                &[0.95],
+                0.96,
+                8,
+                Some("1x"),
+                6000.0,
+                6100.0,
+            ),
+        ];
+        let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
+        let rows = build_load_rows(&cs, &m);
+        assert_eq!(rows.len(), 1);
+        let configs: Vec<&str> = rows[0]
+            .cells
+            .iter()
+            .map(|c| c.as_ref().unwrap().config.as_str())
+            .collect();
+        assert_eq!(
+            configs,
+            m.columns.iter().map(String::as_str).collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn load_rows_empty_without_load_points() {
+        let cs = summary(vec![point("mkt", "meerkat", 0.96, 1500.0)], vec![]);
+        let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
+        assert!(build_load_rows(&cs, &m).is_empty());
+    }
+
+    #[test]
+    fn load_speedup_divides_by_the_same_configs_baseline() {
+        use crate::publish::summary::test_load_point as load;
+        let mut cs = summary(
+            vec![
+                point("mkt-a", "meerkat", 0.96, 1500.0),
+                point("mkt-b", "meerkat", 0.96, 1200.0),
+                point("hnsw", "pgvector-hnsw", 0.96, 900.0),
+            ],
+            vec![],
+        );
+        // mkt-a has the faster single client, but mkt-b scales better and
+        // has the column's best 16-client value.
+        cs.load_points = vec![
+            load("mkt-a", "meerkat", &[0.95], 0.96, 1, None, 2000.0, 2000.0),
+            load("mkt-b", "meerkat", &[0.95], 0.96, 1, None, 1000.0, 1000.0),
+            load(
+                "mkt-a",
+                "meerkat",
+                &[0.95],
+                0.96,
+                16,
+                Some("2x"),
+                6000.0,
+                6100.0,
+            ),
+            load(
+                "mkt-b",
+                "meerkat",
+                &[0.95],
+                0.96,
+                16,
+                Some("2x"),
+                8000.0,
+                8200.0,
+            ),
+        ];
+        let m = build_table_model(&cs, RECALL_TARGETS).unwrap();
+        let rows = build_load_rows(&cs, &m);
+        let sixteen = rows[1].cells[0].as_ref().unwrap();
+        assert_eq!(sixteen.config, "mkt-b");
+        // 8000 / mkt-b's own 1000, not / the column's best 2000.
+        assert_eq!(sixteen.speedup, Some(8.0));
     }
 }
