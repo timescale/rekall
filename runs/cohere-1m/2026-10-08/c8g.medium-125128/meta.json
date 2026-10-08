@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-10-08/c8g.medium-125128",
+  "dataset": "cohere-1m",
+  "date": "2026-10-08",
+  "time": "12:51:28",
+  "timestamp": "2026-10-08T12:51:28+0000",
+  "instance_type": "c8g.medium",
+  "hostname": "ip-172-31-37-199",
+  "cpu_model": "unknown",
+  "cpu_count": 1,
+  "memory_gb": 1.8,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "f31e456",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (039603a)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9998799999999998,
+  "qps_at_peak": 31.464889462584665,
+  "num_indexes": 1,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-10-08/c8g.medium-125128/",
+  "comment": "cohere-1m c8g.medium query sweep phase 1: nprobe tail to 640, rerank pools 40/160/640/0"
+}
