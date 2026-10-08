@@ -1,0 +1,141 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9602999999999791,
+      "qps": 74.1824040124016,
+      "p50_latency_us": 13639.0,
+      "p95_latency_us": 21775.0,
+      "p99_latency_us": 31439.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.8783799999999801,
+      "qps": 89.39352447254112,
+      "p50_latency_us": 11431.0,
+      "p95_latency_us": 17055.0,
+      "p99_latency_us": 23007.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9342699999999804,
+      "qps": 79.11150877126312,
+      "p50_latency_us": 12903.0,
+      "p95_latency_us": 19711.0,
+      "p99_latency_us": 27663.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9692299999999808,
+      "qps": 71.16321954047501,
+      "p50_latency_us": 14255.0,
+      "p95_latency_us": 22351.0,
+      "p99_latency_us": 32655.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9885899999999878,
+      "qps": 64.40034012910836,
+      "p50_latency_us": 15623.0,
+      "p95_latency_us": 24911.0,
+      "p99_latency_us": 36447.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9964599999999953,
+      "qps": 58.87018853801912,
+      "p50_latency_us": 16687.0,
+      "p95_latency_us": 26383.0,
+      "p99_latency_us": 38495.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall": 0.9991299999999985,
+      "qps": 49.10323257382744,
+      "p50_latency_us": 20287.0,
+      "p95_latency_us": 29023.0,
+      "p99_latency_us": 36863.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "build_time_secs": 148.374535626,
+      "size_bytes": 282206208,
+      "cache": "prewarmed"
+    }
+  ],
+  "load_points": [
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9527299999999852,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 1,
+      "qps_wall": 79.23351832898295,
+      "throughput_qps": 79.23351832898295,
+      "p50_latency_us": 12823.0,
+      "p95_latency_us": 19919.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.952729999999986,
+      "recall_basis": "distance",
+      "clients": 2,
+      "clients_spec": "2x",
+      "cpu_count": 1,
+      "qps_wall": 79.12773252293566,
+      "throughput_qps": 79.13132334147357,
+      "p50_latency_us": 24943.0,
+      "p95_latency_us": 38239.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9937299999999932,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 1,
+      "qps_wall": 68.06778900594068,
+      "throughput_qps": 68.06778900594068,
+      "p50_latency_us": 14743.0,
+      "p95_latency_us": 23375.0
+    },
+    {
+      "index_name": "mkt-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9937299999999936,
+      "recall_basis": "distance",
+      "clients": 2,
+      "clients_spec": "2x",
+      "cpu_count": 1,
+      "qps_wall": 66.6018707744402,
+      "throughput_qps": 66.60489533666546,
+      "p50_latency_us": 29407.0,
+      "p95_latency_us": 44959.0
+    }
+  ]
+}
