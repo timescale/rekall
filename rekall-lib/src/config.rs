@@ -846,7 +846,11 @@ pub struct ConfigGroup {
 /// dataset = "datasets/cohere-10m.toml"
 /// indexes = ["indexes/hnsw-m16.toml"]  # override default
 /// ```
+// deny_unknown_fields: a suite file takes its real settings from the
+// per-entry dataset configs, so a top-level `[load]` or `[search]` here
+// would parse fine and then be silently dropped. Reject it instead.
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SuiteConfig {
     #[serde(default)]
     pub indexes: Vec<PathBuf>,
@@ -854,6 +858,7 @@ pub struct SuiteConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SuiteEntry {
     pub dataset: PathBuf,
     #[serde(default)]
@@ -2059,6 +2064,50 @@ dataset = "datasets/ds-a.toml"
 
         let err = resolve_suite(&suite_path).unwrap_err();
         assert!(err.to_string().contains("no indexes"));
+    }
+
+    #[test]
+    fn suite_unknown_top_level_key_error() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml"]
+
+[load]
+chunk_size = 10000
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+"#,
+        )
+        .unwrap();
+
+        let err = resolve_suite(&suite_path).unwrap_err();
+        assert!(err.to_string().contains("load"));
+    }
+
+    #[test]
+    fn suite_entry_unknown_key_error() {
+        let dir = tempfile::tempdir().unwrap();
+        write_suite_dir(dir.path());
+        let suite_path = dir.path().join("suite.toml");
+        std::fs::write(
+            &suite_path,
+            r#"
+indexes = ["indexes/hnsw.toml"]
+
+[[suite]]
+dataset = "datasets/ds-a.toml"
+connection = "host=localhost"
+"#,
+        )
+        .unwrap();
+
+        let err = resolve_suite(&suite_path).unwrap_err();
+        assert!(err.to_string().contains("connection"));
     }
 
     #[test]
