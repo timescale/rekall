@@ -681,7 +681,7 @@ pub struct BenchmarkConfig {
     pub publish: PublishConfig,
     /// Optional `[pg_vectorsearch]` build step: check out + build + install a pg_vectorsearch
     /// branch before the run. Absent / no `branch` → use whatever is installed.
-    #[serde(default, alias = "meerkat")]
+    #[serde(default)]
     pub pg_vectorsearch: PgVectorsearchBuildConfig,
     /// Per-phase PostgreSQL config overrides (`[phase_pg_config]`):
     /// applied via ALTER SYSTEM for the duration of the index or search
@@ -997,7 +997,7 @@ pub struct ConfigGroup {
 /// A suite config that pairs datasets with shared index definitions.
 ///
 /// ```toml
-/// indexes = ["indexes/hnsw-m16.toml", "indexes/mkt-n4000.toml"]
+/// indexes = ["indexes/hnsw-m16.toml", "indexes/prism-n4000.toml"]
 ///
 /// [[suite]]
 /// dataset = "datasets/cohere-1m.toml"
@@ -1544,7 +1544,7 @@ chunk_size = 10000
 
 [[index]]
 type = "prism"
-name = "mkt-1k"
+name = "prism-1k"
 [index.params]
 nlist = 1000
 
@@ -1560,7 +1560,7 @@ runs = 3
 warmup = 100
 
 [[search.sweep]]
-index = "mkt-1k"
+index = "prism-1k"
 [search.sweep.params]
 "prism.nprobe" = [5, 10, 20]
 
@@ -2051,7 +2051,7 @@ index = "nonexistent"
     #[test]
     fn concurrency_file_series_reads_back_the_series_name() {
         let out = OutputConfig::default();
-        let path = out.concurrency_results_path("mkt-n16000-concurrency-x", "20260610-093000");
+        let path = out.concurrency_results_path("prism-n16000-concurrency-x", "20260610-093000");
         let name = std::path::Path::new(&path)
             .file_name()
             .unwrap()
@@ -2059,7 +2059,7 @@ index = "nonexistent"
             .unwrap();
         assert_eq!(
             concurrency_file_series(name),
-            Some("mkt-n16000-concurrency-x")
+            Some("prism-n16000-concurrency-x")
         );
         // A sweep file, or a series merely named like one, is not.
         assert_eq!(
@@ -2212,12 +2212,12 @@ index = "hnsw-m16"
     const INDEX_PRISM: &str = r#"
 [[index]]
 type = "prism"
-name = "mkt-1k"
+name = "prism-1k"
 [index.params]
 nlist = 1000
 
 [[search.sweep]]
-index = "mkt-1k"
+index = "prism-1k"
 [search.sweep.params]
 "prism.nprobe" = [5, 10]
 "#;

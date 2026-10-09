@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Compile a best-HNSW-vs-best-Meerkat overview from published rekall runs.
+"""Compile a best-HNSW-vs-best-PRISM overview from published rekall runs.
 
 For each dataset, picks the newest published run (gh-pages branch) at or
-after --since that contains both a Meerkat and a competitor (default
+after --since that contains both a PRISM and a competitor (default
 pgvector-hnsw) index, and prints a markdown table of QPS and latency at
 the requested recall targets, plus build time and index size, with a
-Meerkat-vs-competitor delta column. All numbers within a dataset table
+PRISM-vs-competitor delta column. All numbers within a dataset table
 come from that single run — runs are never mixed.
 
 Numbers are read from the run's summary.json (the same compact data that
@@ -222,10 +222,10 @@ def fmt_ms(us):
     return "—" if us is None else f"{us / 1000:.2f}"
 
 
-def fmt_delta(mkt, ref, lower_is_better=False):
-    if mkt is None or ref is None or ref == 0:
+def fmt_delta(prism, ref, lower_is_better=False):
+    if prism is None or ref is None or ref == 0:
         return "—"
-    d = (mkt / ref - 1) * 100
+    d = (prism / ref - 1) * 100
     arrow = ""
     if lower_is_better:
         arrow = " ✓" if d < 0 else ""
@@ -288,7 +288,7 @@ def instance_price(itype, cache={}):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="Best-HNSW-vs-best-Meerkat overview from published "
+        description="Best-HNSW-vs-best-PRISM overview from published "
         "rekall runs")
     ap.add_argument("--since", default="2026-07-10",
                     help="only runs on/after this date (YYYY-MM-DD)")
@@ -342,24 +342,24 @@ def main():
             if summary is None:
                 continue
             types = {p["index_type"] for p in summary["points"]}
-            if "meerkat" in types and args.competitor in types:
+            if "prism" in types and args.competitor in types:
                 chosen = (path, summary)
                 break
-            print(f"  {path}: no meerkat-vs-{args.competitor} pairing, "
+            print(f"  {path}: no PRISM-vs-{args.competitor} pairing, "
                   "trying older run", file=sys.stderr)
         if not chosen:
             missing.append(ds)
             continue
         path, summary = chosen
         meta = json.loads(git_show(f"{path}/meta.json") or "{}")
-        mkt_name, mkt = best_config(summary, "meerkat", calc_targets)
+        prism_name, prism = best_config(summary, "prism", calc_targets)
         cmp_name, cmp_ = best_config(summary, args.competitor, calc_targets)
         builds = {b["index_name"]: b for b in summary.get("builds", [])}
         results.append({
             "ds": ds, "path": path, "summary": summary, "meta": meta,
-            "mkt_name": mkt_name, "mkt": mkt,
+            "prism_name": prism_name, "prism": prism,
             "cmp_name": cmp_name, "cmp": cmp_,
-            "mkt_b": builds.get(mkt_name, {}),
+            "prism_b": builds.get(prism_name, {}),
             "cmp_b": builds.get(cmp_name, {}),
         })
 
@@ -370,11 +370,11 @@ def main():
         return f"{fmt(c_val)} → {fmt(m_val)} ({d.replace(' ✓', '')})"
 
     if results:
-        print(f"## Snapshot — HNSW → Meerkat at recall {snap:.2f}\n")
+        print(f"## Snapshot — HNSW → PRISM at recall {snap:.2f}\n")
         snap_rows = [["Dataset", "Instance", "QPS", "p95 (ms)",
                       "Build time", "Index size"]]
         for r in results:
-            c, m = r["cmp"].get(snap), r["mkt"].get(snap)
+            c, m = r["cmp"].get(snap), r["prism"].get(snap)
             snap_rows.append([
                 r["ds"],
                 r["meta"].get("instance_type", "?"),
@@ -382,23 +382,23 @@ def main():
                 vs(c and c["p95_latency_us"], m and m["p95_latency_us"],
                    fmt_ms, lower_is_better=True),
                 vs(r["cmp_b"].get("build_time_secs"),
-                   r["mkt_b"].get("build_time_secs"),
+                   r["prism_b"].get("build_time_secs"),
                    fmt_secs, lower_is_better=True),
                 vs(r["cmp_b"].get("size_bytes"),
-                   r["mkt_b"].get("size_bytes"),
+                   r["prism_b"].get("size_bytes"),
                    fmt_gb, lower_is_better=True),
             ])
         print("\n".join(render_table(snap_rows)))
 
     for ds in missing:
         print(f"\n## {ds}\n\nNo run since {args.since} with both "
-              f"meerkat and {args.competitor}.")
+              f"PRISM and {args.competitor}.")
 
     for r in results:
         ds, path, summary, meta = r["ds"], r["path"], r["summary"], r["meta"]
-        mkt_name, mkt = r["mkt_name"], r["mkt"]
+        prism_name, prism = r["prism_name"], r["prism"]
         cmp_name, cmp_ = r["cmp_name"], r["cmp"]
-        mkt_b, cmp_b = r["mkt_b"], r["cmp_b"]
+        prism_b, cmp_b = r["prism_b"], r["cmp_b"]
 
         price = None if args.no_pricing else instance_price(
             meta.get("instance_type", ""))
@@ -416,16 +416,16 @@ def main():
         print(f"Recall basis: {summary.get('recall_basis', '?')}\n")
 
         build_rows = [
-            ["Metric", "HNSW", "Meerkat", "Δ"],
+            ["Metric", "HNSW", "PRISM", "Δ"],
             ["Build time",
              fmt_secs(cmp_b.get("build_time_secs")),
-             fmt_secs(mkt_b.get("build_time_secs")),
-             fmt_delta(mkt_b.get("build_time_secs"),
+             fmt_secs(prism_b.get("build_time_secs")),
+             fmt_delta(prism_b.get("build_time_secs"),
                        cmp_b.get("build_time_secs"), lower_is_better=True)],
             ["Index size",
              fmt_gb(cmp_b.get("size_bytes")),
-             fmt_gb(mkt_b.get("size_bytes")),
-             fmt_delta(mkt_b.get("size_bytes"),
+             fmt_gb(prism_b.get("size_bytes")),
+             fmt_delta(prism_b.get("size_bytes"),
                        cmp_b.get("size_bytes"), lower_is_better=True)],
         ]
         print("\n".join(render_table(build_rows)))
@@ -445,11 +445,11 @@ def main():
             return "/".join(ds)
 
         pct_label = "/".join(pcts)
-        qps_rows = [["Recall", "HNSW QPS", "Meerkat QPS", "Δ"]]
+        qps_rows = [["Recall", "HNSW QPS", "PRISM QPS", "Δ"]]
         lat_rows = [["Recall", f"HNSW {pct_label} (ms)",
-                     f"Meerkat {pct_label} (ms)", "Δ"]]
+                     f"PRISM {pct_label} (ms)", "Δ"]]
         for t in targets:
-            c, m = cmp_.get(t), mkt.get(t)
+            c, m = cmp_.get(t), prism.get(t)
             qps_rows.append([
                 f"{t:.2f}",
                 fmt_qps(c and c["qps"]),
@@ -461,12 +461,12 @@ def main():
         print()
         print("\n".join(render_table(lat_rows)))
 
-        print(f"\nConfigs: Meerkat = `{mkt_name}`, "
+        print(f"\nConfigs: PRISM = `{prism_name}`, "
               f"HNSW = `{cmp_name}`. \"—\" = recall target outside the "
               "config's measured sweep (no extrapolation). QPS/latency "
               "log-interpolated at exactly the stated recall within the "
-              "config's own Pareto line. Δ is Meerkat vs HNSW; ✓ marks "
-              "Meerkat better.")
+              "config's own Pareto line. Δ is PRISM vs HNSW; ✓ marks "
+              "PRISM better.")
 
 
 if __name__ == "__main__":

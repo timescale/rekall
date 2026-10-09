@@ -22,7 +22,7 @@ chunk_size = 50000        # vectors per HDF5 read
 
 [[index]]
 type = "prism"
-name = "mkt-fs16"
+name = "prism-fs16"
 [index.params]            # passed to CREATE INDEX ... WITH (...)
 nlist = 1000
 fastscan = true
@@ -52,7 +52,7 @@ clients = ["1x", "2x"]    # concurrent clients; see "Concurrent Clients"
 concurrency_recall_targets = [0.95, 0.99]
 
 [[search.sweep]]
-index = "mkt-fs16"
+index = "prism-fs16"
 [search.sweep.params]     # keys are PG GUC names
 "prism.nprobe" = [5, 10, 20, 40, 80]
 
@@ -91,7 +91,7 @@ Sweep params use full PG GUC names as keys:
 
 ```toml
 [[search.sweep]]
-index = "mkt-fs16"
+index = "prism-fs16"
 [search.sweep.params]
 "prism.nprobe" = [5, 10, 20, 40, 80]
 ```
@@ -196,7 +196,7 @@ the convention, not a requirement. You can put your own suite + index
 # benchmarks/run-all.toml
 indexes = [
     "indexes/hnsw-m16.toml",
-    "indexes/mkt-n4000-cctrue-fs16-soar.toml",
+    "indexes/prism-n4000-cctrue-fs16-soar.toml",
     "indexes/vchordrq-rabitq8.toml",
 ]
 
@@ -231,7 +231,7 @@ benchmarks/
   run-all.toml                     # suite: all indexes × all datasets
   vchordrq-*.toml                  # per-variant suites
   datasets/cohere-{1m,10m,...}.toml
-  indexes/{hnsw,mkt,vchordrq}-*.toml
+  indexes/{hnsw,prism,vchordrq}-*.toml
 ```
 
 ## Directory-Based Config Groups
@@ -241,8 +241,8 @@ Instead of one large config file, organize variants in a directory:
 ```
 configs/cohere-1m/
   base.toml              # dataset, connection, search defaults
-  01-mkt-vanilla.toml    # [[index]] + [[search.sweep]]
-  02-mkt-fastscan.toml   # [[index]] + [[search.sweep]]
+  01-prism-vanilla.toml    # [[index]] + [[search.sweep]]
+  02-prism-fastscan.toml   # [[index]] + [[search.sweep]]
   03-hnsw-m16.toml       # [[index]] + [[search.sweep]]
 ```
 
@@ -258,10 +258,10 @@ control order).
 rekall run configs/cohere-1m-comparison/
 
 # Only PRISM configs (shell glob)
-rekall run configs/cohere-1m-comparison/mkt-*.toml
+rekall run configs/cohere-1m-comparison/prism-*.toml
 
 # Multiple groups
-rekall run configs/cohere-1m-comparison/ configs/cohere-10m-comparison/mkt-*.toml
+rekall run configs/cohere-1m-comparison/ configs/cohere-10m-comparison/prism-*.toml
 ```
 
 When individual files are specified, `base.toml` is still loaded from
@@ -274,8 +274,8 @@ Add gitignored exploration configs directly in the directory:
 ```
 configs/cohere-1m/
   base.toml
-  01-mkt-vanilla.toml       # committed
-  02-mkt-fastscan.toml      # committed
+  01-prism-vanilla.toml       # committed
+  02-prism-fastscan.toml      # committed
   99-experiment.local.toml  # gitignored, temporary
 ```
 
@@ -289,7 +289,7 @@ Each index config file in a directory contains:
 ```toml
 [[index]]
 type = "prism"
-name = "mkt-vanilla"
+name = "prism-vanilla"
 [index.params]
 nlist = 1000
 
@@ -297,7 +297,7 @@ nlist = 1000
 "prism.fastscan_bits" = 16
 
 [[search.sweep]]
-index = "mkt-vanilla"
+index = "prism-vanilla"
 [search.sweep.params]
 "prism.nprobe" = [5, 10, 20, 40, 80]
 ```

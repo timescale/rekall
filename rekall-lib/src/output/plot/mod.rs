@@ -338,8 +338,8 @@ fn prepare_plot_data(summaries: &[RunSummary], title: &str, opts: &PlotOptions) 
     // Keyed (family, label) so series order — and therefore palette
     // assignment — is the same in per-algo and per-config plots: sorting
     // per-config series by their raw index names can order the arms
-    // differently than the family labels do (e.g. "hnsw-*" < "mkt-*" but
-    // "Meerkat" < "pgvector HNSW"), which used to swap the two curves'
+    // differently than the family labels do (e.g. "hnsw-*" < "prism-*" but
+    // "PRISM" < "pgvector HNSW"), which used to swap the two curves'
     // colors between the Pareto and per-config views of one run.
     let mut by_group: BTreeMap<(String, String), Vec<PlotPoint>> = BTreeMap::new();
     for summary in summaries {
@@ -484,11 +484,11 @@ fn build_caption(summaries: &[RunSummary]) -> Option<String> {
             }
         }
         // Extensions under test, compact: SQL version, plus a shortened git
-        // commit when the extension reports one (Meerkat does). "vector" is
+        // commit when the extension reports one (pg_vectorsearch does). "vector" is
         // pgvector's extension name, so label it as such.
         let mut exts: Vec<String> = Vec::new();
         for (key, display) in [
-            ("meerkat", "meerkat"),
+            ("pg_vectorsearch", "pg_vectorsearch"),
             ("vchord", "vchord"),
             ("vector", "pgvector"),
         ] {
@@ -633,7 +633,7 @@ mod tests {
         settings.insert("work_mem".into(), "512 MB".into());
         let mut extensions = BTreeMap::new();
         extensions.insert(
-            "meerkat".into(),
+            "pg_vectorsearch".into(),
             ExtensionInfo {
                 version: "0.1.0".into(),
                 git_commit: Some("65df24d3ad9f".into()),
@@ -695,7 +695,7 @@ mod tests {
         assert!(cap.contains("2026-06-10"));
         assert!(cap.contains("PG 18.4"));
         assert!(cap.contains("shared_buffers=16 GB"));
-        assert!(cap.contains("meerkat 0.1.0 (65df24d)"));
+        assert!(cap.contains("pg_vectorsearch 0.1.0 (65df24d)"));
         assert!(cap.contains("pgvector 0.8.2"));
     }
 
@@ -719,7 +719,7 @@ mod tests {
     }
 
     fn result_with_io(name: &str, recall: f64, disk_read_bytes: u64) -> SearchResult {
-        let mut r = result("meerkat", None, name);
+        let mut r = result("prism", None, name);
         r.avg_recall = recall;
         r.io = Some(crate::metrics::SearchIoStats {
             queries: 100,
@@ -743,7 +743,7 @@ mod tests {
             search_results: vec![
                 result_with_io("a", 0.8, 100 * 4096),
                 result_with_io("a", 0.9, 100 * 65536),
-                result("meerkat", None, "no-io"), // dropped: no io stats
+                result("prism", None, "no-io"), // dropped: no io stats
             ],
             concurrency_results: Vec::new(),
             pareto: Vec::new(),

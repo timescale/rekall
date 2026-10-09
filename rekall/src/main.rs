@@ -48,7 +48,7 @@ enum Command {
     /// Accepts one or more paths: files, directories, or globs.
     /// Directories load base.toml + all index configs inside.
     /// Individual files are grouped by parent directory.
-    /// Example: rekall run dir1/ dir2/mkt-*.toml
+    /// Example: rekall run dir1/ dir2/prism-*.toml
     Run {
         /// Suite config file, or legacy config paths (files/directories)
         configs: Vec<PathBuf>,

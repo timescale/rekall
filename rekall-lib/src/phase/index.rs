@@ -36,7 +36,7 @@ pub(crate) fn load_build_result(
 
 /// Normalize the table's `parallel_workers` reloption before an index build.
 ///
-/// Meerkat's standard-AM build worker count comes from the planner's heap-size
+/// PRISM's standard-AM build worker count comes from the planner's heap-size
 /// heuristic (`ii_ParallelWorkers`), which derates large builds well below
 /// `max_parallel_maintenance_workers`; an explicit table reloption overrides
 /// that so the build uses the full worker budget. pgvector HNSW reads the GUC

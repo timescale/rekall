@@ -464,7 +464,7 @@ impl BackendRegistry {
         progress: Option<ProgressTx>,
     ) -> Result<Box<dyn IndexBackend>> {
         let mut backend: Box<dyn IndexBackend> = match index_config.index_type.as_str() {
-            "prism" | "meerkat" => {
+            "prism" => {
                 let b = prism::PrismBackend::create(
                     conn,
                     table,

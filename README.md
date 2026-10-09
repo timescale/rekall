@@ -65,13 +65,13 @@ rekall run benchmarks/cohere-1m.toml
 # One dataset against a chosen set of indexes
 rekall run --datasets benchmarks/datasets/cohere-1m.toml \
            --indexes benchmarks/indexes/hnsw-m16.toml \
-                     benchmarks/indexes/mkt-n4000-cctrue-fs16-soar.toml
+                     benchmarks/indexes/prism-n4000-cctrue-fs16-soar.toml
 
 # Directory group (base.toml + every index file in the directory)
 rekall run configs/cohere-1m-comparison/
 
 # Subset of a directory (shell glob)
-rekall run configs/cohere-1m-comparison/mkt-*.toml
+rekall run configs/cohere-1m-comparison/prism-*.toml
 
 # Show the effective merged config, or list discovered configs
 rekall config benchmarks/datasets/cohere-1m.toml

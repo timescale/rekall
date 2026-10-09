@@ -217,8 +217,8 @@ fn read_summary_file(path: &Path) -> Result<RunSummary> {
 ///
 /// In both cases the per-index files' `pg_runtime.extensions` are unioned into
 /// the result. A legacy `results.json` captured `pg_runtime` once, early in the
-/// run — often before `CREATE EXTENSION meerkat` runs in the index phase — so
-/// it can omit meerkat's version/commit entirely. The per-index files (written
+/// run — often before `CREATE EXTENSION pg_vectorsearch` runs in the index phase — so
+/// it can omit pg_vectorsearch's version/commit entirely. The per-index files (written
 /// after each build) do record it, so merging them in restores the full
 /// extension set for the report's Versions table and plot captions.
 pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
@@ -258,7 +258,7 @@ pub fn load_run_summary(dir: &Path) -> Result<RunSummary> {
     };
 
     // Always union per-index extensions (with their git commits) into the base,
-    // so a meerkat commit recorded per-build is never lost — even when the base
+    // so a pg_vectorsearch commit recorded per-build is never lost — even when the base
     // came from a results.json whose early pg_runtime capture predates the
     // extension's creation. Concurrency results only ever live in per-index
     // files, so they are gathered here too, whichever base was used.
@@ -364,7 +364,7 @@ pub fn resolve_build_results(dir: &Path, embedded: &[IndexBuildResult]) -> Vec<I
 
 /// Merge one per-index file's `pg_runtime` into the accumulator. Different
 /// index types load different extensions (an hnsw run records pgvector but not
-/// meerkat, and vice-versa), so the union across files is what reflects the
+/// pg_vectorsearch, and vice-versa), so the union across files is what reflects the
 /// whole run. Adopt `pg_runtime` if absent; otherwise union the extensions,
 /// preferring an entry that carries a git commit over one that doesn't.
 ///
@@ -535,19 +535,22 @@ mod tests {
 
     #[test]
     fn merge_pg_runtime_unions_extensions_preferring_commits() {
-        // First file (e.g. an hnsw run) has pgvector but meerkat has no commit;
-        // a later mkt run carries meerkat with a real commit.
-        let mut base = Some(pg_runtime(&[("vector", None), ("meerkat", None)]));
+        // First file (e.g. an hnsw run) has pgvector but pg_vectorsearch has no commit;
+        // a later prism run carries pg_vectorsearch with a real commit.
+        let mut base = Some(pg_runtime(&[("vector", None), ("pg_vectorsearch", None)]));
         merge_pg_runtime(
             &mut base,
             Some(pg_runtime(&[
-                ("meerkat", Some("65df24d")),
+                ("pg_vectorsearch", Some("65df24d")),
                 ("vchord", Some("abc1234")),
             ])),
         );
         let exts = base.unwrap().extensions;
-        // meerkat now carries the commit (replaced the commit-less entry)
-        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        // pg_vectorsearch now carries the commit (replaced the commit-less entry)
+        assert_eq!(
+            exts["pg_vectorsearch"].git_commit.as_deref(),
+            Some("65df24d")
+        );
         // vchord got unioned in
         assert_eq!(exts["vchord"].git_commit.as_deref(), Some("abc1234"));
         // pgvector retained
@@ -557,20 +560,25 @@ mod tests {
     #[test]
     fn merge_pg_runtime_adopts_when_base_absent() {
         let mut base = None;
-        merge_pg_runtime(&mut base, Some(pg_runtime(&[("meerkat", Some("c"))])));
+        merge_pg_runtime(
+            &mut base,
+            Some(pg_runtime(&[("pg_vectorsearch", Some("c"))])),
+        );
         assert_eq!(
-            base.unwrap().extensions["meerkat"].git_commit.as_deref(),
+            base.unwrap().extensions["pg_vectorsearch"]
+                .git_commit
+                .as_deref(),
             Some("c")
         );
     }
 
     #[test]
-    fn load_run_summary_enriches_meerkat_from_per_index_files() {
+    fn load_run_summary_enriches_pg_vectorsearch_from_per_index_files() {
         use std::io::Write as _;
         let dir = tempfile::tempdir().unwrap();
 
-        // Consolidated results.json: pg_runtime captured early, before meerkat
-        // existed — so it has pgvector but no meerkat.
+        // Consolidated results.json: pg_runtime captured early, before pg_vectorsearch
+        // existed — so it has pgvector but no pg_vectorsearch.
         let mut consolidated = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
         consolidated.pg_runtime = Some(pg_runtime(&[("vector", None)]));
         std::fs::write(
@@ -579,24 +587,27 @@ mod tests {
         )
         .unwrap();
 
-        // Per-index file (written after the meerkat build): has meerkat+commit.
+        // Per-index file (written after the pg_vectorsearch build): has pg_vectorsearch+commit.
         let mut per_index = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
         per_index.pg_runtime = Some(pg_runtime(&[
-            ("meerkat", Some("65df24d")),
+            ("pg_vectorsearch", Some("65df24d")),
             ("vector", None),
         ]));
         let f =
-            std::fs::File::create(dir.path().join("mkt-n16000-20260610-000000.json.gz")).unwrap();
+            std::fs::File::create(dir.path().join("prism-n16000-20260610-000000.json.gz")).unwrap();
         let mut enc = flate2::write::GzEncoder::new(f, flate2::Compression::default());
         enc.write_all(&serde_json::to_vec(&per_index).unwrap())
             .unwrap();
         enc.finish().unwrap();
 
-        // Base comes from results.json (no meerkat) but is enriched from the
-        // per-index file, so meerkat with its commit is present.
+        // Base comes from results.json (no pg_vectorsearch) but is enriched from the
+        // per-index file, so pg_vectorsearch with its commit is present.
         let loaded = load_run_summary(dir.path()).unwrap();
         let exts = loaded.pg_runtime.unwrap().extensions;
-        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        assert_eq!(
+            exts["pg_vectorsearch"].git_commit.as_deref(),
+            Some("65df24d")
+        );
         assert!(exts.contains_key("vector"));
     }
 
@@ -618,18 +629,21 @@ mod tests {
         hnsw.config = serde_json::json!({"search": {"k": 10, "runs": 3}});
         write_gz("hnsw-m24-20260610-000000.json.gz", &hnsw);
 
-        let mut mkt = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
-        mkt.pg_runtime = Some(pg_runtime(&[
-            ("meerkat", Some("65df24d")),
+        let mut prism = summary("cohere-10m", "2026-06-10T09:56:42+0000", Some("r8i"), "h");
+        prism.pg_runtime = Some(pg_runtime(&[
+            ("pg_vectorsearch", Some("65df24d")),
             ("vector", None),
         ]));
-        mkt.config = serde_json::json!({"search": {"k": 10, "runs": 3}});
-        write_gz("mkt-n16000-20260610-000100.json.gz", &mkt);
+        prism.config = serde_json::json!({"search": {"k": 10, "runs": 3}});
+        write_gz("prism-n16000-20260610-000100.json.gz", &prism);
 
         let loaded = load_run_summary(dir.path()).unwrap();
-        // Extensions are unioned across the per-index files (meerkat survives).
+        // Extensions are unioned across the per-index files (pg_vectorsearch survives).
         let exts = &loaded.pg_runtime.as_ref().unwrap().extensions;
-        assert_eq!(exts["meerkat"].git_commit.as_deref(), Some("65df24d"));
+        assert_eq!(
+            exts["pg_vectorsearch"].git_commit.as_deref(),
+            Some("65df24d")
+        );
         assert!(exts.contains_key("vector"));
         // Config is carried by the self-describing per-index file, so the
         // report's Search section works without a results.json.
@@ -800,7 +814,7 @@ mod tests {
         let mut s = summary("d", "2026-06-10T09:56:42+0000", Some("i"), "h");
         let mk = |recall: f64, qps: f64| SearchResult {
             index_name: "x".into(),
-            index_type: "meerkat".into(),
+            index_type: "prism".into(),
             data_type: None,
             search_params: serde_json::json!({}),
             k: 10,

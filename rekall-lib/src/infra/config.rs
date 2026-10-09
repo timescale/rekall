@@ -106,28 +106,6 @@ fn global_infra_defaults() -> toml::Value {
     }
 }
 
-/// `[meerkat]` is a serde alias of `pg_vectorsearch`. Rename it before
-/// the layers merge, or both keys survive and deserialize fails with
-/// "duplicate field `pg_vectorsearch`".
-fn canonicalize_pg_vectorsearch_key(value: &mut toml::Value) {
-    let Some(table) = value.as_table_mut() else {
-        return;
-    };
-    let Some(old) = table.remove("meerkat") else {
-        return;
-    };
-    match table.remove("pg_vectorsearch") {
-        Some(explicit) => {
-            let mut merged = old;
-            deep_merge(&mut merged, explicit);
-            table.insert("pg_vectorsearch".to_string(), merged);
-        }
-        None => {
-            table.insert("pg_vectorsearch".to_string(), old);
-        }
-    }
-}
-
 fn deep_merge(base: &mut toml::Value, overlay: toml::Value) {
     match (base.as_table_mut(), overlay) {
         (Some(base_table), toml::Value::Table(overlay_table)) => {
@@ -218,7 +196,7 @@ pub struct InfraConfig {
     pub pg_on_instance_store: bool,
     #[serde(default)]
     pub rekall: Option<GitSourceConfig>,
-    #[serde(default, alias = "meerkat")]
+    #[serde(default)]
     pub pg_vectorsearch: Option<GitSourceConfig>,
     #[serde(default)]
     pub pgvector: Option<ExtVersionConfig>,
@@ -328,13 +306,11 @@ impl InfraConfig {
         // only needed where a box genuinely differs -- benchmarking a
         // pg_vectorsearch feature branch, a bigger disk, a different profile.
         let mut base = global_infra_defaults();
-        canonicalize_pg_vectorsearch_key(&mut base);
 
         let content = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read '{}': {e}", path.display()))?;
-        let mut committed: toml::Value = toml::from_str(&content)
+        let committed: toml::Value = toml::from_str(&content)
             .map_err(|e| format!("Invalid TOML '{}': {e}", path.display()))?;
-        canonicalize_pg_vectorsearch_key(&mut committed);
         deep_merge(&mut base, committed);
 
         // Check for .local.toml override
@@ -344,9 +320,8 @@ impl InfraConfig {
         if local_path.exists() {
             let local_content = std::fs::read_to_string(&local_path)
                 .map_err(|e| format!("Cannot read '{}': {e}", local_path.display()))?;
-            let mut local: toml::Value = toml::from_str(&local_content)
+            let local: toml::Value = toml::from_str(&local_content)
                 .map_err(|e| format!("Invalid TOML '{}': {e}", local_path.display()))?;
-            canonicalize_pg_vectorsearch_key(&mut local);
             deep_merge(&mut base, local);
         }
 
@@ -746,28 +721,6 @@ mod tests {
         assert_eq!(cfg.instance_type, "c8g.large", "committed value survives");
         assert_eq!(cfg.disk_size_gb, 500, "local overrides committed");
         assert_eq!(cfg.pg_vectorsearch.unwrap().git_ref, "feat/z");
-    }
-
-    #[test]
-    fn meerkat_alias_merges_with_pg_vectorsearch() {
-        // A global or committed `[meerkat]` and a local `[pg_vectorsearch]`
-        // are the same field. They must overlay, not fail to deserialize.
-        let dir = tempfile::tempdir().unwrap();
-        let f = dir.path().join("box.toml");
-        std::fs::write(
-            &f,
-            "[meerkat]\ngit_url = \"git@old.git\"\ngit_ref = \"main\"\n",
-        )
-        .unwrap();
-        std::fs::write(
-            dir.path().join("box.local.toml"),
-            "[pg_vectorsearch]\ngit_ref = \"feat/z\"\n",
-        )
-        .unwrap();
-        let cfg = InfraConfig::from_file(&f).unwrap();
-        let src = cfg.pg_vectorsearch.unwrap();
-        assert_eq!(src.git_url, "git@old.git");
-        assert_eq!(src.git_ref, "feat/z");
     }
 
     #[test]

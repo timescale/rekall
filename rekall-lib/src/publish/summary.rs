@@ -1,5 +1,5 @@
 //! Compact per-run summary data (`summary.json`): the numbers the run-page
-//! comparison tables and the catalog's Meerkat-vs-competition column need,
+//! comparison tables and the catalog's PRISM-vs-competition column need,
 //! a few KB per run. Written into the results dir (so it is archived to S3)
 //! and into the run's directory on the gh-pages branch, where the catalog
 //! reads it back at render time — method changes therefore re-render the
@@ -268,7 +268,7 @@ mod tests {
             config: serde_json::Value::Null,
             pg_runtime: None,
             index_builds: vec![crate::metrics::IndexBuildResult {
-                index_name: "mkt-n1000".into(),
+                index_name: "prism-n1000".into(),
                 index_type: "prism".into(),
                 params: serde_json::json!({"nlist": 1000}),
                 build_time: Duration::from_secs_f64(312.5),
@@ -279,7 +279,7 @@ mod tests {
                 monitor: None,
                 cache: Some("prewarmed".into()),
             }],
-            search_results: vec![search_result("mkt-n1000", 0.91, 3000.0)],
+            search_results: vec![search_result("prism-n1000", 0.91, 3000.0)],
             concurrency_results: Vec::new(),
             pareto: Vec::new(),
         }
@@ -293,7 +293,7 @@ mod tests {
         assert_eq!(cs.recall_basis, RecallBasis::Id);
         assert_eq!(cs.points.len(), 1);
         let p = &cs.points[0];
-        assert_eq!(p.index_name, "mkt-n1000");
+        assert_eq!(p.index_name, "prism-n1000");
         assert_eq!(p.recall, 0.91);
         assert_eq!(p.p95_latency_us, 440.0);
         let b = &cs.builds[0];
