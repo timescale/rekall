@@ -1,0 +1,15 @@
+# Tuned defaults with an explicit nlist=640000 arm: probes the
+# rows-per-list optimum around the automatic value (rows/256).
+# Everything else stays at the shipped defaults. The sweep includes
+# nprobe=0 so the auto-nprobe heuristic is validated at this nlist.
+[[index]]
+type = "prism"
+name = "prism-tuned-n640000"
+table_parallel_workers = 32
+[index.params]
+nlist = 640000
+
+[[search.sweep]]
+index = "prism-tuned-n640000"
+[search.sweep.params]
+"prism.nprobe" = [0, 10, 20, 40, 80, 160, 320, 640, 1280, 2560]

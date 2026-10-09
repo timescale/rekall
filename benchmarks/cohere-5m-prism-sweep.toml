@@ -1,0 +1,43 @@
+# Suite: cohere-5m × pg_vectorsearch full 3-axis sweep.
+#
+# 4 × 2 × 2 = 16 index variants, all at fastscan-16 with
+# boundary_epsilon=0.05:
+#   nlist ∈ {2000, 4000, 8000, 16000}     # IVF partition count
+#   centroid_compression ∈ {true, false}   # 8-bit centroid quantization
+#   SOAR ∈ {off, λ=1.0}                    # SOAR loss on the IVF build
+#
+# IVF rule of thumb for 5M is ~4·√N (≈8944) so 8000 should be near-
+# optimal for nlist. The other two axes typically trade recall vs.
+# build cost / index size — this surfaces by how much for cohere-5m
+# specifically. Each variant sweeps 10 nprobe values.
+#
+# Heavy: 16 builds × 10 nprobes × 3 runs against a 5M dataset is
+# multi-hour. Use `rekall run ... --dry-run` first if unsure.
+#
+# Usage: rekall run benchmarks/cohere-5m-pg_vectorsearch-sweep.toml [--dry-run]
+
+indexes = [
+    # cc=true, SOAR off
+    "indexes/prism-n2000-cctrue-fs16.toml",
+    "indexes/prism-n4000-cctrue-fs16.toml",
+    "indexes/prism-n8000-cctrue-fs16.toml",
+    "indexes/prism-n16000-cctrue-fs16.toml",
+    # cc=true, SOAR on
+    "indexes/prism-n2000-cctrue-fs16-soar.toml",
+    "indexes/prism-n4000-cctrue-fs16-soar.toml",
+    "indexes/prism-n8000-cctrue-fs16-soar.toml",
+    "indexes/prism-n16000-cctrue-fs16-soar.toml",
+    # cc=false, SOAR off
+    "indexes/prism-n2000-ccfalse-fs16.toml",
+    "indexes/prism-n4000-ccfalse-fs16.toml",
+    "indexes/prism-n8000-ccfalse-fs16.toml",
+    "indexes/prism-n16000-ccfalse-fs16.toml",
+    # cc=false, SOAR on
+    "indexes/prism-n2000-ccfalse-fs16-soar.toml",
+    "indexes/prism-n4000-ccfalse-fs16-soar.toml",
+    "indexes/prism-n8000-ccfalse-fs16-soar.toml",
+    "indexes/prism-n16000-ccfalse-fs16-soar.toml",
+]
+
+[[suite]]
+dataset = "datasets/cohere-5m.toml"

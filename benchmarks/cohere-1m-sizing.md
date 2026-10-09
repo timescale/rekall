@@ -1,7 +1,7 @@
 # Cohere-1M: what is the smallest instance PRISM and HNSW can run on?
 
-This is the sizing analysis behind `cohere-1m-mkt-vs-hnsw.toml` (the
-reference run) and `cohere-1m-mkt-vs-hnsw.toml` (the memory ladder).
+This is the sizing analysis behind `cohere-1m-prism-vs-hnsw.toml` (the
+reference run) and `cohere-1m-prism-vs-hnsw.toml` (the memory ladder).
 
 Every number labelled *measured* comes from the published rekall runs at
 <https://timescale.github.io/rekall/> (each run exposes a `summary.json`
@@ -15,7 +15,7 @@ ladder is for.
 | Object | Size | Source |
 |---|---:|---|
 | Heap (`cohere_1m`, `v vector(768)`) | ~4.10 GB | derived: `v` is `STORAGE PLAIN`, so a tuple is 24 B header + 8 B id + 3080 B vector = 3112 B; 2 tuples/page; 500 k pages x 8 kB. Corroborated by the measured 3.82 GiB IVFFlat full-vector index. |
-| `mkt-defaults` | **0.28 GB** (267 MiB) | measured, cohere-1M 2026-08-11 |
+| `prism-defaults` | **0.28 GB** (267 MiB) | measured, cohere-1M 2026-08-11 |
 | `hnsw-m24-halfvec` | **~2.05 GB** (1.91 GiB) | derived: measured 19.07 GiB @ 10M, 95.35 GiB @ 50M, 179.18 GiB @ 100M — dead linear at 1.91 GiB per 1M rows |
 | `hnsw-halfvec` (m=16) | ~2.0 GB | derived: m=16 fullvec measures 3.74 GB/M (laion-5M) vs m=24 fullvec 3.81 GB/M (cohere) — only ~2% apart |
 | `hnsw-m24` (fullvec) | ~4.10 GB | measured 38.14 GiB @ 10M, 190.69 GiB @ 50M |
@@ -117,7 +117,7 @@ to test it honestly. But the two miss patterns are not comparable:
   reads is tens of milliseconds per query.
 - **PRISM's rerank fetches are independent**. All 160 TIDs are known
   before the first fetch, and the rerank path drives them through
-  PostgreSQL 18's `read_stream` API (`mkt_storage_rerank` in
+  PostgreSQL 18's `read_stream` API (`vs_storage_rerank` in
   `src/pg/bufstorage.c`), which batches them into concurrent async
   reads under `effective_io_concurrency` (200 on these boxes). The
   posting-list scan itself is near-sequential over contiguous pages.
@@ -219,7 +219,7 @@ rekall infra up  -c infra/instances/m8g.large.toml
 # rung would reboot the box between loading it and building on it, for
 # nothing, and reassign its public IP on the way.
 rekall infra run -c infra/instances/m8g.large.toml \
-    benchmarks/cohere-1m-mkt-vs-hnsw.toml \
+    benchmarks/cohere-1m-prism-vs-hnsw.toml \
     --clean-run --comment "cohere-1m ladder: m8g.large 8 GiB"
 
 rekall infra attach -c infra/instances/m8g.large.toml   # watch it; C-b d to detach
@@ -237,7 +237,7 @@ rekall infra attach -c infra/instances/m8g.large.toml   # watch it; C-b d to det
 for rung in c8g.large c8g.medium; do
   rekall infra resize -c "infra/instances/$rung.toml"
   rekall infra run    -c "infra/instances/$rung.toml" \
-      benchmarks/cohere-1m-mkt-vs-hnsw.toml \
+      benchmarks/cohere-1m-prism-vs-hnsw.toml \
       --clean-run --wait --comment "cohere-1m ladder: $rung" || break
 done
 
@@ -273,7 +273,7 @@ are instance-side commands:
 ```bash
 rekall infra ssh -c infra/instances/m8g.large.toml
 # then, on the instance:
-cd ~/rekall && rekall search benchmarks/cohere-1m-mkt-vs-hnsw.toml
+cd ~/rekall && rekall search benchmarks/cohere-1m-prism-vs-hnsw.toml
 ```
 
 `cohere-1m-build-floor.toml` is **not** part of this. It answers a separate

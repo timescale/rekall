@@ -3,7 +3,7 @@
 # it extends (+ datasets/indexes) and the instance builds the branch first.
 # Prereqs: push perf/fastscan-centroids to origin (timescale/pg_vectorsearch); rebuild
 # the instance's rekall to latest main.
-extends = "cohere-10m-mkt-nlist.toml"
+extends = "cohere-10m-prism-nlist.toml"
 
 [pg_vectorsearch]
 branch = "perf/fastscan-centroids"

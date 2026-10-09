@@ -1,7 +1,7 @@
 # Suite: cohere-50m parameter-tuning sweep.
 #
 # Requires a pg_vectorsearch build with the tuned defaults. Anchored on
-# mkt-defaults (nlist auto = ~195k, 256 rows/list); arms:
+# prism-defaults (nlist auto = ~195k, 256 rows/list); arms:
 #
 #   nlist:     n120000 (~416 rows/list), n240000 (~208, the July
 #              winner), n320000 (~156) around the automatic value —
@@ -18,12 +18,12 @@
 # Usage: rekall run benchmarks/cohere-50m-tuning.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-defaults.toml",
-    "indexes/mkt-tuned-n120000.toml",
-    "indexes/mkt-tuned-n240000.toml",
-    "indexes/mkt-tuned-n320000.toml",
-    "indexes/mkt-tuned-eps45.toml",
-    "indexes/mkt-tuned-soar-off.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/prism-tuned-n120000.toml",
+    "indexes/prism-tuned-n240000.toml",
+    "indexes/prism-tuned-n320000.toml",
+    "indexes/prism-tuned-eps45.toml",
+    "indexes/prism-tuned-soar-off.toml",
 ]
 
 [[suite]]

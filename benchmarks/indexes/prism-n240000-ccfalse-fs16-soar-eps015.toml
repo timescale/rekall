@@ -1,0 +1,35 @@
+# PRISM n240000 WITHOUT centroid compression — A/B partner for
+# prism-n240000-cctrue-fs16-soar-cfs-eps015 (identical except cc, and
+# centroid_fastscan must go with it: FASTSCAN centroids are a packed
+# layout over the RaBitQ-compressed representation, so the build errors
+# on cfs without cc). Centroids are stored uncompressed (FLOAT/HALF per
+# column type: 240000 x 768d float ~= 737 MB) and tree descent uses
+# exact distances.
+#
+# Query GUCs: the cctrue arm's two-regime beam split (1.0 / 0.5) and
+# prism.centroid_error_scale compensate for approximate compressed-centroid
+# distances; with exact centroids they don't apply, so the sweep uses the
+# defaults (beam_scale 0.25, no error bound) and only nprobe varies. The
+# nprobe grid is the union of the cctrue arm's two regimes so the recall
+# curves align point-for-point.
+#
+# Build memory: same k-means sample-buffer story as the cctrue arm
+# (nlist*256*dim*4 ~= 188 GB at 240000/768d, capped by
+# maintenance_work_mem on feature/build-memory-bounded).
+[[index]]
+type = "prism"
+name = "prism-n240000-ccfalse-fs16-soar-eps015"
+table_parallel_workers = 32
+[index.params]
+nlist = 240000
+centroid_compression = false
+fastscan = true
+soar_lambda = 1.0
+boundary_epsilon = 0.15
+[index.gucs]
+"prism.fastscan_bits" = 16
+
+[[search.sweep]]
+index = "prism-n240000-ccfalse-fs16-soar-eps015"
+[search.sweep.params]
+"prism.nprobe" = [10, 20, 40, 80, 160, 240, 320, 480, 640, 960, 1280, 1920]

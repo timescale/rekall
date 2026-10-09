@@ -1,0 +1,66 @@
+# PRISM, tuned for LAION-5M: 8-bit fastscan + the low-nprobe query GUCs.
+# This is the arm the suite runs for PRISM -- prism-defaults (fastscan
+# bits=16, untouched query GUCs) is deliberately not part of this suite;
+# it's dominated at every recall this arm was measured at, so running it
+# alongside would just cost time without adding information.
+#
+# prism-defaults profiles at ~70% of query CPU time in
+# prism_fastscan_accumulate_hacc_avx512 -- the "high accuracy" 16-bit LUT
+# kernel, which runs two VPSHUFB passes per candidate block instead of
+# one. PRISM always reranks candidates with the exact float distance
+# afterward (prism.rerank, on by default), so the fastscan pass only has to
+# get the true neighbours *into* the rerank pool; once they're in, the
+# exact rerank recovers full accuracy regardless of whether the
+# approximate pre-filter was 8-bit-coarse or 16-bit-precise. Measured on
+# this dataset: recall at a given nprobe is the same to three decimal
+# places whether fastscan_bits is 8 or 16 (nprobe=20: 0.9410 either way),
+# so the extra 16-bit precision buys nothing here and the 8-bit kernel is
+# a straight win. fastscan_bits is a build-time GUC (baked into the
+# posting-page format), hence a separate index rather than a
+# search-sweep knob on prism-defaults.
+#
+# This is dataset-dependent, not a blanket recommendation: the
+# fastscan_bits=8 vs. 16 experiment in prism-defaults-experiments.toml
+# exists precisely because the team tried this before, and every
+# production cohere config at scale (prism-n*-cctrue-fs16-soar-cfs.toml)
+# still hardcodes fastscan_bits=16 -- cohere's text embeddings likely sit
+# in a more confusable local neighbourhood than LAION's CLIP image
+# embeddings (which have literal near-duplicate ground-truth distances at
+# rank 1-2), so a coarser LUT more easily bumps a true neighbour out of
+# the rerank pool there. Re-validate before reusing fastscan_bits=8 on
+# cohere.
+#
+# The three query GUCs below follow the same profile-driven logic and
+# generalize better: prism.rerank_pool=80 and prism.centroid_beam_scale=1.0
+# at low nprobe match what the team's own cohere-100M tuning
+# (prism-n400000-cctrue-fs16-soar-cfs-eps015.toml) independently converged
+# on for the same reason. prism.probe_expand=1.0 is the one outlier here --
+# pg_vectorsearch/docs/tuning.md lists it as "never touch" -- so it's flagged for
+# extra scrutiny rather than assumed safe elsewhere.
+[[index]]
+type = "prism"
+name = "pg_vectorsearch-fs8"
+
+[index.gucs]
+"prism.fastscan_bits" = 8
+"prism.rerank_pool" = 80
+"prism.probe_expand" = 1.0
+"prism.centroid_beam_scale" = 1.0
+
+# Full recall sweep, low nprobe up through very high nprobe, so every
+# RECALL_TARGETS bucket (0.90/0.95/0.99) has a measured point on both
+# sides rather than relying on extrapolation, and the tail covers
+# recall approaching 1.0 the same way prism-defaults' original sweep did
+# (nprobe=2560 there measured 1.0000 under the tie-aware metric).
+#
+# The 3-6 values fill a gap the original 8-120 sweep left at the low
+# end: under the (now-fixed) tie-aware recall metric, LAION's many
+# near-duplicate ground-truth neighbours boost every point's measured
+# recall enough that nprobe=8 alone already lands at 0.909, just past
+# the 0.90 target, which otherwise shows as "no data" rather than
+# extrapolating. 160-640 extend the high end past the original ceiling
+# to cover recall beyond 0.99.
+[[search.sweep]]
+index = "pg_vectorsearch-fs8"
+[search.sweep.params]
+"prism.nprobe" = [3, 4, 5, 6, 8, 10, 12, 15, 18, 20, 25, 30, 40, 60, 80, 120, 160, 240, 320, 480, 640]
