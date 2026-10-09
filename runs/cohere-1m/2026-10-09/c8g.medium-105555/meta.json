@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-10-09/c8g.medium-105555",
+  "dataset": "cohere-1m",
+  "date": "2026-10-09",
+  "time": "10:55:55",
+  "timestamp": "2026-10-09T10:55:55+0000",
+  "instance_type": "c8g.medium",
+  "hostname": "ip-172-31-37-199",
+  "cpu_model": "unknown",
+  "cpu_count": 1,
+  "memory_gb": 1.8,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "f31e456",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (4e5b29b)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9995499999999992,
+  "qps_at_peak": 36.65304722512022,
+  "num_indexes": 0,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-10-09/c8g.medium-105555/",
+  "comment": "recall-floor 1.2 coefficient verification (PR #252 @ 4e5b29b)"
+}

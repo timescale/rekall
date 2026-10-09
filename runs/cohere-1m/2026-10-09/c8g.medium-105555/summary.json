@@ -1,0 +1,115 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall": 0.87054999999998,
+      "qps": 149.4183368274814,
+      "p50_latency_us": 6619.0,
+      "p95_latency_us": 10343.0,
+      "p99_latency_us": 13495.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall": 0.965419999999979,
+      "qps": 101.05994704256648,
+      "p50_latency_us": 10015.0,
+      "p95_latency_us": 14247.0,
+      "p99_latency_us": 16783.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall": 0.9953599999999942,
+      "qps": 65.80216787479328,
+      "p50_latency_us": 15367.0,
+      "p95_latency_us": 21167.0,
+      "p99_latency_us": 24383.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall": 0.998649999999998,
+      "qps": 49.552095143352574,
+      "p50_latency_us": 20511.0,
+      "p95_latency_us": 26991.0,
+      "p99_latency_us": 30495.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall": 0.9995499999999993,
+      "qps": 36.65304722512022,
+      "p50_latency_us": 27599.0,
+      "p95_latency_us": 35615.0,
+      "p99_latency_us": 40223.0
+    }
+  ],
+  "builds": [],
+  "load_points": [
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9784199999999864,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 1,
+      "qps_wall": 99.24745243736255,
+      "throughput_qps": 99.24745243736255,
+      "p50_latency_us": 10167.0,
+      "p95_latency_us": 14543.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.978419999999988,
+      "recall_basis": "distance",
+      "clients": 2,
+      "clients_spec": "2x",
+      "cpu_count": 1,
+      "qps_wall": 93.51657843973112,
+      "throughput_qps": 93.52036495419723,
+      "p50_latency_us": 21503.0,
+      "p95_latency_us": 27759.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9979399999999974,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 1,
+      "qps_wall": 66.05676607056766,
+      "throughput_qps": 66.05676607056766,
+      "p50_latency_us": 15279.0,
+      "p95_latency_us": 21263.0
+    },
+    {
+      "index_name": "mkt-auto",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9979399999999976,
+      "recall_basis": "distance",
+      "clients": 2,
+      "clients_spec": "2x",
+      "cpu_count": 1,
+      "qps_wall": 67.87984213550851,
+      "throughput_qps": 67.88289636144611,
+      "p50_latency_us": 29679.0,
+      "p95_latency_us": 38975.0
+    }
+  ]
+}
