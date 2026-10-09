@@ -37,6 +37,13 @@ repos:
         pass_filenames: false
         require_serial: true
 
+      - id: license-headers
+        name: license headers
+        entry: ./scripts/ci/check-license-headers.sh
+        language: system
+        files: \.rs$
+        pass_filenames: true
+
   # General file checks
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

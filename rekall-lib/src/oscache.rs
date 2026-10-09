@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Host-level cache control for CacheMode::DiskCold.
 //!
 //! PostgreSQL can evict its own shared buffers but cannot reach the OS

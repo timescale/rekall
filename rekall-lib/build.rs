@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Embed rekall's own git commit/branch at build time. The runtime
 //! `git rev-parse` in `environment.rs` only works when the process runs inside
 //! a checkout — but `rekall infra run` launches benchmarks from `~`, where

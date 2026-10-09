@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Compact per-run summary data (`summary.json`): the numbers the run-page
 //! comparison tables and the catalog's PRISM-vs-competition column need,
 //! a few KB per run. Written into the results dir (so it is archived to S3)

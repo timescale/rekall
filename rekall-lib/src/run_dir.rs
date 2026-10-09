@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Results-directory housekeeping for clean (non-resuming) runs.
 //!
 //! A run normally writes into a fixed `results_dir` and *resumes*: completed

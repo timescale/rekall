@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Index build bar charts (one bar per index, tallest first). HTML uses
 //! Plotly; SVG/PNG go through gnuplot. The metric picks the bar height:
 //! build time in seconds (bars labelled with the index size) or index size

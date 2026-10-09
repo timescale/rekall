@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Emit SQL and ground-truth listings from a dataset file, offline.
 //!
 //! Everything here is a pure function of the HDF5 contents plus a

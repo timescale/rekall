@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 /*
  * search_monitor.rs - I/O statistics monitor for the search phase
  *

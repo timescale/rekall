@@ -169,4 +169,4 @@ instance types, and the rest of the `infra` commands (`load`, `status`,
 
 ## License
 
-TBD
+[The PostgreSQL License](LICENSE)

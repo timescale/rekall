@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! S3 side of publishing: a thin uploader bound to one bucket.
 //!
 //! Reuses the credential/region behaviour from `dataset/download.rs`

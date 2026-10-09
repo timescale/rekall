@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 use std::collections::HashMap;
 use std::io::{Read as _, Write as _};
 use std::sync::Arc;
