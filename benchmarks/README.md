@@ -144,27 +144,20 @@ index = "hnsw-m32"
 
 ## Instance Sizing
 
-`cohere-1m-sizing.md` works out how much RAM PRISM and pgvector HNSW each
-need for cohere-1M — separately for the build and for queries — from the
-index sizes published at <https://timescale.github.io/rekall/>. It backs two
-suites:
+The cohere-1M ladder measures how the two engines behave as RAM shrinks:
+the base suite `cohere-1m.toml` runs on `infra/instances/m8g.large.toml`
+(8 GiB, the rung where HNSW still builds in memory under stock tuning),
+then at every rung of the 4 / 2 GiB ladder via `rekall infra resize` — one
+file, so every rung shares its cache policy and query count by
+construction. The instance configs document what each rung is expected to
+show.
 
-- `cohere-1m.toml` — loads, builds, and measures the warm reference
-  frontier on `infra/instances/m8g.large.toml` (8 GiB, the rung where
-  HNSW still builds in memory under stock tuning).
-  The same suite runs at every rung of the 8 / 4 / 2 GiB ladder via
-  `rekall infra resize` — one file, so every rung shares its cache policy
-  and query count by construction.
-- `scripts/cost-frontier.py` — applies a (recall, QPS) target to the ladder
-  results and reports the cheapest qualifying instance per engine, costing
-  instance + EBS. The target is applied here, not baked into the suites.
-  Accepts a local results directory or a published run URL.
+`scripts/cost-frontier.py` applies a (recall, QPS) target to the ladder
+results and reports the cheapest qualifying instance per engine, costing
+instance + EBS. The target is applied here, not baked into the suites.
+Accepts a local results directory or a published run URL.
 
 All of these are driven from the workstation via `rekall infra run`, which
 uploads the configs and runs `rekall run` on the instance in tmux.
 `rekall load` / `index` / `search` are instance-side commands — use
 `rekall infra ssh` first if you want manual phase control.
-- `cohere-1m-build-floor.toml` — rebuilds at every rung with the build
-  phase's `shared_buffers` traded for `maintenance_work_mem`, to find the
-  smallest box each engine can *build* on (as opposed to query on). Uses
-  `[phase_pg_config]`.

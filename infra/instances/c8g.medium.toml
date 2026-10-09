@@ -1,7 +1,7 @@
 # Rekall benchmark instance: c8g.medium (Graviton4, 1 vCPU, 2 GiB RAM).
 #
-# The floor rung of the cohere-1M small-instance ladder (see
-# benchmarks/cohere-1m-sizing.md) — the smallest non-burstable EC2 instance
+# The floor rung of the cohere-1M small-instance ladder — the smallest
+# non-burstable EC2 instance
 # worth benchmarking on. (t4g.small is also 2 GiB but is burstable; its CPU
 # credit accounting makes QPS numbers meaningless.)
 #
@@ -15,8 +15,7 @@
 # does not: the ~2.05 GB graph exceeds anything 2 GiB of RAM can hand to
 # maintenance_work_mem, even with shared_buffers collapsed for the build
 # phase, so it can only complete via the on-disk spill pass. That asymmetry
-# is the point of benchmarks/cohere-1m-build-floor.toml, and this is the
-# rung where it is expected to show up.
+# is what this rung demonstrates.
 #
 # What this rung tests: 2 GiB holds PRISM's ~0.28 GB index with room to
 # spare, and holds essentially none of HNSW's ~1.9-2.0 GB halfvec graph (m=16
