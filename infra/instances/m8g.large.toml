@@ -1,7 +1,7 @@
 # Rekall benchmark instance: m8g.large (Graviton4, 2 vCPU, 8 GiB RAM).
 #
-# TOP RUNG and BUILD BOX of the cohere-1M cost comparison (see
-# benchmarks/cohere-1m-sizing.md). Launch here, load, build both engines'
+# TOP RUNG and BUILD BOX of the cohere-1M cost comparison. Launch here,
+# load, build both engines'
 # indexes, measure, then `rekall infra resize` down to c8g.large (4 GiB)
 # and c8g.medium (2 GiB).
 #
@@ -22,7 +22,7 @@
 #     HNSW also *builds* here without spilling and without any per-phase
 #     retuning. 8 GiB is the HNSW build floor under stock auto-tuning; with
 #     the build phase's shared_buffers traded for maintenance_work_mem it
-#     drops to 4 GiB (benchmarks/cohere-1m-build-floor.toml).
+#     drops to 4 GiB.
 #
 # Same 2 vCPU and same 100 GB gp3 as the other ladder rungs, so
 # `rekall infra resize` between them changes RAM and nothing else.

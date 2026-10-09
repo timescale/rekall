@@ -7,7 +7,7 @@
 #
 # Use this when you want headroom rather than a floor: everything cached for
 # both engines, stock maintenance_work_mem of 6 GB, no contention with the
-# question being asked. See benchmarks/cohere-1m-sizing.md.
+# question being asked.
 #
 # Launch with:
 #   rekall infra up -c infra/instances/r8g.large.toml

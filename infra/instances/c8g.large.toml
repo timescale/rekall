@@ -1,8 +1,7 @@
 # Rekall benchmark instance: c8g.large (Graviton4, 2 vCPU, 4 GiB RAM).
 #
-# Rung 3 of the cohere-1M small-instance ladder (see
-# benchmarks/cohere-1m-sizing.md). This is the rung where the two engines
-# are expected to separate:
+# Rung 3 of the cohere-1M small-instance ladder. This is the rung where
+# the two engines are expected to separate:
 #
 #   - PRISM's index is ~0.28 GB. It fits in shared_buffers with room left
 #     over; only the exact-rerank heap fetches (auto rerank_pool = 16*k =
@@ -20,12 +19,11 @@
 #     For the query ladder, build on r8g.large and `rekall infra resize`
 #     down instead.
 #
-#     That is a tuning artifact rather than a real floor, though: this is
-#     also the rung where benchmarks/cohere-1m-build-floor.toml expects HNSW
-#     to build successfully *in memory*, by collapsing shared_buffers to
-#     128MB for the build phase, pushing maintenance_work_mem to 2560MB, and
-#     forcing the build serial so the graph lands in backend-local memory
-#     instead of a /dev/shm-capped DSM segment.
+#     That is a tuning artifact rather than a real floor, though: HNSW
+#     can build here *in memory* by collapsing shared_buffers to 128MB for
+#     the build phase, pushing maintenance_work_mem to 2560MB, and forcing
+#     the build serial so the graph lands in backend-local memory instead
+#     of a /dev/shm-capped DSM segment.
 #
 # Same 2 vCPU and same 100 GB gp3 as the other ladder rungs.
 #
