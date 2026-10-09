@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Generate the plot reports for a run into its results directory, reusing the
 //! shared `output::plot` renderer. HTML always works; SVG is best-effort (it
 //! needs `gnuplot` on PATH) and is skipped with a warning if unavailable.

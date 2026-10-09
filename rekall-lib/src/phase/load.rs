@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 use crate::backend::postgres::PgConnection;
 use crate::backend::DataLoader;
 use crate::config::BenchmarkConfig;

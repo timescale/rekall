@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Shared operand-encoding model for the pgvector backends (HNSW and
 //! IVFFlat). Both index methods support the same three encodings and the
 //! same expression-index + optional rerank pattern, so the encoding logic

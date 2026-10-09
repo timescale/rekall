@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Publishing: archive a run's results directory to S3 and push HTML reports
 //! + a catalog to GitHub Pages.
 //!

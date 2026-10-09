@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Distance-based (ann-benchmarks) recall recompute for the publish flow.
 //!
 //! Recomputing recall the ann-benchmarks way needs ground-truth distances and

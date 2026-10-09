@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 /*
  * build_monitor.rs - Monitor index build progress via a second PG connection
  *

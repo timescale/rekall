@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! GitHub Pages side of publishing: push per-run report pages and a catalog
 //! to the repo's `gh-pages` branch using the deploy key the instance already
 //! has configured (`git config core.sshCommand`).

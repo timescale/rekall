@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Integration tests requiring a PostgreSQL connection.
 //!
 //! These tests are skipped unless REKALL_TEST_DSN is set. To run:

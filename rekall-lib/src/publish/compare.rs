@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! Comparison logic behind the published summary tables and the catalog's
 //! PRISM-vs-competition column. Pure data → data; rendering lives in
 //! `pages.rs`.

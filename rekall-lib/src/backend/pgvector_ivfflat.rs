@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 //! pgvector IVFFlat backend.
 //!
 //! Shares the operand-encoding model with the HNSW backend (see

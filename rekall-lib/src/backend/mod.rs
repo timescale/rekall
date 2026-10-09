@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Tiger Data, Inc.
+// Licensed under the PostgreSQL License. See LICENSE for details.
+
 pub mod build_monitor;
 pub mod pg_vector_type;
 pub mod pgvector_encoding;
