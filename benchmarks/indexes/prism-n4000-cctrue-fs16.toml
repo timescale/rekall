@@ -1,0 +1,16 @@
+# PRISM: nlist=4000, centroid compression, fastscan-16, no SOAR
+[[index]]
+type = "prism"
+name = "prism-n4000-cctrue-fs16"
+[index.params]
+nlist = 4000
+centroid_compression = true
+fastscan = true
+boundary_epsilon = 0.05
+[index.gucs]
+"prism.fastscan_bits" = 16
+
+[[search.sweep]]
+index = "prism-n4000-cctrue-fs16"
+[search.sweep.params]
+"prism.nprobe" = [5, 10, 20, 40, 80, 120, 200, 400, 600, 1000]

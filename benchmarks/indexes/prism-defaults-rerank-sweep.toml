@@ -1,0 +1,91 @@
+# PRISM shipped defaults: one query series per prism.rerank_pool, each
+# swept over prism.nprobe.
+#
+# nprobe is the CURVE parameter. It is the search-time knob that trades
+# recall for speed, so sweeping it traces a recall/QPS curve; everything else
+# defines which curve you are on. rerank_pool is a configuration choice, so
+# it gets a series rather than being swept within one.
+#
+# Measured on the 4 GiB rung -- fixing rerank_pool and sweeping nprobe is
+# monotone in both axes at every value:
+#
+#   rerank_pool=20   0.8638/372  0.9105/349  0.9414/311  0.9602/257  0.9702/185
+#   rerank_pool=40   0.8750/191  0.9256/177  0.9593/156  0.9801/140  0.9908/114
+#   rerank_pool=80   0.8759/147  0.9271/137  0.9617/125  0.9828/111  0.9937/95
+#
+# Getting this backwards -- fixing nprobe and sweeping rerank_pool -- is what
+# produced the staircase: recall climbs to the nprobe's ceiling and then
+# flatlines while QPS keeps falling, so each series ends in a vertical tail
+# and the union looks like a Pareto frontier. Same 15 points, wrong grouping.
+#
+# rerank_pool grid is [20, 40, 80]. Dropped from [0, 10, 20, 40, 80, 160]:
+#   - 10 is degenerate: rerank_pool = k means only k candidates get exact
+#     distances, so recall collapses to 0.76-0.83 at every nprobe.
+#   - 160 buys <= 0.0004 recall over 80 while costing 10-25% of the QPS.
+#   - 0 is auto, resolving to 16*k = 160 -- a duplicate (both measured
+#     0.9941 / 85 QPS at nprobe=160).
+#
+# prism-norerank is the floor of the frontier: prism.rerank = off skips the
+# exact-distance stage entirely, so results come straight from the
+# compressed RaBitQ codes and the query touches the heap zero times beyond
+# the k rows PostgreSQL fetches for visibility anyway. On a box that cannot
+# cache the heap it is the one setting guaranteed not to be I/O bound.
+#
+# It cannot reach this ladder's 0.95 bar. Recall is capped by 1-bit code
+# precision, not by how many clusters are scanned, so it plateaus around
+# 0.83 -- measured (via rerank_pool = k, which is recall-equivalent because
+# recall@k is a set measure and reranking only the top k can reorder them
+# but not change which k they are):
+#
+#   nprobe    10      20      40      80     160
+#   recall  0.756   0.788   0.808   0.820   0.825
+#   QPS      3456    2057    1150     632     324
+#
+# 0.076 recall for a 16x increase in nprobe. Included anyway because it
+# costs ~19s of runtime (0.3% of this arm), it makes the frontier's lower
+# bound explicit rather than implied, and it is the baseline that
+# multi-bit RaBitQ has to beat -- if no-rerank ever reached 0.95, PRISM
+# would need only its 0.26 GiB index resident and never touch the 4.10 GB
+# heap at all.
+#
+# All four series share the one physical index; they differ only in
+# query-time GUCs, so there is no extra build cost.
+
+[[index]]
+type = "prism"
+name = "prism-defaults-rerank-sweep"
+table_parallel_workers = 32
+# No [index.params]: the shipped defaults -- byte-identical to what
+# prism-defaults builds, so reuse that physical index instead of building a
+# second copy (~240s and 0.26 GiB for nothing). This arm keeps its own name
+# for results and plots; only the on-disk index is shared. Requires
+# indexes/prism-defaults-1m.toml in the same suite, listed before this one.
+physical_index = "prism-defaults"
+
+[[query]]
+name = "prism-rerank20"
+index = "prism-defaults-rerank-sweep"
+[query.params]
+"prism.rerank_pool" = [20]
+"prism.nprobe" = [10, 20, 40, 80, 160]
+
+[[query]]
+name = "prism-rerank40"
+index = "prism-defaults-rerank-sweep"
+[query.params]
+"prism.rerank_pool" = [40]
+"prism.nprobe" = [10, 20, 40, 80, 160]
+
+[[query]]
+name = "prism-rerank80"
+index = "prism-defaults-rerank-sweep"
+[query.params]
+"prism.rerank_pool" = [80]
+"prism.nprobe" = [10, 20, 40, 80, 160]
+
+[[query]]
+name = "prism-norerank"
+index = "prism-defaults-rerank-sweep"
+[query.params]
+"prism.rerank" = [false]
+"prism.nprobe" = [10, 20, 40, 80, 160]

@@ -4,7 +4,7 @@
 # Exactly two builds, to compare how the indexes build and then trade
 # recall for throughput on the same hardware:
 #
-#   mkt-defaults      built by a bare CREATE INDEX — no options, no
+#   prism-defaults      built by a bare CREATE INDEX — no options, no
 #                     pinned GUCs, auto nlist ≈ 39k (requires a
 #                     pg_vectorsearch build with the tuned defaults). The
 #                     search phase still sweeps nprobe for the full
@@ -21,7 +21,7 @@
 # Usage: rekall run benchmarks/cohere-10m-defaults-vs-hnsw.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-defaults.toml",
+    "indexes/prism-defaults.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 

@@ -10,7 +10,7 @@
 #   - push fix/parallel-build-sample-gather-memory to origin (timescale/pg_vectorsearch)
 #   - the instance's rekall must be latest main (has [pg_vectorsearch] branch builds)
 #   - launch on r8i.16xlarge or 24xlarge (1000 GB volume — see infra/instances/)
-extends = "cohere-50m-mkt-vs-hnsw.toml"
+extends = "cohere-50m-prism-vs-hnsw.toml"
 
 [pg_vectorsearch]
 branch = "fix/parallel-build-sample-gather-memory"

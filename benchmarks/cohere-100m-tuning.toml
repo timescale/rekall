@@ -13,15 +13,15 @@
 #   ablation:  SOAR off
 #
 # Four builds plus sweeps: about a day on an r8i.24xlarge. Disk: see
-# the mkt-vs-hnsw suite notes (the heap alone is ~380 GB).
+# the PRISM-vs-hnsw suite notes (the heap alone is ~380 GB).
 #
 # Usage: rekall run benchmarks/cohere-100m-tuning.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-defaults.toml",
-    "indexes/mkt-tuned-n640000.toml",
-    "indexes/mkt-tuned-eps45.toml",
-    "indexes/mkt-tuned-soar-off.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/prism-tuned-n640000.toml",
+    "indexes/prism-tuned-eps45.toml",
+    "indexes/prism-tuned-soar-off.toml",
 ]
 
 [[suite]]

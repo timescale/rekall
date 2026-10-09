@@ -12,8 +12,8 @@
 # Usage: rekall run benchmarks/cohere-1m.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-n4000-cctrue-fs16-soar-cfs.toml",
-    "indexes/mkt-n8000-cctrue-fs16-soar-cfs.toml",
+    "indexes/prism-n4000-cctrue-fs16-soar-cfs.toml",
+    "indexes/prism-n8000-cctrue-fs16-soar-cfs.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
 

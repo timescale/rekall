@@ -1,6 +1,6 @@
 # Suite: cohere-1M -- how small a box can each engine BUILD its index on?
 #
-# The companion to cohere-1m-mkt-vs-hnsw.toml (which asks the same question
+# The companion to cohere-1m-prism-vs-hnsw.toml (which asks the same question
 # about queries). Run it with --rebuild: the output that matters is
 # the build-sizes / build-times report, not a recall frontier, and without
 # --rebuild `rekall run` would skip every index that already exists.
@@ -80,8 +80,8 @@
 # PRISM builds at every rung, with only the sample size shrinking.
 
 indexes = [
-    "indexes/mkt-defaults.toml",
-    "indexes/mkt-n4000-cctrue-fs16-soar-cfs.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/prism-n4000-cctrue-fs16-soar-cfs.toml",
     "indexes/hnsw-m24-halfvec.toml",
     "indexes/hnsw-halfvec.toml",
 ]

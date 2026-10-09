@@ -2,7 +2,7 @@
 #
 # Requires a pg_vectorsearch build with the tuned defaults (auto nlist/nprobe,
 # fastscan + centroid fastscan, SOAR 1.0, boundary 0.35, beam 0.5 +
-# floor). The anchor is mkt-defaults — the exact out-of-the-box
+# floor). The anchor is prism-defaults — the exact out-of-the-box
 # configuration, nlist auto (~39k here) — and every other arm changes
 # ONE thing against it:
 #
@@ -16,7 +16,7 @@
 #                 sweeps (the features are known wins)
 #   query GUCs:   fastscan_bits 8, beam scale 0.25/1.0, capped rerank
 #                 pool — one-knob validations of the query defaults on
-#                 a second copy of the default index (mkt-defaults-x)
+#                 a second copy of the default index (prism-defaults-x)
 #
 # Every sweep includes nprobe=0, the shipped auto default, so the
 # heuristic is validated on every index shape. ~10 builds at roughly
@@ -25,16 +25,16 @@
 # Usage: rekall run benchmarks/cohere-10m-tuning.toml [--dry-run]
 
 indexes = [
-    "indexes/mkt-defaults.toml",
-    "indexes/mkt-defaults-experiments.toml",
-    "indexes/mkt-tuned-n24000.toml",
-    "indexes/mkt-tuned-n64000.toml",
-    "indexes/mkt-tuned-eps0.toml",
-    "indexes/mkt-tuned-eps45.toml",
-    "indexes/mkt-tuned-soar-off.toml",
-    "indexes/mkt-tuned-replication-off.toml",
-    "indexes/mkt-tuned-cc-off.toml",
-    "indexes/mkt-tuned-fastscan-off.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/prism-defaults-experiments.toml",
+    "indexes/prism-tuned-n24000.toml",
+    "indexes/prism-tuned-n64000.toml",
+    "indexes/prism-tuned-eps0.toml",
+    "indexes/prism-tuned-eps45.toml",
+    "indexes/prism-tuned-soar-off.toml",
+    "indexes/prism-tuned-replication-off.toml",
+    "indexes/prism-tuned-cc-off.toml",
+    "indexes/prism-tuned-fastscan-off.toml",
 ]
 
 [[suite]]
