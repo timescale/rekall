@@ -1,28 +1,15 @@
-# Suite: cohere-10M — one PRISM (best n24000 config) vs VectorChord (vchordrq).
-#
-# Each index uses its OWN recommended/tuned nlist, not a forced match:
-#   - PRISM: prism-n24000-cctrue-fs16-soar (the tuned best at n24000; runs on
-#     installed/main PRISM, no centroid_fastscan branch needed).
-#   - VectorChord: lists=16000 — VectorChord has no auto-nlist (empty lists =
-#     flat index), so this follows their docs' 4*sqrt(N)..8*sqrt(N) sizing for
-#     10M (mid-range ~5*sqrt(N)). Across its quantization frontier: 1-bit
-#     (residual quant on), 8-bit, and 4-bit+rerank. residual_quantization is
-#     off for the 8/4-bit arms — VectorChord doesn't support it there.
-#
-# VectorChord is the index now powering Databricks Lakebase / Neon's
-# lakebase_vector, so it's the OSS index to beat. Both families are IVF +
-# RaBitQ; the comparison pits PRISM's SOAR/boundary replication +
-# hierarchical+fastscan routing against VectorChord's residual quantization +
-# spherical centroids.
+# PRISM vs VectorChord (vchordrq), cohere-10M -- the one VectorChord
+# comparison suite. Uses each side at its best measured configuration:
+# PRISM with all index parameters left to its auto settings (the
+# prism-defaults arm), and VectorChord's plain residual-quantization
+# build, which outperformed its rabitq8 and rabitq4-rerank variants by
+# ~2x in the published 10M comparison (2026-06-16).
 #
 # Usage: rekall run benchmarks/cohere-10m-prism-vs-vchordrq.toml [--dry-run]
 
 indexes = [
-    "indexes/prism-n24000-cctrue-fs16-soar.toml",
+    "indexes/prism-defaults.toml",
     "indexes/vchordrq-n16000.toml",
-    "indexes/vchordrq-rabitq8-n16000.toml",
-    "indexes/vchordrq-rabitq4-rerank-n16000.toml",
 ]
-
 [[suite]]
 dataset = "datasets/cohere-10m.toml"

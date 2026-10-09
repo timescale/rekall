@@ -1,9 +1,0 @@
-# Suite: VectorChord vchordrq with 4-bit RaBitQ + exact-distance rerank.
-# Usage: rekall run benchmarks/vchordrq-rabitq4-rerank.toml [--dry-run]
-
-indexes = [
-    "indexes/vchordrq-rabitq4-rerank.toml",
-]
-
-[[suite]]
-dataset = "datasets/cohere-1m.toml"
