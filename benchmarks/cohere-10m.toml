@@ -1,23 +1,13 @@
-# Suite: cohere-10m × hnsw + pg_vectorsearch.
-# PRISM is swept over nlist (8000 → 24000; ~4·√N ≈ 12,600 for 10M) BOTH with
-# and without centroid_compression, all fastscan-16 + SOAR — so the suite
-# isolates the effect of centroid compression and of larger nlist.
+# Base suite, cohere-10M: out-of-the-box PRISM vs the pgvector
+# HNSW baseline. Every index parameter is left to PRISM's auto settings
+# (auto nlist = rows/256, fastscan + centroid fastscan, SOAR 1.0,
+# boundary 0.35, auto rerank); the only query-time sweep is nprobe.
+#
 # Usage: rekall run benchmarks/cohere-10m.toml [--dry-run]
 
 indexes = [
-    "indexes/hnsw-m24.toml",
-    "indexes/hnsw-m24-bq.toml",
-    "indexes/prism-n8000-cctrue-fs16-soar.toml",
-    "indexes/prism-n8000-ccfalse-fs16-soar.toml",
-    "indexes/prism-n12000-cctrue-fs16-soar.toml",
-    "indexes/prism-n12000-ccfalse-fs16-soar.toml",
-    "indexes/prism-n16000-cctrue-fs16-soar.toml",
-    "indexes/prism-n16000-ccfalse-fs16-soar.toml",
-    "indexes/prism-n20000-cctrue-fs16-soar.toml",
-    "indexes/prism-n20000-ccfalse-fs16-soar.toml",
-    "indexes/prism-n24000-cctrue-fs16-soar.toml",
-    "indexes/prism-n24000-ccfalse-fs16-soar.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/hnsw-m24-halfvec.toml",
 ]
-
 [[suite]]
 dataset = "datasets/cohere-10m.toml"

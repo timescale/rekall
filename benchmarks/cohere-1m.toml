@@ -1,21 +1,16 @@
-# Suite: cohere-1m -- optimized PRISM vs pgvector HNSW.
-#
-# PRISM arms use the 50M-tuned configuration (centroid compression + FASTSCAN
-# centroids + fastscan-16 + SOAR + boundary, error_scale=0, beam_scale=0.25).
-# n4000 (~250 vecs/list) is the extrapolated 1M optimum -- the ~208-256
-# vecs/list density confirmed at 50M (n240000) scaled down -- with n8000
-# (~125 vecs/list) as the finer arm to confirm the plateau holds at small scale
-# (at 50M finer-than-optimal only tied, never hurt). Coarser nlists are omitted.
-# Requires the feat/cohere-50m-perf branch (run via a profile that builds it;
-# see cohere-*-fastscan-centroids.toml).
+# Base suite, cohere-1M: out-of-the-box PRISM vs the pgvector HNSW
+# baseline. Every index parameter is left to PRISM's auto settings
+# (auto nlist = rows/256, fastscan + centroid fastscan, SOAR 1.0,
+# boundary 0.35, auto rerank); the only query-time sweep is nprobe.
+# prism-defaults-1m is the 1M variant of the shared defaults arm: its
+# nprobe tail stops at 320, past which the sweep is near-brute-force at
+# this scale.
 #
 # Usage: rekall run benchmarks/cohere-1m.toml [--dry-run]
 
 indexes = [
-    "indexes/prism-n4000-cctrue-fs16-soar-cfs.toml",
-    "indexes/prism-n8000-cctrue-fs16-soar-cfs.toml",
+    "indexes/prism-defaults-1m.toml",
     "indexes/hnsw-m24-halfvec.toml",
 ]
-
 [[suite]]
 dataset = "datasets/cohere-1m.toml"
