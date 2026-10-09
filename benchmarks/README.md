@@ -7,18 +7,16 @@ datasets. Index definitions are shared across datasets to avoid duplication.
 
 ```
 benchmarks/
-├── run-all.toml          # Suite file: defines which datasets × indexes to run
-├── datasets/             # One file per dataset (connection, search, output settings)
+├── cohere-{1,5,10,50,100}m.toml  # Base suites: default PRISM vs hnsw-m24-halfvec
+├── datasets/                     # One file per dataset (connection, search, output settings)
 │   ├── cohere-1m.toml
 │   ├── cohere-10m.toml
 │   ├── cohere-20m.toml
 │   ├── cohere-50m.toml
 │   └── cohere-100m.toml
-└── indexes/              # One file per index variant (index params + search sweep)
-    ├── hnsw-m16.toml
-    ├── hnsw-m24.toml
-    ├── prism-n4000-cctrue-fs16-soar.toml
-    └── prism-n8000-cctrue-fs16-soar.toml
+└── indexes/                      # One file per index variant (index params + search sweep)
+    ├── prism-defaults.toml
+    └── hnsw-m24-halfvec.toml
 ```
 
 **Dataset files** contain `[dataset]`, `[connection]`, `[load]`, `[search]`,
@@ -29,25 +27,28 @@ build parameters and the search parameter sweep points.
 
 ## Usage
 
-### Run all benchmarks
+### Run a base suite
+
+The base suite at each scale compares PRISM with all index parameters
+left to its auto settings against pgvector's recommended HNSW default:
 
 ```bash
-rekall run benchmarks/run-all.toml --dry-run   # preview
-rekall run benchmarks/run-all.toml              # run everything
+rekall run benchmarks/cohere-1m.toml --dry-run   # preview
+rekall run benchmarks/cohere-1m.toml              # run it
 ```
 
-The suite file defines the cartesian product of datasets and indexes. Each
-`[[suite]]` entry can override the default `indexes` list:
+A suite file lists shared index fragments and pairs them with datasets.
+Each `[[suite]]` entry can override the default `indexes` list:
 
 ```toml
-indexes = ["indexes/hnsw-m16.toml", "indexes/prism-n4000-cctrue-fs16-soar.toml"]
+indexes = ["indexes/prism-defaults.toml", "indexes/hnsw-m24-halfvec.toml"]
 
 [[suite]]
 dataset = "datasets/cohere-1m.toml"
 
 [[suite]]
 dataset = "datasets/cohere-100m.toml"
-indexes = ["indexes/hnsw-m16.toml"]   # only HNSW for 100M
+indexes = ["indexes/prism-defaults.toml"]   # only PRISM for 100M
 ```
 
 ### Run a single dataset with all indexes
@@ -62,8 +63,8 @@ rekall run --datasets benchmarks/datasets/cohere-1m.toml \
 ```bash
 rekall run --datasets benchmarks/datasets/cohere-1m.toml \
                       benchmarks/datasets/cohere-10m.toml \
-           --indexes benchmarks/indexes/hnsw-m16.toml \
-                     benchmarks/indexes/prism-n4000-cctrue-fs16-soar.toml
+           --indexes benchmarks/indexes/hnsw-m24-halfvec.toml \
+                     benchmarks/indexes/prism-defaults.toml
 ```
 
 ## Auto-Download
@@ -118,13 +119,13 @@ cp benchmarks/datasets/cohere-1m.toml benchmarks/datasets/glove-1m.toml
 # edit name, path, metric, dimension, table name
 ```
 
-Then add a `[[suite]]` entry in `run-all.toml` to include it in full runs.
+Then add a `[[suite]]` entry for it in the suite you want to run it with.
 
 ## Adding a New Index
 
 Create a new file in `indexes/` with the index definition and search sweep.
 It will be picked up when `--indexes benchmarks/indexes/` is used, and can
-be added to `run-all.toml`'s default `indexes` list:
+be added to a suite's `indexes` list:
 
 ```toml
 # benchmarks/indexes/hnsw-m32.toml
@@ -148,9 +149,9 @@ need for cohere-1M — separately for the build and for queries — from the
 index sizes published at <https://timescale.github.io/rekall/>. It backs two
 suites:
 
-- `cohere-1m-prism-vs-hnsw.toml` — loads, builds, and measures the warm
-  reference frontier on `infra/instances/m8g.large.toml` (8 GiB, the rung
-  where HNSW still builds in memory under stock tuning).
+- `cohere-1m.toml` — loads, builds, and measures the warm reference
+  frontier on `infra/instances/m8g.large.toml` (8 GiB, the rung where
+  HNSW still builds in memory under stock tuning).
   The same suite runs at every rung of the 8 / 4 / 2 GiB ladder via
   `rekall infra resize` — one file, so every rung shares its cache policy
   and query count by construction.

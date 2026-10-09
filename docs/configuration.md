@@ -193,11 +193,10 @@ the convention, not a requirement. You can put your own suite + index
 + dataset files anywhere and pass the path explicitly to `rekall run`.
 
 ```toml
-# benchmarks/run-all.toml
+# benchmarks/cohere-1m.toml
 indexes = [
-    "indexes/hnsw-m16.toml",
-    "indexes/prism-n4000-cctrue-fs16-soar.toml",
-    "indexes/vchordrq-rabitq8.toml",
+    "indexes/prism-defaults.toml",
+    "indexes/hnsw-m24-halfvec.toml",
 ]
 
 [[suite]]
@@ -205,7 +204,7 @@ dataset = "datasets/cohere-1m.toml"
 
 [[suite]]
 dataset = "datasets/cohere-10m.toml"
-indexes = ["indexes/hnsw-m16.toml"]   # override the default per-suite
+indexes = ["indexes/prism-defaults.toml"]   # override the default per-suite
 ```
 
 Paths in a suite file are resolved relative to the suite's parent
@@ -217,8 +216,8 @@ Running:
 
 ```bash
 # Canonical suites
-rekall run benchmarks/run-all.toml
-rekall run benchmarks/vchordrq-rabitq8.toml
+rekall run benchmarks/cohere-1m.toml
+rekall run benchmarks/cohere-10m-prism-vs-vchordrq.toml
 
 # A suite you keep outside the repo
 rekall run ~/my-experiments/scaling-test.toml
@@ -228,8 +227,10 @@ Repo layout under `benchmarks/`:
 
 ```
 benchmarks/
-  run-all.toml                     # suite: all indexes × all datasets
-  vchordrq-*.toml                  # per-variant suites
+  cohere-{1,5,10,50,100}m.toml     # base suites: default PRISM vs hnsw-m24-halfvec
+  cohere-10m-prism-vs-vchordrq.toml
+  cohere-100m-ivfflat.toml
+  cohere-{10,50,100}m-tuning.toml
   datasets/cohere-{1m,10m,...}.toml
   indexes/{hnsw,prism,vchordrq}-*.toml
 ```
