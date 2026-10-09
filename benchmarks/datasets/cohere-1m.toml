@@ -10,6 +10,12 @@ dimension = 768
 
 [load]
 table = "cohere_1m"
+# The load pipeline buffers 4 chunks plus one in flight on the client;
+# at the 50k default and 768d f32 that peaks near 1.5 GB, which OOMs the
+# 2 GiB RAM-ladder rung (rekall runs on the instance next to PostgreSQL).
+# 10k-row chunks cap the client at ~400 MB. Load is untimed, so the
+# extra HDF5 reads cost nothing in the measurements.
+chunk_size = 10000
 
 [search]
 k = 10
