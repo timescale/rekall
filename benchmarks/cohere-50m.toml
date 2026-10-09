@@ -1,0 +1,13 @@
+# Base suite, cohere-50M: out-of-the-box PRISM vs the pgvector
+# HNSW baseline. Every index parameter is left to PRISM's auto settings
+# (auto nlist = rows/256, fastscan + centroid fastscan, SOAR 1.0,
+# boundary 0.35, auto rerank); the only query-time sweep is nprobe.
+#
+# Usage: rekall run benchmarks/cohere-50m.toml [--dry-run]
+
+indexes = [
+    "indexes/prism-defaults.toml",
+    "indexes/hnsw-m24-halfvec.toml",
+]
+[[suite]]
+dataset = "datasets/cohere-50m.toml"
