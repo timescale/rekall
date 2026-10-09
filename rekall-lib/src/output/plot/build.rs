@@ -249,7 +249,7 @@ mod tests {
         let p = dir.path().join("b.html");
         render_html(
             &p,
-            &[build("mkt-n16000", 600, 2_300_000_000, 8)],
+            &[build("prism-n16000", 600, 2_300_000_000, 8)],
             BuildMetric::TimeSecs,
             "Index build time",
             Some("cohere-5m | r8i"),
@@ -257,7 +257,7 @@ mod tests {
         .unwrap();
         let html = std::fs::read_to_string(&p).unwrap();
         assert!(html.contains("type:\"bar\""));
-        assert!(html.contains("mkt-n16000"));
+        assert!(html.contains("prism-n16000"));
         assert!(html.contains("Build time (seconds)"));
         assert!(html.contains("2193 MB")); // size as bar label
         assert!(html.contains("cohere-5m | r8i")); // caption
@@ -269,7 +269,7 @@ mod tests {
         let p = dir.path().join("s.html");
         render_html(
             &p,
-            &[build("mkt-n16000", 600, 2_300_000_000, 8)],
+            &[build("prism-n16000", 600, 2_300_000_000, 8)],
             BuildMetric::SizeMb,
             "Index size",
             None,

@@ -1200,8 +1200,8 @@ mod tests {
             Metric::Angular,
         );
         assert_eq!(
-            pg.index_sql_name("mkt-nlist-1000"),
-            "idx_rekall_t_mkt_nlist_1000"
+            pg.index_sql_name("prism-nlist-1000"),
+            "idx_rekall_t_prism_nlist_1000"
         );
         assert_eq!(pg.index_sql_name("hnsw-m16"), "idx_rekall_t_hnsw_m16");
     }

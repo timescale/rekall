@@ -351,7 +351,7 @@ pub async fn run(
     // so all extensions under test exist in the catalog — meaning each
     // per-index file records the correct extension version + git commit +
     // settings. The run-start snapshot predates `CREATE EXTENSION` in the
-    // index phase, so it omits e.g. meerkat entirely. In the interleaved
+    // index phase, so it omits e.g. PRISM entirely. In the interleaved
     // build+search path this runs once per index (filter_index is set), so
     // each file is captured independently. Falls back to the threaded value
     // if the probe connection fails.
@@ -1835,7 +1835,7 @@ results_dir = "{}"
 
     #[test]
     fn broadest_params_keeps_non_numeric_key_stable() {
-        // mkt-norerank's shape: a fixed boolean alongside a swept int.
+        // prism-norerank's shape: a fixed boolean alongside a swept int.
         let mut params = HashMap::new();
         params.insert(
             "prism.rerank".to_string(),

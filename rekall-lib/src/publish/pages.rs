@@ -445,7 +445,7 @@ fn render_load_table(
     if rows.is_empty() {
         return String::new();
     }
-    let delta_col = model.meerkat_col.is_some();
+    let delta_col = model.prism_col.is_some();
     let mut b = String::new();
     b.push_str("<h2>Throughput under load</h2>");
     header(&mut b, "Recall · clients");
@@ -455,7 +455,7 @@ fn render_load_table(
             .cells
             .iter()
             .enumerate()
-            .filter(|(i, _)| !(delta_col && Some(*i) == model.meerkat_col))
+            .filter(|(i, _)| !(delta_col && Some(*i) == model.prism_col))
             .filter_map(|(i, c)| c.as_ref().map(|c| (i, c.qps_wall)))
             .max_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i);
@@ -486,7 +486,7 @@ fn render_load_table(
         }
         if delta_col {
             let pair = model
-                .meerkat_col
+                .prism_col
                 .zip(best)
                 .and_then(|(m, c)| Some((row.cells[m].as_ref()?, row.cells[c].as_ref()?)));
             match pair {
@@ -567,7 +567,7 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         return String::new();
     };
     let mut b = String::new();
-    let delta_col = model.meerkat_col.is_some();
+    let delta_col = model.prism_col.is_some();
 
     let header = |b: &mut String, first: &str| {
         b.push_str("<table><tr>");
@@ -586,7 +586,7 @@ fn render_run_tables(compact: &CompactSummary) -> String {
     // cells compete — every value in a row is at the identical recall.
     let best_col = |cells: &[Cell], metric: &dyn Fn(&compare::InterpCell) -> f64, lower: bool| {
         let candidates = cells.iter().enumerate().filter_map(|(i, c)| {
-            if delta_col && Some(i) == model.meerkat_col {
+            if delta_col && Some(i) == model.prism_col {
                 return None; // "best" means best competitor in Families mode
             }
             match c {
@@ -609,7 +609,7 @@ fn render_run_tables(compact: &CompactSummary) -> String {
                       best: Option<usize>,
                       metric: &dyn Fn(&compare::InterpCell) -> f64,
                       lower: bool| {
-        let (Some(mc), Some(bc)) = (model.meerkat_col, best) else {
+        let (Some(mc), Some(bc)) = (model.prism_col, best) else {
             return "<td>—</td>".to_string();
         };
         let (Cell::Interpolated(m), Cell::Interpolated(c)) = (&cells[mc], &cells[bc]) else {
@@ -767,7 +767,7 @@ fn render_run_tables(compact: &CompactSummary) -> String {
         for (name, metric, fmt) in &rows {
             let best = {
                 let candidates = model.build_cells.iter().enumerate().filter_map(|(i, c)| {
-                    if delta_col && Some(i) == model.meerkat_col {
+                    if delta_col && Some(i) == model.prism_col {
                         return None;
                     }
                     c.as_ref().map(|c| (i, metric(c)))
@@ -792,9 +792,7 @@ fn render_run_tables(compact: &CompactSummary) -> String {
             }
             if delta_col {
                 let cell = match (
-                    model
-                        .meerkat_col
-                        .and_then(|i| model.build_cells[i].as_ref()),
+                    model.prism_col.and_then(|i| model.build_cells[i].as_ref()),
                     best.and_then(|i| model.build_cells[i].as_ref()),
                 ) {
                     (Some(m), Some(c)) => {
@@ -970,12 +968,10 @@ fn render_run_page(
         row(&mut b, name, tag);
     }
     // The pg_vectorsearch branch the run was built from (the commit above is
-    // authoritative; this is the readable ref). Accept the old key in archived
-    // result files.
+    // authoritative; this is the readable ref).
     if let Some(branch) = summary
         .config
         .get("pg_vectorsearch")
-        .or_else(|| summary.config.get("meerkat"))
         .and_then(|m| m.get("branch"))
         .and_then(|v| v.as_str())
     {
@@ -1147,7 +1143,7 @@ fn human_bytes(n: u64) -> String {
     format!("{v:.1} {}", U[i])
 }
 
-/// The catalog's Meerkat-vs-competition cell: Meerkat's QPS gain/loss at the
+/// The catalog's PRISM-vs-competition cell: PRISM's QPS gain/loss at the
 /// low / middle / high recall of each competitor's common frontier range.
 /// "—" when there is nothing to compare: no summary.json (old run), a
 /// single-family run, no frontier overlap — or an ID-based run, so the
@@ -1160,7 +1156,7 @@ fn comparison_cell(summary: Option<&CompactSummary>) -> String {
     if cs.recall_basis != RecallBasis::Distance {
         return "—".to_string();
     }
-    let deltas = compare::meerkat_comparison(cs);
+    let deltas = compare::prism_comparison(cs);
     let mut lines = Vec::new();
     for d in &deltas {
         if d.samples.is_empty() {
@@ -1206,7 +1202,7 @@ fn render_catalog(entries: &[CatalogEntry]) -> String {
         b.push_str(&format!("<h2>{}</h2>", esc(&pretty_dataset(&dataset))));
         b.push_str(
             "<table><tr><th>Date</th><th>Comment</th><th>Instance</th>\
-             <th>Meerkat vs competition</th></tr>",
+             <th>PRISM vs competition</th></tr>",
         );
         for e in runs {
             let m = &e.meta;
@@ -1264,15 +1260,15 @@ mod tests {
     fn versus_compact() -> CompactSummary {
         compact(
             vec![
-                sweep("mkt-n16000", "meerkat", 0.90, 3000.0),
-                sweep("mkt-n16000", "meerkat", 0.96, 1500.0),
+                sweep("prism-n16000", "prism", 0.90, 3000.0),
+                sweep("prism-n16000", "prism", 0.96, 1500.0),
                 sweep("hnsw-m24", "pgvector-hnsw", 0.90, 2000.0),
                 sweep("hnsw-m24", "pgvector-hnsw", 0.94, 1200.0),
             ],
             vec![
                 BuildInfo {
-                    index_name: "mkt-n16000".into(),
-                    index_type: "meerkat".into(),
+                    index_name: "prism-n16000".into(),
+                    index_type: "prism".into(),
                     build_time_secs: 312.0,
                     size_bytes: 3_100_000_000,
                     cache: Some("prewarmed".into()),
@@ -1349,7 +1345,7 @@ mod tests {
         assert!(!html.contains("report-pareto.html"));
         assert!(!html.contains("s3.console.aws.amazon.com"));
         // The comparison column exists; runs without summary.json show "—".
-        assert!(html.contains("<th>Meerkat vs competition</th>"));
+        assert!(html.contains("<th>PRISM vs competition</th>"));
         assert!(html.contains("<td>—</td>"));
     }
 
@@ -1359,7 +1355,7 @@ mod tests {
         with.summary = Some(versus_compact());
         let html = render_catalog(&[with]);
         assert!(html.contains("vs pgvector HNSW:"));
-        assert!(html.contains("class=\"pos\"")); // meerkat wins -> green
+        assert!(html.contains("class=\"pos\"")); // prism wins -> green
     }
 
     #[test]
@@ -1379,7 +1375,7 @@ mod tests {
     fn catalog_comparison_dash_for_single_family() {
         let mut e = entry(meta("cohere-5m", "2026-06-10", "09:56:42"));
         e.summary = Some(compact(
-            vec![sweep("mkt-a", "meerkat", 0.9, 1000.0)],
+            vec![sweep("prism-a", "prism", 0.9, 1000.0)],
             vec![],
         ));
         let html = render_catalog(&[e]);
@@ -1432,25 +1428,25 @@ mod tests {
         assert!(html.contains("Insert/update/delete workloads are not measured"));
         assert!(html.contains("Interpolated on config"));
         assert!(html.contains("never interpolated across different configurations"));
-        assert!(html.contains("PRISM = mkt-n16000, prewarmed"));
-        // Build cells with meerkat faster + smaller: green negative deltas.
+        assert!(html.contains("PRISM = prism-n16000, prewarmed"));
+        // Build cells with prism faster + smaller: green negative deltas.
         assert!(html.contains("class=\"pos\">-39%"));
     }
 
     #[test]
     fn run_tables_delta_only_between_interpolated_cells() {
-        // Meerkat's sweep starts above 0.90 — no value there, so no Δ,
+        // PRISM's sweep starts above 0.90 — no value there, so no Δ,
         // even though the competitor hits 0.90 exactly.
         let html = render_run_tables(&compact(
             vec![
-                sweep("mkt", "meerkat", 0.93, 3000.0),
-                sweep("mkt", "meerkat", 0.96, 1500.0),
+                sweep("prism", "prism", 0.93, 3000.0),
+                sweep("prism", "prism", 0.96, 1500.0),
                 sweep("hnsw", "pgvector-hnsw", 0.90, 2000.0),
                 sweep("hnsw", "pgvector-hnsw", 0.96, 800.0),
             ],
             vec![],
         ));
-        assert!(html.contains("(min r=0.930)")); // meerkat's 0.90 cell
+        assert!(html.contains("(min r=0.930)")); // PRISM's 0.90 cell
         let qps_table = &html[..html.find("Latency at recall").unwrap()];
         let row_090 = &qps_table[qps_table.find("<td>0.90</td>").unwrap()..];
         let row_090 = &row_090[..row_090.find("</tr>").unwrap()];
@@ -1466,14 +1462,14 @@ mod tests {
     fn run_tables_single_family_without_delta() {
         let html = render_run_tables(&compact(
             vec![
-                sweep("mkt-serial", "meerkat", 0.90, 2000.0),
-                sweep("mkt-parallel", "meerkat", 0.90, 2100.0),
+                sweep("prism-serial", "prism", 0.90, 2000.0),
+                sweep("prism-parallel", "prism", 0.90, 2100.0),
             ],
             vec![],
         ));
         // Columns are the config names, no Δ column.
-        assert!(html.contains("<th>mkt-serial</th>"));
-        assert!(html.contains("<th>mkt-parallel</th>"));
+        assert!(html.contains("<th>prism-serial</th>"));
+        assert!(html.contains("<th>prism-parallel</th>"));
         assert!(!html.contains("\u{394} vs best competitor"));
         // Best value per row still bolded.
         assert!(html.contains("<b>2,100</b>"));
@@ -1487,8 +1483,8 @@ mod tests {
         let mut cs = versus_compact();
         cs.load_points = vec![
             load(
-                "mkt-n16000",
-                "meerkat",
+                "prism-n16000",
+                "prism",
                 &[0.90],
                 0.90,
                 1,
@@ -1497,8 +1493,8 @@ mod tests {
                 3000.0,
             ),
             load(
-                "mkt-n16000",
-                "meerkat",
+                "prism-n16000",
+                "prism",
                 &[0.90],
                 0.90,
                 8,
@@ -1529,12 +1525,12 @@ mod tests {
         assert!(table.contains("0.90 · 8 clients <span class=\"faint\">(1x of 8 CPUs)</span>"));
         // Wall-clock QPS, then the all-clients-busy throughput in parentheses.
         // Latency below: p50 = 8 clients / 12,500 QPS = 0.64 ms, p95 twice that.
-        // Speedup over Meerkat's own single client: 12,000 / 3,000 = 4.0x.
+        // Speedup over PRISM's own single client: 12,000 / 3,000 = 4.0x.
         assert!(table.contains(
             "<td>12,000 <span class=\"faint\">(12,500)</span> · 4.0\u{d7}<br>\
              p50 0.64 ms · p95 1.28 ms</td>"
         ));
-        // The best competitor is bolded, and Meerkat leads it by 12000/8000.
+        // The best competitor is bolded, and PRISM leads it by 12000/8000.
         // HNSW has no single-client baseline here, so no speedup.
         assert!(table.contains(
             "<td><b>8,000</b> <span class=\"faint\">(8,400)</span><br>p50 0.95 ms · p95 1.90 ms</td>"
@@ -1552,9 +1548,9 @@ mod tests {
         assert!(table.contains("not interpolated"));
         // One footnote per family and target, since a single config served
         // every client count.
-        assert!(table.contains("PRISM @0.90: mkt-n16000 (r=0.900)"));
+        assert!(table.contains("PRISM @0.90: prism-n16000 (r=0.900)"));
         assert!(table.contains("pgvector HNSW @0.90: hnsw-m24 (r=0.900)"));
-        assert_eq!(table.matches("mkt-n16000 (r=").count(), 1);
+        assert_eq!(table.matches("prism-n16000 (r=").count(), 1);
     }
 
     #[test]
@@ -1563,8 +1559,8 @@ mod tests {
         let mut cs = versus_compact();
         cs.load_points = vec![
             load(
-                "mkt-n16000",
-                "meerkat",
+                "prism-n16000",
+                "prism",
                 &[0.90],
                 0.90,
                 8,
@@ -1573,8 +1569,8 @@ mod tests {
                 12500.0,
             ),
             load(
-                "mkt-other",
-                "meerkat",
+                "prism-other",
+                "prism",
                 &[0.90],
                 0.91,
                 16,
@@ -1584,8 +1580,8 @@ mod tests {
             ),
         ];
         let html = render_run_tables(&cs);
-        assert!(html.contains("PRISM @0.90 with 8 clients: mkt-n16000 (r=0.900)"));
-        assert!(html.contains("PRISM @0.90 with 16 clients: mkt-other (r=0.910)"));
+        assert!(html.contains("PRISM @0.90 with 8 clients: prism-n16000 (r=0.900)"));
+        assert!(html.contains("PRISM @0.90 with 16 clients: prism-other (r=0.910)"));
     }
 
     #[test]
@@ -1617,12 +1613,12 @@ mod tests {
         let mut cs = versus_compact();
         cs.load_points = {
             use crate::publish::summary::test_load_point as load;
-            let (mkt, hnsw) = ("mkt-n16000", "hnsw-m24");
+            let (prism_arm, hnsw) = ("prism-n16000", "hnsw-m24");
             vec![
-                load(mkt, "meerkat", &[0.90], 0.90, 1, None, 3000.0, 3000.0),
+                load(prism_arm, "prism", &[0.90], 0.90, 1, None, 3000.0, 3000.0),
                 load(
-                    mkt,
-                    "meerkat",
+                    prism_arm,
+                    "prism",
                     &[0.90],
                     0.90,
                     48,
@@ -1631,8 +1627,8 @@ mod tests {
                     54500.0,
                 ),
                 load(
-                    mkt,
-                    "meerkat",
+                    prism_arm,
+                    "prism",
                     &[0.90],
                     0.90,
                     96,
@@ -1670,10 +1666,10 @@ mod tests {
                     40000.0,
                     44000.0,
                 ),
-                load(mkt, "meerkat", &[0.95], 0.96, 1, None, 1500.0, 1500.0),
+                load(prism_arm, "prism", &[0.95], 0.96, 1, None, 1500.0, 1500.0),
                 load(
-                    mkt,
-                    "meerkat",
+                    prism_arm,
+                    "prism",
                     &[0.95],
                     0.96,
                     48,
@@ -1682,8 +1678,8 @@ mod tests {
                     28100.0,
                 ),
                 load(
-                    mkt,
-                    "meerkat",
+                    prism_arm,
+                    "prism",
                     &[0.95],
                     0.96,
                     96,

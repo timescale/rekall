@@ -88,13 +88,15 @@ mod tests {
         let dir = tmp.path().join("cohere-10m");
         std::fs::create_dir(&dir).unwrap();
         std::fs::write(dir.join("run-info-20260610-095642.json"), "{}").unwrap();
-        std::fs::write(dir.join("mkt-n16000-20260610-100000.json.gz"), "x").unwrap();
+        std::fs::write(dir.join("prism-n16000-20260610-100000.json.gz"), "x").unwrap();
 
         let archived = archive_results_dir(dir.to_str().unwrap()).unwrap().unwrap();
 
         assert_eq!(archived, tmp.path().join("cohere-10m-20260610-095642"));
         assert!(!dir.exists(), "original dir is moved away");
-        assert!(archived.join("mkt-n16000-20260610-100000.json.gz").exists());
+        assert!(archived
+            .join("prism-n16000-20260610-100000.json.gz")
+            .exists());
     }
 
     #[test]

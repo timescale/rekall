@@ -757,7 +757,7 @@ impl Agent {
         // Admin connection to normalize the table's parallel_workers reloption
         // before each build, mirroring phase::index::run. The interleaved path
         // previously skipped this, so table_parallel_workers was ignored in a
-        // full `run` and meerkat fell back to the planner's heap-size heuristic.
+        // full `run` and PRISM fell back to the planner's heap-size heuristic.
         let admin_pg = backend::postgres::PgConnection::new(
             &self.config.connection,
             &self.config.table_name(),

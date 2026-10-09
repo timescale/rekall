@@ -128,7 +128,7 @@ async fn pg_guc_pg_vectorsearch_after_load() {
 
     let pg = PgConnection::new(
         &test_connection(&dsn),
-        "_rekall_test_guc_mkt",
+        "_rekall_test_guc_prism",
         3,
         Metric::Angular,
     );
@@ -242,7 +242,7 @@ async fn backend_pg_vectorsearch_lifecycle() {
     }
 
     let conn = test_connection(&dsn);
-    let table = "_rekall_test_mkt";
+    let table = "_rekall_test_prism";
     let dim = 3;
 
     let pg = PgConnection::new(&conn, table, dim, Metric::Euclidean);
@@ -262,7 +262,7 @@ async fn backend_pg_vectorsearch_lifecycle() {
 
     let idx_config = IndexConfig {
         index_type: "prism".to_string(),
-        name: "test-mkt".to_string(),
+        name: "test-prism".to_string(),
         params: toml::Value::try_from(toml::toml! {
             nlist = 4
         })
@@ -289,7 +289,7 @@ async fn backend_pg_vectorsearch_lifecycle() {
 
     assert!(!backend.index_exists().await.unwrap());
     let build_result = backend.build_index().await.unwrap();
-    assert_eq!(build_result.index_name, "test-mkt");
+    assert_eq!(build_result.index_name, "test-prism");
     assert!(build_result.index_size_bytes > 0);
 
     let mut search_params = HashMap::new();

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 /// two must agree so a table column is findable in the plots.
 pub fn family_label(index_type: &str, data_type: Option<&str>) -> String {
     let family = match index_type {
-        "prism" | "meerkat" => "PRISM",
+        "prism" => "PRISM",
         "pgvector-hnsw" => "pgvector HNSW",
         other => other,
     };
@@ -675,7 +675,6 @@ mod tests {
     #[test]
     fn family_label_maps_known_types() {
         assert_eq!(family_label("prism", None), "PRISM");
-        assert_eq!(family_label("meerkat", None), "PRISM");
         assert_eq!(family_label("pgvector-hnsw", None), "pgvector HNSW");
         assert_eq!(family_label("vchordrq", None), "vchordrq");
     }
