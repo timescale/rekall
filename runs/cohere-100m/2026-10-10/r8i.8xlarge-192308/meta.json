@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-100m/2026-10-10/r8i.8xlarge-192308",
+  "dataset": "cohere-100m",
+  "date": "2026-10-10",
+  "time": "19:23:08",
+  "timestamp": "2026-10-10T19:23:08+0000",
+  "instance_type": "r8i.8xlarge",
+  "hostname": "ip-172-31-44-144",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 32,
+  "memory_gb": 247.7,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "ed14853",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (d4d3167)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9970199999999956,
+  "qps_at_peak": 23.31735267686196,
+  "num_indexes": 1,
+  "s3_url": "s3://rekall-bench/runs/cohere-100m/2026-10-10/r8i.8xlarge-192308/",
+  "comment": "Testing rerank pool (main)"
+}
