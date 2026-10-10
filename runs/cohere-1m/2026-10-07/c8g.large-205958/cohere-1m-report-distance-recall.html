@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (ann-benchmarks distance method)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (ann-benchmarks distance method)</div><div class="meta">“Testing multi-client”<br>cohere-1m  |  2026-10-07  |  c8g.large, unknown, 2 vCPU, 4 GB<br>PG 18.6  |  shared_buffers=1 GB  |  work_mem=32 MB  |  max_parallel_maintenance_workers=1  |  pgvector 0.8.7</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.9526012064309497, 2.556964426222931, 3.0125973642967385, 3.2413212863192373, 4.07550554236256, 5.15453953153714, 6.577060564891875],
+                y: [154.79962666664431, 143.2545473434219, 133.42006527043003, 130.94074562007776, 114.4178793588864, 97.27652292306196, 76.10201231224009],
+                customdata: [0.8757299999999822, 0.9280399999999809, 0.953139999999979, 0.9623599999999808, 0.9832999999999862, 0.9942599999999935, 0.9986099999999979],
+                text: ["<br>Disk read/query: 213.8 kB<br>Blks read/query: -108.7 (idx -131.9, heap 23.2)<br>Buffer hit: 43.0%<br>Disk busy: 89%","<br>Disk read/query: 230.3 kB<br>Blks read/query: -252.1 (idx -277.7, heap 25.5)<br>Buffer hit: 41.6%<br>Disk busy: 86%","<br>Disk read/query: 240.5 kB<br>Blks read/query: -426.4 (idx -453.5, heap 27.1)<br>Buffer hit: 40.8%<br>Disk busy: 84%","<br>Disk read/query: 249.3 kB<br>Blks read/query: -526.3 (idx -553.9, heap 27.6)<br>Buffer hit: 40.5%<br>Disk busy: 83%","<br>Disk read/query: 268.2 kB<br>Blks read/query: -1035.7 (idx -1065.3, heap 29.6)<br>Buffer hit: 40.0%<br>Disk busy: 77%","<br>Disk read/query: 282.6 kB<br>Blks read/query: -2063.2 (idx -2094.7, heap 31.6)<br>Buffer hit: 39.5%<br>Disk busy: 69%","<br>Disk read/query: 299.7 kB<br>Blks read/query: -4054.0 (idx -4087.4, heap 33.3)<br>Buffer hit: 39.1%<br>Disk busy: 57%"],
+                name: "mkt-defaults",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "mkt-defaults",
+                hovertemplate: "<b>mkt-defaults</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.9917674528110065, 2.688925640267751, 3.4692479402898933, 4.248099746634713, 4.509889417514995, 4.729913072578468, 5.20667476487441, 5.584922656267072, 5.850569122861841, 5.897053597909239],
+                y: [29.19869905079587, 20.24190362213525, 12.772397300397513, 7.56326931174102, 5.903605448502636, 5.036943461820719, 3.0993926628499, 1.6505883602758904, 0.8410507273381126, 0.6438401562417311],
+                customdata: [0.8799299999999824, 0.9363699999999812, 0.9697999999999843, 0.9859099999999891, 0.9891199999999897, 0.9912499999999907, 0.9945499999999918, 0.9962599999999937, 0.9971299999999949, 0.9972599999999949],
+                text: ["<br>Disk read/query: 826.7 kB<br>Blks read/query: 172.8 (idx 163.0, heap 9.8)<br>Buffer hit: 73.1%<br>Disk busy: 95%","<br>Disk read/query: 1.2 MB<br>Blks read/query: 262.4 (idx 252.6, heap 9.9)<br>Buffer hit: 70.8%<br>Disk busy: 95%","<br>Disk read/query: 1.9 MB<br>Blks read/query: 433.4 (idx 423.5, heap 9.9)<br>Buffer hit: 69.0%<br>Disk busy: 95%","<br>Disk read/query: 3.3 MB<br>Blks read/query: 773.2 (idx 763.3, heap 10.0)<br>Buffer hit: 67.9%<br>Disk busy: 95%","<br>Disk read/query: 4.2 MB<br>Blks read/query: 942.1 (idx 932.2, heap 10.0)<br>Buffer hit: 67.7%<br>Disk busy: 95%","<br>Disk read/query: 4.9 MB<br>Blks read/query: 1109.5 (idx 1099.5, heap 10.0)<br>Buffer hit: 67.6%<br>Disk busy: 96%","<br>Disk read/query: 7.9 MB<br>Blks read/query: 1764.6 (idx 1754.6, heap 10.0)<br>Buffer hit: 67.2%<br>Disk busy: 96%","<br>Disk read/query: 14.9 MB<br>Blks read/query: 3315.4 (idx 3305.4, heap 10.0)<br>Buffer hit: 66.6%<br>Disk busy: 96%","<br>Disk read/query: 28.7 MB<br>Blks read/query: 6193.5 (idx 6183.5, heap 10.0)<br>Buffer hit: 66.0%<br>Disk busy: 96%","<br>Disk read/query: 36.0 MB<br>Blks read/query: 7572.5 (idx 7562.5, heap 10.0)<br>Buffer hit: 65.7%<br>Disk busy: 96%"],
+                name: "hnsw-m24-halfvec",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "hnsw-m24-halfvec",
+                hovertemplate: "<b>hnsw-m24-halfvec</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
