@@ -1,0 +1,200 @@
+{
+  "recall_basis": "distance",
+  "points": [
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9653399999999769,
+      "qps": 142.65575572678333,
+      "p50_latency_us": 6947.0,
+      "p95_latency_us": 8711.0,
+      "p99_latency_us": 9527.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.6788599999999957,
+      "qps": 2302.6125672449207,
+      "p50_latency_us": 428.0,
+      "p95_latency_us": 533.0,
+      "p99_latency_us": 603.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.769879999999988,
+      "qps": 1330.1360409937258,
+      "p50_latency_us": 741.0,
+      "p95_latency_us": 924.0,
+      "p99_latency_us": 1043.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.8428899999999823,
+      "qps": 742.3760577188476,
+      "p50_latency_us": 1327.0,
+      "p95_latency_us": 1669.0,
+      "p99_latency_us": 1862.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.8961299999999759,
+      "qps": 461.3621431231178,
+      "p50_latency_us": 2149.0,
+      "p95_latency_us": 2719.0,
+      "p99_latency_us": 3031.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9386499999999731,
+      "qps": 252.9271831997872,
+      "p50_latency_us": 3911.0,
+      "p95_latency_us": 4935.0,
+      "p99_latency_us": 5419.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9665699999999777,
+      "qps": 136.87324407026102,
+      "p50_latency_us": 7243.0,
+      "p95_latency_us": 9079.0,
+      "p99_latency_us": 9847.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9826699999999854,
+      "qps": 74.91013330947395,
+      "p50_latency_us": 13271.0,
+      "p95_latency_us": 16527.0,
+      "p99_latency_us": 18015.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9919999999999909,
+      "qps": 39.43659305695124,
+      "p50_latency_us": 25231.0,
+      "p95_latency_us": 31231.0,
+      "p99_latency_us": 33631.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall": 0.9966899999999951,
+      "qps": 24.005753699046625,
+      "p50_latency_us": 41471.0,
+      "p95_latency_us": 50655.0,
+      "p99_latency_us": 54367.0
+    }
+  ],
+  "builds": [
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "build_time_secs": 3898.819807601,
+      "size_bytes": 26735050752,
+      "cache": "prewarmed"
+    }
+  ],
+  "load_points": [
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9621699999999856,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 32,
+      "qps_wall": 303.25963336859166,
+      "throughput_qps": 303.25963336859166,
+      "p50_latency_us": 3259.0,
+      "p95_latency_us": 4119.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.962169999999984,
+      "recall_basis": "distance",
+      "clients": 32,
+      "clients_spec": "1x",
+      "cpu_count": 32,
+      "qps_wall": 4963.3063505996115,
+      "throughput_qps": 4971.786632405308,
+      "p50_latency_us": 6379.0,
+      "p95_latency_us": 7943.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9621699999999828,
+      "recall_basis": "distance",
+      "clients": 64,
+      "clients_spec": "2x",
+      "cpu_count": 32,
+      "qps_wall": 4829.081521665493,
+      "throughput_qps": 4839.47097377928,
+      "p50_latency_us": 13079.0,
+      "p95_latency_us": 21135.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9912099999999936,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 32,
+      "qps_wall": 87.87230886333165,
+      "throughput_qps": 87.87230886333165,
+      "p50_latency_us": 11303.0,
+      "p95_latency_us": 14111.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9912099999999924,
+      "recall_basis": "distance",
+      "clients": 32,
+      "clients_spec": "1x",
+      "cpu_count": 32,
+      "qps_wall": 1481.3687886003747,
+      "throughput_qps": 1483.7667333726604,
+      "p50_latency_us": 21423.0,
+      "p95_latency_us": 26719.0
+    },
+    {
+      "index_name": "prism-defaults",
+      "index_type": "prism",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9912099999999918,
+      "recall_basis": "distance",
+      "clients": 64,
+      "clients_spec": "2x",
+      "cpu_count": 32,
+      "qps_wall": 1452.1265180330952,
+      "throughput_qps": 1455.1144978944358,
+      "p50_latency_us": 44031.0,
+      "p95_latency_us": 66751.0
+    }
+  ]
+}
