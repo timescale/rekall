@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-10-12/c8g.large-114715",
+  "dataset": "cohere-1m",
+  "date": "2026-10-12",
+  "time": "11:47:15",
+  "timestamp": "2026-10-12T11:47:15+0000",
+  "instance_type": "c8g.large",
+  "hostname": "ip-172-31-39-39",
+  "cpu_model": "unknown",
+  "cpu_count": 2,
+  "memory_gb": 3.7,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "f31e456",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (49e623d)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.998609999999998,
+  "qps_at_peak": 69.12322115537748,
+  "num_indexes": 2,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-10-12/c8g.large-114715/",
+  "comment": "1M with increased IOPS"
+}
