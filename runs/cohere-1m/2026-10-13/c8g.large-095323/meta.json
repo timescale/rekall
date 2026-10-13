@@ -1,0 +1,24 @@
+{
+  "run_id": "cohere-1m/2026-10-13/c8g.large-095323",
+  "dataset": "cohere-1m",
+  "date": "2026-10-13",
+  "time": "09:53:23",
+  "timestamp": "2026-10-13T09:53:23+0000",
+  "instance_type": "c8g.large",
+  "hostname": "ip-172-31-47-227",
+  "cpu_model": "unknown",
+  "cpu_count": 2,
+  "memory_gb": 3.7,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on aarch64-unknown-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "a2adaf9",
+  "extensions": {
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.1.0-dev (eedfabe)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9940499999999932,
+  "qps_at_peak": 71.77594083526418,
+  "num_indexes": 1,
+  "s3_url": "s3://rekall-bench/runs/cohere-1m/2026-10-13/c8g.large-095323/",
+  "comment": "Rerun of sweep"
+}

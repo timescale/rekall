@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">“Rerun of sweep”<br>cohere-1m  |  2026-10-13  |  c8g.large, unknown, 2 vCPU, 4 GB<br>PG 18.6  |  shared_buffers=1 GB  |  work_mem=32 MB  |  max_parallel_maintenance_workers=1  |  pg_vectorsearch 0.1.0-dev (eedfabe), pgvector 0.8.7</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.1236223130890177, 1.3161472790446451, 1.4399053892860363, 1.5132340606763284, 1.555940018948277, 1.8334314252899468, 2.323319213844494, 2.77663343238356, 3.153082265420674, 3.461423710332479, 3.8908003894052454, 4.7026117766116515, 5.043465375782561, 5.064085496352317, 5.118396287643661],
+                y: [3754.488021118243, 2235.4081497616176, 1245.9907133820138, 702.3267946240528, 373.7792789251995, 334.87365166891436, 251.10523971259485, 222.06067554810215, 190.59579387484223, 150.09247722845706, 116.04192594784531, 101.87274604639256, 84.43397665775422, 81.40783121356151, 71.77594083526418],
+                customdata: [0.754659999999989, 0.7885399999999827, 0.8084399999999808, 0.8195399999999745, 0.8257699999999726, 0.8621699999999779, 0.910789999999974, 0.9413999999999716, 0.9590299999999716, 0.9695699999999716, 0.9799799999999846, 0.9910099999999888, 0.9935899999999924, 0.9937199999999926, 0.9940499999999932],
+                text: ["<br>Disk read/query: 14.4 kB<br>Blks read/query: -151.3 (idx -152.8, heap 1.6)<br>Buffer hit: 88.3%<br>Disk busy: 69%","<br>Disk read/query: 14.4 kB<br>Blks read/query: -302.4 (idx -304.0, heap 1.6)<br>Buffer hit: 88.1%<br>Disk busy: 58%","<br>Disk read/query: 17.0 kB<br>Blks read/query: -586.0 (idx -587.7, heap 1.7)<br>Buffer hit: 87.9%<br>Disk busy: 48%","<br>Disk read/query: 17.2 kB<br>Blks read/query: -1106.7 (idx -1108.5, heap 1.7)<br>Buffer hit: 87.6%<br>Disk busy: 35%","<br>Disk read/query: 17.3 kB<br>Blks read/query: -2151.1 (idx -2152.9, heap 1.8)<br>Buffer hit: 87.3%<br>Disk busy: 23%","<br>Disk read/query: 61.3 kB<br>Blks read/query: -130.0 (idx -140.5, heap 10.5)<br>Buffer hit: 52.5%<br>Disk busy: 85%","<br>Disk read/query: 86.7 kB<br>Blks read/query: -280.0 (idx -290.6, heap 10.6)<br>Buffer hit: 51.5%<br>Disk busy: 84%","<br>Disk read/query: 97.7 kB<br>Blks read/query: -562.8 (idx -573.4, heap 10.6)<br>Buffer hit: 50.8%<br>Disk busy: 79%","<br>Disk read/query: 107.7 kB<br>Blks read/query: -1083.1 (idx -1093.7, heap 10.7)<br>Buffer hit: 50.5%<br>Disk busy: 72%","<br>Disk read/query: 108.8 kB<br>Blks read/query: -2127.0 (idx -2137.7, heap 10.7)<br>Buffer hit: 50.0%<br>Disk busy: 60%","<br>Disk read/query: 226.1 kB<br>Blks read/query: -1064.2 (idx -1087.1, heap 22.9)<br>Buffer hit: 40.8%<br>Disk busy: 79%","<br>Disk read/query: 227.0 kB<br>Blks read/query: -2107.8 (idx -2130.9, heap 23.1)<br>Buffer hit: 40.4%<br>Disk busy: 70%","<br>Disk read/query: 309.8 kB<br>Blks read/query: -2091.8 (idx -2123.3, heap 31.5)<br>Buffer hit: 39.4%<br>Disk busy: 74%","<br>Disk read/query: 324.4 kB<br>Blks read/query: -2088.2 (idx -2121.6, heap 33.4)<br>Buffer hit: 39.2%<br>Disk busy: 75%","<br>Disk read/query: 395.5 kB<br>Blks read/query: -2073.7 (idx -2114.5, heap 40.8)<br>Buffer hit: 39.5%<br>Disk busy: 77%"],
+                name: "PRISM",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "PRISM",
+                hovertemplate: "<b>PRISM</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
