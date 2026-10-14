@@ -26,7 +26,10 @@ pub const RECALL_TARGETS: &[f64] = &[0.90, 0.95, 0.99];
 pub const CATALOG_MIN_RECALL: f64 = 0.80;
 
 pub fn is_prism(index_type: &str) -> bool {
-    index_type == "prism"
+    // `meerkat` is the index type recorded before the prism rename.
+    // Published summaries are not rewritten, so the catalog still has to
+    // recognize it or every pre-rename run compares as empty.
+    matches!(index_type, "prism" | "meerkat")
 }
 
 fn point_family(p: &SweepPoint) -> String {
@@ -747,6 +750,24 @@ mod tests {
         // prism-only run (no competitors).
         let cs = summary(vec![point("prism", "prism", 0.9, 1000.0)], vec![]);
         assert!(prism_comparison(&cs).is_empty());
+    }
+
+    #[test]
+    fn prism_comparison_recognizes_historical_meerkat_type() {
+        let cs = summary(
+            vec![
+                point("mkt-defaults", "meerkat", 0.90, 3000.0),
+                point("mkt-defaults", "meerkat", 0.96, 1500.0),
+                point("hnsw-m24-halfvec", "pgvector-hnsw", 0.90, 1000.0),
+                point("hnsw-m24-halfvec", "pgvector-hnsw", 0.96, 500.0),
+            ],
+            vec![],
+        );
+        let deltas = prism_comparison(&cs);
+        assert_eq!(deltas.len(), 1);
+        assert_eq!(deltas[0].competitor, "pgvector HNSW");
+        assert!(!deltas[0].samples.is_empty());
+        assert!((deltas[0].samples[0].pct - 200.0).abs() < 1.0);
     }
 
     #[test]
