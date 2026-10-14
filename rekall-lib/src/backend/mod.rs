@@ -26,6 +26,60 @@ use crate::progress::ProgressTx;
 use pg_vector_type::PgVector;
 use postgres::PgConnection;
 
+/// Wrap a params-parse failure with the index name and type.
+pub(crate) fn invalid_params(idx: &IndexConfig, err: impl std::fmt::Display) -> Error {
+    Error::Config(format!(
+        "Invalid {} params for '{}': {err}",
+        idx.index_type, idx.name
+    ))
+}
+
+/// One entry in the backend registry. Adding an index means implementing
+/// [`IndexBackend`] and appending its constructor here — validation and
+/// construction both go through this list.
+struct BackendKind {
+    type_names: fn() -> &'static [&'static str],
+    validate_params: fn(&IndexConfig) -> Result<()>,
+}
+
+fn backend_kinds() -> &'static [BackendKind] {
+    &[
+        BackendKind {
+            type_names: prism::PrismBackend::type_names,
+            validate_params: prism::PrismBackend::validate_params,
+        },
+        BackendKind {
+            type_names: pgvector_hnsw::PgvectorHnswBackend::type_names,
+            validate_params: pgvector_hnsw::PgvectorHnswBackend::validate_params,
+        },
+        BackendKind {
+            type_names: pgvector_ivfflat::PgvectorIvfflatBackend::type_names,
+            validate_params: pgvector_ivfflat::PgvectorIvfflatBackend::validate_params,
+        },
+        BackendKind {
+            type_names: vchordrq::VchordrqBackend::type_names,
+            validate_params: vchordrq::VchordrqBackend::validate_params,
+        },
+    ]
+}
+
+fn kind_for(index_type: &str) -> Result<&'static BackendKind> {
+    backend_kinds()
+        .iter()
+        .find(|k| (k.type_names)().contains(&index_type))
+        .ok_or_else(|| Error::UnknownBackend {
+            backend_type: index_type.to_string(),
+        })
+}
+
+/// Reject index params the backend does not implement. Unknown keys are
+/// otherwise dropped by serde, so a suite can request a build option and
+/// still create the index without it. Called while loading config, before
+/// any connection, so `--dry-run` fails the same way a real run does.
+pub fn validate_index_params(idx: &IndexConfig) -> Result<()> {
+    (kind_for(&idx.index_type)?.validate_params)(idx)
+}
+
 /// Standard constructor flow for every PG-backed index: parse params
 /// out of `idx.params`, build a `PgConnection` with the cancel
 /// registry attached, hand both off to `build` to assemble `Self`,
@@ -115,6 +169,18 @@ pub(crate) use pg_backend_field_accessors;
 #[async_trait]
 pub trait IndexBackend: Send + Sync {
     fn type_name(&self) -> &str;
+
+    /// `type` values in an index config that this backend handles.
+    /// Associated so config load can dispatch without a connection.
+    fn type_names() -> &'static [&'static str]
+    where
+        Self: Sized;
+
+    /// Reject `[index.params]` this backend does not implement. Associated
+    /// for the same reason: it runs at config load, before `connect`.
+    fn validate_params(idx: &IndexConfig) -> Result<()>
+    where
+        Self: Sized;
 
     fn index_name(&self) -> &str;
 

@@ -37,6 +37,7 @@ use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct IvfflatParams {
     /// k-means partition count. No default: unlike HNSW's graph
     /// parameters, a sensible value is a function of the row count
@@ -46,6 +47,11 @@ struct IvfflatParams {
     /// Operand encoding. `column_type` is accepted as a legacy alias.
     #[serde(default, alias = "column_type")]
     encoding: Encoding,
+}
+
+pub(crate) fn parse_params(value: &toml::Value) -> std::result::Result<(), toml::de::Error> {
+    let _: IvfflatParams = value.clone().try_into()?;
+    Ok(())
 }
 
 pub struct PgvectorIvfflatBackend {
@@ -102,6 +108,14 @@ impl IndexBackend for PgvectorIvfflatBackend {
 
     fn type_name(&self) -> &str {
         "pgvector-ivfflat"
+    }
+
+    fn type_names() -> &'static [&'static str] {
+        &["pgvector-ivfflat"]
+    }
+
+    fn validate_params(idx: &IndexConfig) -> Result<()> {
+        parse_params(&idx.params).map_err(|e| super::invalid_params(idx, e))
     }
 
     fn extensions(&self) -> &'static [&'static str] {

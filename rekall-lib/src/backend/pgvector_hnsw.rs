@@ -39,6 +39,7 @@ use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 struct HnswParams {
     #[serde(default = "default_m")]
     m: u32,
@@ -54,6 +55,11 @@ fn default_m() -> u32 {
 }
 fn default_ef_construction() -> u32 {
     200
+}
+
+pub(crate) fn parse_params(value: &toml::Value) -> std::result::Result<(), toml::de::Error> {
+    let _: HnswParams = value.clone().try_into()?;
+    Ok(())
 }
 
 pub struct PgvectorHnswBackend {
@@ -110,6 +116,14 @@ impl IndexBackend for PgvectorHnswBackend {
 
     fn type_name(&self) -> &str {
         "pgvector-hnsw"
+    }
+
+    fn type_names() -> &'static [&'static str] {
+        &["pgvector-hnsw"]
+    }
+
+    fn validate_params(idx: &IndexConfig) -> Result<()> {
+        parse_params(&idx.params).map_err(|e| super::invalid_params(idx, e))
     }
 
     fn extensions(&self) -> &'static [&'static str] {

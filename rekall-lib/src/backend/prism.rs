@@ -11,6 +11,7 @@ use super::postgres::PgConnection;
 use super::{pg_backend_field_accessors, IndexBackend};
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct PrismParams {
     #[serde(default)]
     nlist: Option<u32>,
@@ -30,6 +31,11 @@ struct PrismParams {
     boundary_epsilon: Option<f64>,
     #[serde(default)]
     soar_lambda: Option<f64>,
+}
+
+pub(crate) fn parse_params(value: &toml::Value) -> std::result::Result<(), toml::de::Error> {
+    let _: PrismParams = value.clone().try_into()?;
+    Ok(())
 }
 
 pub struct PrismBackend {
@@ -82,6 +88,14 @@ impl IndexBackend for PrismBackend {
 
     fn type_name(&self) -> &str {
         "prism"
+    }
+
+    fn type_names() -> &'static [&'static str] {
+        &["prism"]
+    }
+
+    fn validate_params(idx: &IndexConfig) -> Result<()> {
+        parse_params(&idx.params).map_err(|e| super::invalid_params(idx, e))
     }
 
     fn extensions(&self) -> &'static [&'static str] {

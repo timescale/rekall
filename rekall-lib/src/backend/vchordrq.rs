@@ -31,6 +31,7 @@ use super::{pg_backend_field_accessors, IndexBackend};
 
 /// Build-time parameters shared across all vchordrq variants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct VchordrqParams {
     /// IVF partition counts. `[1000]` = single-level 1000 lists.
     /// `[L1, L2]` = hierarchical two-level partitioning. Empty list
@@ -68,6 +69,11 @@ struct VchordrqParams {
     /// approximating an external, full-dataset clustering pass.
     #[serde(default)]
     sampling_factor: Option<u32>,
+}
+
+pub(crate) fn parse_params(value: &toml::Value) -> std::result::Result<(), toml::de::Error> {
+    let _: VchordrqParams = value.clone().try_into()?;
+    Ok(())
 }
 
 fn default_lists() -> Vec<u32> {
@@ -227,6 +233,14 @@ impl IndexBackend for VchordrqBackend {
 
     fn type_name(&self) -> &str {
         self.variant.type_name()
+    }
+
+    fn type_names() -> &'static [&'static str] {
+        &["vchordrq", "vchordrq-rabitq8", "vchordrq-rabitq4"]
+    }
+
+    fn validate_params(idx: &IndexConfig) -> Result<()> {
+        parse_params(&idx.params).map_err(|e| super::invalid_params(idx, e))
     }
 
     fn extensions(&self) -> &'static [&'static str] {
