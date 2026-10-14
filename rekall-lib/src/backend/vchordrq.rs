@@ -69,6 +69,21 @@ struct VchordrqParams {
     /// approximating an external, full-dataset clustering pass.
     #[serde(default)]
     sampling_factor: Option<u32>,
+    /// `build.pin`. `2` caches the hot portion of the index in shared
+    /// memory during the build (VectorChord's recommendation for large
+    /// tables). Omitted leaves VectorChord's default (`-1`, off).
+    #[serde(default)]
+    build_pin: Option<i32>,
+    /// `build.internal.kmeans_algorithm.hierarchical`. Faster than
+    /// Lloyd, with a slight recall cost. VectorChord's published 100M
+    /// build uses it.
+    #[serde(default)]
+    hierarchical_kmeans: bool,
+    /// `build.internal.kmeans_dimension`. Clusters a Johnson-Lindenstrauss
+    /// projection of this width, then recovers full-dimension centroids.
+    /// Omitted disables the reduction.
+    #[serde(default)]
+    kmeans_dimension: Option<u32>,
 }
 
 pub(crate) fn parse_params(value: &toml::Value) -> std::result::Result<(), toml::de::Error> {
@@ -186,45 +201,59 @@ impl VchordrqBackend {
     }
 
     /// `WITH (options = $$ ... $$)` clause body in VectorChord's TOML
-    /// format. residual_quantization is a top-level option;
+    /// format. residual_quantization and build.pin are top-level;
     /// spherical_centroids/build_threads live under [build.internal].
     fn options_toml(&self) -> String {
-        let mut top = String::new();
-        if self.params.residual_quantization {
-            top.push_str("residual_quantization = true\n");
-        }
-
-        let mut internal = String::new();
-        if !self.params.lists.is_empty() {
-            let lists = self
-                .params
-                .lists
-                .iter()
-                .map(u32::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            internal.push_str(&format!("lists = [{lists}]\n"));
-        }
-        if self.params.spherical_centroids {
-            internal.push_str("spherical_centroids = true\n");
-        }
-        if self.params.build_threads > 1 {
-            internal.push_str(&format!("build_threads = {}\n", self.params.build_threads));
-        }
-        if let Some(iters) = self.params.kmeans_iterations {
-            internal.push_str(&format!("kmeans_iterations = {iters}\n"));
-        }
-        if let Some(factor) = self.params.sampling_factor {
-            internal.push_str(&format!("sampling_factor = {factor}\n"));
-        }
-
-        let mut body = top;
-        if !internal.is_empty() {
-            body.push_str("[build.internal]\n");
-            body.push_str(&internal);
-        }
-        body
+        options_body(&self.params)
     }
+}
+
+/// VectorChord options TOML. Kept off the backend so tests can check the
+/// string without a connection.
+fn options_body(params: &VchordrqParams) -> String {
+    let mut top = String::new();
+    if params.residual_quantization {
+        top.push_str("residual_quantization = true\n");
+    }
+    if let Some(pin) = params.build_pin {
+        top.push_str(&format!("build.pin = {pin}\n"));
+    }
+
+    let mut internal = String::new();
+    if !params.lists.is_empty() {
+        let lists = params
+            .lists
+            .iter()
+            .map(u32::to_string)
+            .collect::<Vec<_>>()
+            .join(", ");
+        internal.push_str(&format!("lists = [{lists}]\n"));
+    }
+    if params.spherical_centroids {
+        internal.push_str("spherical_centroids = true\n");
+    }
+    if params.build_threads > 1 {
+        internal.push_str(&format!("build_threads = {}\n", params.build_threads));
+    }
+    if let Some(iters) = params.kmeans_iterations {
+        internal.push_str(&format!("kmeans_iterations = {iters}\n"));
+    }
+    if let Some(factor) = params.sampling_factor {
+        internal.push_str(&format!("sampling_factor = {factor}\n"));
+    }
+    if params.hierarchical_kmeans {
+        internal.push_str("kmeans_algorithm.hierarchical = {}\n");
+    }
+    if let Some(dim) = params.kmeans_dimension {
+        internal.push_str(&format!("kmeans_dimension = {dim}\n"));
+    }
+
+    let mut body = top;
+    if !internal.is_empty() {
+        body.push_str("[build.internal]\n");
+        body.push_str(&internal);
+    }
+    body
 }
 
 #[async_trait]
@@ -359,6 +388,20 @@ mod tests {
     }
 
     #[test]
+    fn unknown_param_is_rejected() {
+        let cfg = idx(
+            "a",
+            toml::toml! {
+                lists = [1000]
+                build_pin_typo = 2
+            }
+            .into(),
+        );
+        let err = parse_params(&cfg.params).unwrap_err().to_string();
+        assert!(err.contains("build_pin_typo"), "{err}");
+    }
+
+    #[test]
     fn params_default_when_omitted() {
         let cfg = idx("a", toml::Value::Table(Default::default()));
         let p: VchordrqParams = cfg.params.try_into().unwrap();
@@ -367,6 +410,9 @@ mod tests {
         assert!(p.spherical_centroids);
         assert_eq!(p.build_threads, 8);
         assert_eq!(p.rerank_n, 200);
+        assert_eq!(p.build_pin, None);
+        assert!(!p.hierarchical_kmeans);
+        assert_eq!(p.kmeans_dimension, None);
     }
 
     #[test]
@@ -419,39 +465,11 @@ mod tests {
             rerank_n: 200,
             kmeans_iterations: Some(25),
             sampling_factor: Some(512),
+            build_pin: None,
+            hierarchical_kmeans: false,
+            kmeans_dimension: None,
         };
-        // Synthesize the body without going through PgConnection (which
-        // would require a live DB). Replicates the impl exactly.
-        let mut top = String::new();
-        if backend_params.residual_quantization {
-            top.push_str("residual_quantization = true\n");
-        }
-        let mut internal = String::new();
-        let lists = backend_params
-            .lists
-            .iter()
-            .map(u32::to_string)
-            .collect::<Vec<_>>()
-            .join(", ");
-        internal.push_str(&format!("lists = [{lists}]\n"));
-        if backend_params.spherical_centroids {
-            internal.push_str("spherical_centroids = true\n");
-        }
-        if backend_params.build_threads > 1 {
-            internal.push_str(&format!(
-                "build_threads = {}\n",
-                backend_params.build_threads
-            ));
-        }
-        if let Some(iters) = backend_params.kmeans_iterations {
-            internal.push_str(&format!("kmeans_iterations = {iters}\n"));
-        }
-        if let Some(factor) = backend_params.sampling_factor {
-            internal.push_str(&format!("sampling_factor = {factor}\n"));
-        }
-        let mut body = top;
-        body.push_str("[build.internal]\n");
-        body.push_str(&internal);
+        let body = options_body(&backend_params);
 
         assert!(body.contains("residual_quantization = true"));
         assert!(body.contains("[build.internal]"));
@@ -460,11 +478,44 @@ mod tests {
         assert!(body.contains("build_threads = 8"));
         assert!(body.contains("kmeans_iterations = 25"));
         assert!(body.contains("sampling_factor = 512"));
+        assert!(!body.contains("build.pin"));
+        assert!(!body.contains("kmeans_algorithm"));
+        assert!(!body.contains("kmeans_dimension"));
         // residual_quantization should appear BEFORE [build.internal]
         // — top-level options must not be inside a section.
         let rq_pos = body.find("residual_quantization").unwrap();
         let sec_pos = body.find("[build.internal]").unwrap();
         assert!(rq_pos < sec_pos);
+    }
+
+    /// VectorChord's published 100M build: pin, hierarchical k-means,
+    /// and a reduced clustering dimension, all outside the older option set.
+    #[test]
+    fn options_toml_100m_reference() {
+        let cfg = idx(
+            "a",
+            toml::toml! {
+                lists = [400, 160000]
+                residual_quantization = true
+                spherical_centroids = true
+                build_threads = 16
+                build_pin = 2
+                hierarchical_kmeans = true
+                kmeans_dimension = 100
+                sampling_factor = 64
+            }
+            .into(),
+        );
+        let p: VchordrqParams = cfg.params.try_into().unwrap();
+        let body = options_body(&p);
+        let pin = body.find("build.pin = 2").unwrap();
+        let section = body.find("[build.internal]").unwrap();
+        assert!(pin < section);
+        assert!(body.contains("lists = [400, 160000]"));
+        assert!(body.contains("kmeans_algorithm.hierarchical = {}"));
+        assert!(body.contains("kmeans_dimension = 100"));
+        assert!(body.contains("sampling_factor = 64"));
+        assert!(section < body.find("kmeans_algorithm").unwrap());
     }
 
     #[test]
