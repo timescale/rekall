@@ -79,6 +79,9 @@ Each `[[index]]` has two parameter sections:
 - **`[index.params]`** — build-time parameters passed to
   `CREATE INDEX ... WITH (...)`. These are index-type-specific (e.g.,
   `nlist`, `fastscan` for pg_vectorsearch; `m`, `ef_construction` for pgvector).
+  A key the index type does not implement is an error at load time, including
+  `--dry-run`, rather than a silently ignored option. The same applies to
+  unknown keys in suite, dataset, and index files.
 
 - **`[index.gucs]`** — default GUC values set before every search sweep.
   Keys must be full PG GUC names (e.g., `"prism.fastscan_bits"`, not

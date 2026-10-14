@@ -113,6 +113,7 @@ impl std::fmt::Display for Metric {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct DatasetConfig {
     pub name: String,
     #[serde(default)]
@@ -165,6 +166,7 @@ impl DatasetConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectionConfig {
     #[serde(default = "default_dsn")]
     pub dsn: String,
@@ -181,6 +183,7 @@ impl Default for ConnectionConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LoadConfig {
     pub table: Option<String>,
     /// Heap storage for the vector column. Default `auto` matches the
@@ -219,6 +222,7 @@ impl Default for LoadConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct IndexConfig {
     #[serde(rename = "type")]
     pub index_type: String,
@@ -264,6 +268,7 @@ pub enum CacheMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SearchConfig {
     #[serde(default = "default_k")]
     pub k: usize,
@@ -468,6 +473,7 @@ impl SearchConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SweepConfig {
     pub index: String,
     #[serde(default)]
@@ -498,6 +504,7 @@ pub const RERANK_POOL_KEY: &str = "rerank_pool";
 /// index (e.g. a raw and a rerank series over the same binary index), each
 /// reported as its own result series under `name`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct QueryConfig {
     /// Result-series label (the `index_name` in reports/plots).
     pub name: String,
@@ -511,6 +518,7 @@ pub struct QueryConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OutputConfig {
     #[serde(default = "default_formats")]
     pub format: Vec<String>,
@@ -569,6 +577,7 @@ impl Default for OutputConfig {
 /// All fields are optional; `enabled` gates auto-publish at the end of a run
 /// (default OFF locally; `--publish` / `rekall infra run` turn it on).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PublishConfig {
     /// Auto-publish at the end of `rekall run` when true. Overridden by the
     /// `--publish` CLI flag; `rekall infra run` defaults it on for the remote.
@@ -664,6 +673,7 @@ impl PublishConfig {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BenchmarkConfig {
     pub dataset: DatasetConfig,
     #[serde(default)]
@@ -707,6 +717,7 @@ pub struct BenchmarkConfig {
 /// from the server (Debian/Ubuntu systemd units via cluster_name or
 /// data_directory).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PhasePgConfig {
     /// Escape hatch: shell command that restarts PostgreSQL, for
     /// environments where auto-detection fails (non-systemd, custom
@@ -733,6 +744,7 @@ impl PhasePgConfig {
 /// wherever rekall runs (your box locally, or the instance under
 /// `infra run`). Defaults match the instance's provisioning layout.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct PgVectorsearchBuildConfig {
     /// Git ref to fetch + check out + build. None → use the installed binary.
     pub branch: Option<String>,
@@ -964,6 +976,11 @@ impl BenchmarkConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        for idx in &self.index {
+            // Parse build params here, not only when the backend connects,
+            // so an unsupported key fails the suite load and `--dry-run`.
+            crate::backend::validate_index_params(idx)?;
+        }
         for sweep in &self.search.sweep {
             if !self.index.iter().any(|idx| idx.name == sweep.index) {
                 return Err(Error::SweepIndexNotFound {
@@ -1413,6 +1430,7 @@ fn expand_index_paths(paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
 /// Load index fragments from files into an existing config.
 fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Result<()> {
     #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct IndexFragment {
         #[serde(default)]
         index: Vec<IndexConfig>,
@@ -1423,6 +1441,7 @@ fn load_index_fragments(config: &mut BenchmarkConfig, files: &[PathBuf]) -> Resu
     }
 
     #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
     struct SearchFragment {
         #[serde(default)]
         sweep: Vec<SweepConfig>,
@@ -2405,6 +2424,83 @@ dataset = "datasets/ds-a.toml"
 
         let err = resolve_suite(&suite_path).unwrap_err();
         assert!(err.to_string().contains("no indexes"));
+    }
+
+    #[test]
+    fn unknown_index_param_is_rejected_at_load() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("cfg.toml");
+        std::fs::write(
+            &path,
+            r#"
+[dataset]
+name = "t"
+path = "data/t.hdf5"
+dimension = 8
+metric = "angular"
+
+[[index]]
+type = "prism"
+name = "p"
+[index.params]
+not_a_prism_option = 1
+"#,
+        )
+        .unwrap();
+        let err = BenchmarkConfig::from_file(&path).unwrap_err().to_string();
+        assert!(err.contains("not_a_prism_option"), "{err}");
+        assert!(err.contains("'p'"), "{err}");
+    }
+
+    #[test]
+    fn unknown_index_file_key_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let dataset = dir.path().join("ds.toml");
+        let index = dir.path().join("idx.toml");
+        std::fs::write(
+            &dataset,
+            r#"
+[dataset]
+name = "t"
+path = "data/t.hdf5"
+dimension = 8
+metric = "angular"
+"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &index,
+            r#"
+[[index]]
+type = "vchordrq"
+name = "v"
+not_supported = true
+"#,
+        )
+        .unwrap();
+        let err = BenchmarkConfig::from_dataset_and_indexes(&dataset, &[index])
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not_supported"), "{err}");
+    }
+
+    #[test]
+    fn committed_suites_accept_their_index_params() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../benchmarks");
+        let mut suites = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("toml") {
+                continue;
+            }
+            let name = path.file_name().unwrap().to_string_lossy();
+            if name.contains(".local.") || !is_suite_file(&path) {
+                continue;
+            }
+            suites += 1;
+            resolve_suite(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+        }
+        assert!(suites > 0, "no suites under {}", dir.display());
     }
 
     #[test]
