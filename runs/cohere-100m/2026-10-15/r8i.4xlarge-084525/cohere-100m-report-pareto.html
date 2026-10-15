@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (Pareto)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (Pareto)</div><div class="meta">cohere-100m  |  2026-10-15  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.6  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  pg_vectorsearch 0.2.0-dev (7a9716b), vchord 1.1.1, pgvector 0.8.7</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [0.7815310666117182, 1.2494809603789871, 1.7416773910846657, 2.2413294188278416, 2.824774475409874, 3.4228149365073564, 3.460746052172045, 4.195477826788759, 4.9929325376773095, 5.965184738086107],
+                y: [2195.237388580724, 1243.879026794025, 714.4735187534999, 437.77962900190175, 241.7424875862816, 135.71475451182337, 132.99502236869904, 72.45711991266427, 37.33319714183018, 19.222271212529783],
+                customdata: [0.6860099999999935, 0.7772099999999882, 0.8508999999999806, 0.903899999999976, 0.9439999999999747, 0.9684099999999792, 0.96954999999998, 0.9851599999999864, 0.9932599999999918, 0.9974399999999964],
+                text: ["<br>Disk read/query: 21.8 kB<br>Blks read/query: -254.9 (idx -258.1, heap 3.2)<br>Buffer hit: 96.2%<br>Disk busy: 59%","<br>Disk read/query: 6.0 kB<br>Blks read/query: -509.1 (idx -510.0, heap 0.9)<br>Buffer hit: 99.0%<br>Disk busy: 32%","<br>Disk read/query: 3.9 kB<br>Blks read/query: -995.0 (idx -995.6, heap 0.6)<br>Buffer hit: 99.4%<br>Disk busy: 17%","<br>Disk read/query: 2.4 kB<br>Blks read/query: -1672.2 (idx -1672.6, heap 0.3)<br>Buffer hit: 99.7%<br>Disk busy: 8%","<br>Disk read/query: 1.0 kB<br>Blks read/query: -3176.9 (idx -3177.0, heap 0.1)<br>Buffer hit: 99.9%<br>Disk busy: 2%","<br>Disk read/query: 141.7 kB<br>Blks read/query: -5781.8 (idx -5802.6, heap 20.8)<br>Buffer hit: 80.9%<br>Disk busy: 31%","<br>Disk read/query: 964 B<br>Blks read/query: -6036.5 (idx -6036.5, heap 0.1)<br>Buffer hit: 99.9%<br>Disk busy: 1%","<br>Disk read/query: 11.0 kB<br>Blks read/query: -11328.8 (idx -11330.4, heap 1.6)<br>Buffer hit: 98.6%<br>Disk busy: 6%","<br>Disk read/query: 9.9 kB<br>Blks read/query: -21812.6 (idx -21814.0, heap 1.4)<br>Buffer hit: 97.4%<br>Disk busy: 3%","<br>Disk read/query: 8.6 kB<br>Blks read/query: -42531.9 (idx -42533.2, heap 1.2)<br>Buffer hit: 93.7%<br>Disk busy: 1%"],
+                name: "PRISM",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "PRISM",
+                hovertemplate: "<b>PRISM</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [0.4502555856126744, 0.8764691100973562, 1.2168571877814707, 1.617571951601708, 1.6522877003370622, 2.080263054096211, 2.137447988302114, 2.57309775882591, 2.67259435705039, 3.078092916231293, 3.2563325946320805, 3.941989654650068],
+                y: [317.3528607741901, 269.68632648523356, 196.18811591664956, 119.38296294808872, 118.0731696126041, 71.17167016793323, 69.30599224876245, 38.33475304813417, 37.36978870822509, 20.667871179176135, 19.924454120963667, 11.029221543073165],
+                customdata: [0.6106999999999989, 0.7060899999999916, 0.7715099999999844, 0.8344599999999771, 0.8391999999999785, 0.8889699999999664, 0.8944899999999698, 0.9291099999999612, 0.9353899999999676, 0.9559799999999636, 0.9628999999999726, 0.9809599999999796],
+                text: ["<br>Disk read/query: 39.5 kB<br>Blks read/query: 300.1 (idx 290.4, heap 9.8)<br>Buffer hit: 63.5%<br>Disk busy: 29%","<br>Disk read/query: 13.4 kB<br>Blks read/query: 338.6 (idx 329.0, heap 9.6)<br>Buffer hit: 73.1%<br>Disk busy: 12%","<br>Disk read/query: 9.1 kB<br>Blks read/query: 320.9 (idx 311.2, heap 9.7)<br>Buffer hit: 83.2%<br>Disk busy: 6%","<br>Disk read/query: 112.0 kB<br>Blks read/query: 290.5 (idx 280.9, heap 9.6)<br>Buffer hit: 91.1%<br>Disk busy: 24%","<br>Disk read/query: 8.7 kB<br>Blks read/query: 304.3 (idx 294.6, heap 9.6)<br>Buffer hit: 90.9%<br>Disk busy: 4%","<br>Disk read/query: 81.2 kB<br>Blks read/query: 284.9 (idx 275.3, heap 9.6)<br>Buffer hit: 95.2%<br>Disk busy: 12%","<br>Disk read/query: 7.1 kB<br>Blks read/query: 303.7 (idx 293.9, heap 9.8)<br>Buffer hit: 95.0%<br>Disk busy: 2%","<br>Disk read/query: 60.1 kB<br>Blks read/query: 287.9 (idx 278.1, heap 9.8)<br>Buffer hit: 97.4%<br>Disk busy: 5%","<br>Disk read/query: 5.0 kB<br>Blks read/query: 302.8 (idx 293.0, heap 9.8)<br>Buffer hit: 97.3%<br>Disk busy: 1%","<br>Disk read/query: 42.0 kB<br>Blks read/query: 282.9 (idx 273.3, heap 9.6)<br>Buffer hit: 98.7%<br>Disk busy: 2%","<br>Disk read/query: 3.1 kB<br>Blks read/query: 302.8 (idx 293.0, heap 9.8)<br>Buffer hit: 98.6%<br>Disk busy: 0%","<br>Disk read/query: 2.3 kB<br>Blks read/query: 302.8 (idx 293.0, heap 9.8)<br>Buffer hit: 99.2%<br>Disk busy: 0%"],
+                name: "vchordrq",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "vchordrq",
+                hovertemplate: "<b>vchordrq</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
