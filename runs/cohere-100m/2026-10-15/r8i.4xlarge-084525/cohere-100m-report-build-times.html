@@ -12,8 +12,8 @@
 <div id="header"><div class="title">Index build time (heap prewarmed before each build)</div><div class="meta">cohere-100m  |  2026-10-15  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.6  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  pg_vectorsearch 0.2.0-dev (7a9716b), vchord 1.1.1, pgvector 0.8.7</div></div>
 <div id="plot"></div>
 <script>
-var trace = { type:"bar", x:["vchordrq-100m", "prism-defaults"], y:[6976.706652378, 6164.729347829], text:["385496 MB", "25495 MB"],
-  textposition:"outside", cliponaxis:false, hovertext:["6976.7s · 385496 MB · 8 workers", "6164.7s · 25495 MB · 8 workers"],
+var trace = { type:"bar", x:["vchordrq-100m-rerank-table", "vchordrq-100m", "prism-defaults"], y:[7268.864307628, 6976.706652378, 6164.729347829], text:["17755 MB", "385496 MB", "25495 MB"],
+  textposition:"outside", cliponaxis:false, hovertext:["7268.9s · 17755 MB · 8 workers", "6976.7s · 385496 MB · 8 workers", "6164.7s · 25495 MB · 8 workers"],
   hovertemplate:"<b>%{x}</b><br>%{hovertext}<extra></extra>",
   marker:{color:"rgb(31,119,180)"} };
 var layout = { margin:{t:20},

@@ -52,7 +52,19 @@ var traces = [{
                     legendgroup: "vchordrq-100m",
                     showlegend: false,
                     hovertemplate: "<b>vchordrq-100m</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
-                }];
+                },{
+                x: [0.4522329227746287, 0.46230144223059416, 0.8721361890063121, 0.8875774963912249, 1.2041374782934364, 1.227039514101426, 1.6299296404809362, 1.6657622433478878, 2.083407654684461, 2.1420123639872237, 2.575529520630696, 2.6719326855765297, 3.0948545351370242, 3.270136887104833, 3.6189799782075225, 3.949512469102621],
+                y: [649.6429886955627, 627.4686184119863, 371.91667593668944, 354.6979369313728, 232.8966738069685, 223.61134059224943, 125.67431180369834, 123.69094471704967, 69.02746486860978, 67.873014476771, 35.16533672300921, 34.82645198861547, 18.662696280055815, 18.171390578892808, 10.063831744842044, 9.864374167170626],
+                customdata: [0.6111699999999982, 0.6135599999999988, 0.7051899999999889, 0.70838999999999, 0.7692599999999851, 0.7732999999999859, 0.8361599999999769, 0.8410099999999772, 0.8892799999999687, 0.8949199999999706, 0.9292699999999643, 0.9353499999999687, 0.9566799999999648, 0.963389999999973, 0.9738899999999691, 0.9810999999999791],
+                text: ["<br>Disk read/query: 83.1 kB<br>Blks read/query: 12.6 (idx 3.2, heap 9.4)<br>Buffer hit: 97.5%<br>Disk busy: 72%","<br>Disk read/query: 27.4 kB<br>Blks read/query: 3.6 (idx 0.0, heap 3.6)<br>Buffer hit: 99.3%<br>Disk busy: 54%","<br>Disk read/query: 15.4 kB<br>Blks read/query: 2.4 (idx 0.4, heap 2.0)<br>Buffer hit: 99.7%<br>Disk busy: 28%","<br>Disk read/query: 7.5 kB<br>Blks read/query: 1.0 (idx 0.0, heap 1.0)<br>Buffer hit: 99.9%<br>Disk busy: 17%","<br>Disk read/query: 9.3 kB<br>Blks read/query: 1.5 (idx 0.2, heap 1.3)<br>Buffer hit: 99.9%<br>Disk busy: 14%","<br>Disk read/query: 5.4 kB<br>Blks read/query: 0.7 (idx 0.0, heap 0.7)<br>Buffer hit: 100.0%<br>Disk busy: 9%","<br>Disk read/query: 8.2 kB<br>Blks read/query: 1.4 (idx 0.1, heap 1.3)<br>Buffer hit: 100.0%<br>Disk busy: 7%","<br>Disk read/query: 5.6 kB<br>Blks read/query: 0.7 (idx 0.0, heap 0.7)<br>Buffer hit: 100.0%<br>Disk busy: 5%","<br>Disk read/query: 6.1 kB<br>Blks read/query: 1.0 (idx 0.1, heap 1.0)<br>Buffer hit: 100.0%<br>Disk busy: 3%","<br>Disk read/query: 4.5 kB<br>Blks read/query: 0.6 (idx 0.0, heap 0.6)<br>Buffer hit: 100.0%<br>Disk busy: 2%","<br>Disk read/query: 4.5 kB<br>Blks read/query: 0.8 (idx 0.0, heap 0.7)<br>Buffer hit: 100.0%<br>Disk busy: 1%","<br>Disk read/query: 3.5 kB<br>Blks read/query: 0.5 (idx 0.0, heap 0.5)<br>Buffer hit: 100.0%<br>Disk busy: 1%","<br>Disk read/query: 3.2 kB<br>Blks read/query: 0.5 (idx 0.0, heap 0.5)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 2.7 kB<br>Blks read/query: 0.4 (idx 0.0, heap 0.4)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 2.5 kB<br>Blks read/query: 0.4 (idx 0.0, heap 0.3)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 1.8 kB<br>Blks read/query: 0.2 (idx 0.0, heap 0.2)<br>Buffer hit: 100.0%<br>Disk busy: 0%"],
+                name: "vchordrq-100m-rerank-table",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(44,160,44)", width: 3 },
+                marker: { color: "rgb(44,160,44)", size: 8 },
+                legendgroup: "vchordrq-100m-rerank-table",
+                hovertemplate: "<b>vchordrq-100m-rerank-table</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            }];
 var layout = {
   margin: { t: 20 },
   xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },

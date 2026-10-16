@@ -234,6 +234,150 @@
       "p50_latency_us": 90239.0,
       "p95_latency_us": 103039.0,
       "p99_latency_us": 109439.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.6111699999999982,
+      "qps": 649.6429886955627,
+      "p50_latency_us": 1504.0,
+      "p95_latency_us": 2093.0,
+      "p99_latency_us": 2417.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.6135599999999988,
+      "qps": 627.4686184119863,
+      "p50_latency_us": 1557.0,
+      "p95_latency_us": 2157.0,
+      "p99_latency_us": 2499.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.7051899999999889,
+      "qps": 371.91667593668944,
+      "p50_latency_us": 2627.0,
+      "p95_latency_us": 3477.0,
+      "p99_latency_us": 4019.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.70838999999999,
+      "qps": 354.6979369313728,
+      "p50_latency_us": 2761.0,
+      "p95_latency_us": 3623.0,
+      "p99_latency_us": 4199.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.7692599999999851,
+      "qps": 232.8966738069685,
+      "p50_latency_us": 4199.0,
+      "p95_latency_us": 5487.0,
+      "p99_latency_us": 6303.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.7732999999999859,
+      "qps": 223.61134059224943,
+      "p50_latency_us": 4379.0,
+      "p95_latency_us": 5691.0,
+      "p99_latency_us": 6523.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.8361599999999769,
+      "qps": 125.67431180369834,
+      "p50_latency_us": 7823.0,
+      "p95_latency_us": 9975.0,
+      "p99_latency_us": 11351.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.8410099999999772,
+      "qps": 123.69094471704967,
+      "p50_latency_us": 7967.0,
+      "p95_latency_us": 10015.0,
+      "p99_latency_us": 11327.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.8892799999999687,
+      "qps": 69.02746486860978,
+      "p50_latency_us": 14287.0,
+      "p95_latency_us": 17887.0,
+      "p99_latency_us": 20063.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.8949199999999706,
+      "qps": 67.873014476771,
+      "p50_latency_us": 14519.0,
+      "p95_latency_us": 18127.0,
+      "p99_latency_us": 20303.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.9292699999999643,
+      "qps": 35.16533672300921,
+      "p50_latency_us": 28079.0,
+      "p95_latency_us": 33663.0,
+      "p99_latency_us": 36863.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.9353499999999687,
+      "qps": 34.82645198861547,
+      "p50_latency_us": 28351.0,
+      "p95_latency_us": 33791.0,
+      "p99_latency_us": 36991.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.9566799999999648,
+      "qps": 18.662696280055815,
+      "p50_latency_us": 53151.0,
+      "p95_latency_us": 62399.0,
+      "p99_latency_us": 67135.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.963389999999973,
+      "qps": 18.171390578892808,
+      "p50_latency_us": 54495.0,
+      "p95_latency_us": 63967.0,
+      "p99_latency_us": 69247.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.9738899999999691,
+      "qps": 10.063831744842044,
+      "p50_latency_us": 99135.0,
+      "p95_latency_us": 113919.0,
+      "p99_latency_us": 120767.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall": 0.9810999999999791,
+      "qps": 9.864374167170626,
+      "p50_latency_us": 101119.0,
+      "p95_latency_us": 115775.0,
+      "p99_latency_us": 122431.0
     }
   ],
   "builds": [
@@ -249,6 +393,13 @@
       "index_type": "vchordrq",
       "build_time_secs": 6976.706652378,
       "size_bytes": 404221353984,
+      "cache": "prewarmed"
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "build_time_secs": 7268.864307628,
+      "size_bytes": 18617581568,
       "cache": "prewarmed"
     }
   ],
@@ -440,6 +591,100 @@
       "throughput_qps": 103.72373800031544,
       "p50_latency_us": 309247.0,
       "p95_latency_us": 384767.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9572899999999804,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 16,
+      "qps_wall": 35.42703710278584,
+      "throughput_qps": 35.42703710278584,
+      "p50_latency_us": 27919.0,
+      "p95_latency_us": 33471.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9572899999999808,
+      "recall_basis": "distance",
+      "clients": 16,
+      "clients_spec": "1x",
+      "cpu_count": 16,
+      "qps_wall": 397.84179453267495,
+      "throughput_qps": 398.14206563722314,
+      "p50_latency_us": 39807.0,
+      "p95_latency_us": 48127.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.95
+      ],
+      "recall": 0.9572899999999798,
+      "recall_basis": "distance",
+      "clients": 32,
+      "clients_spec": "2x",
+      "cpu_count": 16,
+      "qps_wall": 369.47820791350347,
+      "throughput_qps": 369.798565180475,
+      "p50_latency_us": 86399.0,
+      "p95_latency_us": 118015.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905499999999898,
+      "recall_basis": "distance",
+      "clients": 1,
+      "cpu_count": 16,
+      "qps_wall": 9.882349003908182,
+      "throughput_qps": 9.882349003908182,
+      "p50_latency_us": 100799.0,
+      "p95_latency_us": 115583.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905499999999898,
+      "recall_basis": "distance",
+      "clients": 16,
+      "clients_spec": "1x",
+      "cpu_count": 16,
+      "qps_wall": 108.1448823263958,
+      "throughput_qps": 108.21721231928576,
+      "p50_latency_us": 146943.0,
+      "p95_latency_us": 170239.0
+    },
+    {
+      "index_name": "vchordrq-100m-rerank-table",
+      "index_type": "vchordrq",
+      "recall_targets": [
+        0.99
+      ],
+      "recall": 0.9905499999999902,
+      "recall_basis": "distance",
+      "clients": 32,
+      "clients_spec": "2x",
+      "cpu_count": 16,
+      "qps_wall": 92.51922748970118,
+      "throughput_qps": 92.54106833578504,
+      "p50_latency_us": 345855.0,
+      "p95_latency_us": 401919.0
     }
   ]
 }

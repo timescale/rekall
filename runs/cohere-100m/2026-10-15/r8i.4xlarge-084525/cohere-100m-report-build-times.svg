@@ -158,12 +158,17 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M364.91,512.00 L364.91,503.00 M364.91,90.01 L364.91,99.01  '/>	<g transform="translate(362.31,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+	<path stroke='black'  d='M277.26,512.00 L277.26,503.00 M277.26,90.01 L277.26,99.01  '/>	<g transform="translate(274.66,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+		<text>vchordrq-100m-rerank-table</text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M627.87,512.00 L627.87,503.00 M627.87,90.01 L627.87,99.01  '/>	<g transform="translate(625.27,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
 		<text>vchordrq-100m</text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M890.83,512.00 L890.83,503.00 M890.83,90.01 L890.83,99.01  '/>	<g transform="translate(888.23,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+	<path stroke='black'  d='M978.48,512.00 L978.48,503.00 M978.48,90.01 L978.48,99.01  '/>	<g transform="translate(975.88,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
 		<text>prism-defaults</text>
 	</g>
 </g>
@@ -176,23 +181,31 @@
 	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '207.14,512.00 522.70,512.00 522.70,143.98 207.14,143.98 '/>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '172.08,512.00 382.45,512.00 382.45,128.57 172.08,128.57 '/>
 	</g>
-	<path stroke='black'  d='M207.14,512.00 L207.14,143.99 L522.69,143.99 L522.69,512.00 L207.14,512.00 Z  '/></g>
+	<path stroke='black'  d='M172.08,512.00 L172.08,128.58 L382.44,128.58 L382.44,512.00 L172.08,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '733.05,512.00 1048.61,512.00 1048.61,186.81 733.05,186.81 '/>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '522.69,512.00 733.06,512.00 733.06,143.98 522.69,143.98 '/>
 	</g>
-	<path stroke='black'  d='M733.05,512.00 L733.05,186.82 L1048.60,186.82 L1048.60,512.00 L733.05,512.00 Z  '/></g>
+	<path stroke='black'  d='M522.69,512.00 L522.69,143.99 L733.05,143.99 L733.05,512.00 L522.69,512.00 Z  '/></g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g stroke='none' shape-rendering='crispEdges'>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '873.30,512.00 1083.67,512.00 1083.67,186.81 873.30,186.81 '/>
+	</g>
+	<path stroke='black'  d='M873.30,512.00 L873.30,186.82 L1083.66,186.82 L1083.66,512.00 L873.30,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
 	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(364.91,132.19)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+	<g transform="translate(277.26,116.78)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+		<text><tspan font-family="sans" >17755 MB</tspan></text>
+	</g>
+	<g transform="translate(627.87,132.19)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >385496 MB</tspan></text>
 	</g>
-	<g transform="translate(890.83,175.02)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+	<g transform="translate(978.48,175.02)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >25495 MB</tspan></text>
 	</g>
 </g>

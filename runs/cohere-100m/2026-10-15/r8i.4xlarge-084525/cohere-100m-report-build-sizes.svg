@@ -171,13 +171,18 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M377.34,512.00 L377.34,503.00 M377.34,90.01 L377.34,99.01  '/>	<g transform="translate(374.74,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+	<path stroke='black'  d='M291.03,512.00 L291.03,503.00 M291.03,90.01 L291.03,99.01  '/>	<g transform="translate(288.43,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
 		<text>vchordrq-100m</text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M895.18,512.00 L895.18,503.00 M895.18,90.01 L895.18,99.01  '/>	<g transform="translate(892.58,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+	<path stroke='black'  d='M636.26,512.00 L636.26,503.00 M636.26,90.01 L636.26,99.01  '/>	<g transform="translate(633.66,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
 		<text>prism-defaults</text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M981.49,512.00 L981.49,503.00 M981.49,90.01 L981.49,99.01  '/>	<g transform="translate(978.89,520.39) rotate(90.00)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="start">
+		<text>vchordrq-100m-rerank-table</text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -189,24 +194,32 @@
 	<g id="gnuplot_plot_1"  fill="none"><title>gnuplot_plot_1</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '221.98,512.00 532.70,512.00 532.70,150.49 221.98,150.49 '/>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '187.46,512.00 394.61,512.00 394.61,150.49 187.46,150.49 '/>
 	</g>
-	<path stroke='black'  d='M221.98,512.00 L221.98,150.50 L532.69,150.50 L532.69,512.00 L221.98,512.00 Z  '/></g>
+	<path stroke='black'  d='M187.46,512.00 L187.46,150.50 L394.60,150.50 L394.60,512.00 L187.46,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
-		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '739.83,512.00 1050.55,512.00 1050.55,488.08 739.83,488.08 '/>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '532.69,512.00 739.84,512.00 739.84,488.08 532.69,488.08 '/>
 	</g>
-	<path stroke='black'  d='M739.83,512.00 L739.83,488.09 L1050.54,488.09 L1050.54,512.00 L739.83,512.00 Z  '/></g>
+	<path stroke='black'  d='M532.69,512.00 L532.69,488.09 L739.83,488.09 L739.83,512.00 L532.69,512.00 Z  '/></g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<g stroke='none' shape-rendering='crispEdges'>
+		<polygon fill = 'rgb( 31, 119, 180)' fill-opacity = '0.650000' points = '877.92,512.00 1085.07,512.00 1085.07,495.34 877.92,495.34 '/>
+	</g>
+	<path stroke='black'  d='M877.92,512.00 L877.92,495.35 L1085.06,495.35 L1085.06,512.00 L877.92,512.00 Z  '/></g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 	</g>
 	<g id="gnuplot_plot_2"  fill="none"><title>gnuplot_plot_2</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<g transform="translate(377.34,138.70)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+	<g transform="translate(291.03,138.70)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >6977s</tspan></text>
 	</g>
-	<g transform="translate(895.18,476.29)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+	<g transform="translate(636.26,476.29)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
 		<text><tspan font-family="sans" >6165s</tspan></text>
+	</g>
+	<g transform="translate(981.49,483.55)" stroke="none" fill="black" font-family="sans" font-size="8.00"  text-anchor="middle">
+		<text><tspan font-family="sans" >7269s</tspan></text>
 	</g>
 </g>
 	</g>
