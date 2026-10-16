@@ -42,6 +42,12 @@ struct VchordrqParams {
     /// Improves recall+QPS on cosine workloads per VectorChord docs.
     #[serde(default = "default_true")]
     residual_quantization: bool,
+    /// Do not store a second copy of the vectors in the index. Rerank
+    /// fetches them from the heap instead. VectorChord's default stores
+    /// them in the index, which is faster when that copy fits and much
+    /// slower when it does not.
+    #[serde(default)]
+    rerank_in_table: bool,
     /// L2-normalize centroids after each k-means iteration. Recommended
     /// when the embedding model uses cosine similarity.
     #[serde(default = "default_true")]
@@ -214,6 +220,9 @@ fn options_body(params: &VchordrqParams) -> String {
     let mut top = String::new();
     if params.residual_quantization {
         top.push_str("residual_quantization = true\n");
+    }
+    if params.rerank_in_table {
+        top.push_str("rerank_in_table = true\n");
     }
     if let Some(pin) = params.build_pin {
         top.push_str(&format!("build.pin = {pin}\n"));
@@ -407,6 +416,7 @@ mod tests {
         let p: VchordrqParams = cfg.params.try_into().unwrap();
         assert_eq!(p.lists, vec![1000]);
         assert!(p.residual_quantization);
+        assert!(!p.rerank_in_table);
         assert!(p.spherical_centroids);
         assert_eq!(p.build_threads, 8);
         assert_eq!(p.rerank_n, 200);
@@ -460,6 +470,7 @@ mod tests {
         let backend_params = VchordrqParams {
             lists: vec![1000],
             residual_quantization: true,
+            rerank_in_table: false,
             spherical_centroids: true,
             build_threads: 8,
             rerank_n: 200,
@@ -472,6 +483,7 @@ mod tests {
         let body = options_body(&backend_params);
 
         assert!(body.contains("residual_quantization = true"));
+        assert!(!body.contains("rerank_in_table"));
         assert!(body.contains("[build.internal]"));
         assert!(body.contains("lists = [1000]"));
         assert!(body.contains("spherical_centroids = true"));
@@ -516,6 +528,23 @@ mod tests {
         assert!(body.contains("kmeans_dimension = 100"));
         assert!(body.contains("sampling_factor = 64"));
         assert!(section < body.find("kmeans_algorithm").unwrap());
+    }
+
+    #[test]
+    fn options_toml_emits_rerank_in_table_at_top_level() {
+        let cfg = idx(
+            "a",
+            toml::toml! {
+                lists = [400, 160000]
+                rerank_in_table = true
+            }
+            .into(),
+        );
+        let p: VchordrqParams = cfg.params.try_into().unwrap();
+        assert!(p.rerank_in_table);
+        let body = options_body(&p);
+        let pos = body.find("rerank_in_table = true").unwrap();
+        assert!(pos < body.find("[build.internal]").unwrap());
     }
 
     #[test]
