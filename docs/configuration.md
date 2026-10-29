@@ -43,6 +43,19 @@ name = "ivfflat-l3162"
 lists = 3162               # pgvector guidance: sqrt(rows) beyond 1M rows
 # encoding = "halfvec"     # or "bit"; both support mode = "rerank" queries
 
+[[index]]
+type = "pg_pinecone"       # native engine, always built WITH (mode = 'local')
+name = "pg_pinecone-defaults"
+[index.params]             # every key optional; omitted = extension default
+seed = 42                  # k-means/rotation seed (default: from index OID)
+# n_lists = 3163           # default ceil(sqrt(rows))
+# target_recall = 0.95     # recall@10 the build calibrates probes/pool for
+# rescore_multiplier = 0   # pin the rescore pool to N x 100 rows (0 = calibrate)
+# small_n_threshold = 10000  # below this row count the index is a flat scan
+# calibration_queries = "public.my_queries"  # calibrate on real queries
+[index.gucs]
+"pinecone.build_parallelism" = 64  # default min(8, cores/2); capped at cores
+
 [search]
 k = 10
 runs = 3                  # best-of-N runs kept
@@ -60,6 +73,12 @@ index = "prism-fs16"
 index = "hnsw-m16"
 [search.sweep.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 200, 400]
+
+[[search.sweep]]
+index = "pg_pinecone-defaults"
+[search.sweep.params]     # 0 keeps the value the build calibrated
+"pinecone.scan_fraction" = [0.0, 0.005, 0.02, 0.08]   # probed lists / n_lists
+"pinecone.rescore_multiplier" = [0, 3]                # pool = N x 100 rows
 
 [output]
 format = ["table", "json"]
@@ -221,6 +240,7 @@ Running:
 # Canonical suites
 rekall run benchmarks/cohere-1m.toml
 rekall run benchmarks/cohere-10m-prism-vs-vchordrq.toml
+rekall run benchmarks/cohere-10m-prism-vs-pg_pinecone.toml
 
 # A suite you keep outside the repo
 rekall run ~/my-experiments/scaling-test.toml
@@ -232,10 +252,11 @@ Repo layout under `benchmarks/`:
 benchmarks/
   cohere-{1,5,10,50,100}m.toml     # base suites: default PRISM vs hnsw-m24-halfvec
   cohere-10m-prism-vs-vchordrq.toml
+  cohere-10m-prism-vs-pg_pinecone.toml
   cohere-100m-ivfflat.toml
   cohere-{10,50,100}m-tuning.toml
   datasets/cohere-{1m,10m,...}.toml
-  indexes/{hnsw,prism,vchordrq}-*.toml
+  indexes/{hnsw,prism,vchordrq,pg_pinecone}-*.toml
 ```
 
 ## Directory-Based Config Groups

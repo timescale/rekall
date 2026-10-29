@@ -311,6 +311,124 @@ async fn backend_pg_vectorsearch_lifecycle() {
         .unwrap();
 }
 
+/// pg_pinecone is opt-in: most test databases do not have it installed.
+fn has_pg_pinecone() -> bool {
+    std::env::var("REKALL_TEST_PG_PINECONE")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+#[tokio::test]
+async fn backend_pg_pinecone_lifecycle() {
+    let dsn = require_pg!();
+    if !has_pg_pinecone() {
+        eprintln!("Skipping pg_pinecone test: set REKALL_TEST_PG_PINECONE=1");
+        return;
+    }
+
+    let conn = test_connection(&dsn);
+    let table = "_rekall_test_pg_pinecone";
+    let dim = 3;
+
+    let pg = PgConnection::new(&conn, table, dim, Metric::Euclidean);
+    pg.create_table().await.unwrap();
+
+    // 2000 rows on a line: the nearest neighbours of the origin are the
+    // lowest ids, in order. small_n_threshold below the row count makes
+    // the build cluster and calibrate instead of building a flat index.
+    let client = pg.open_connection().await.unwrap();
+    client
+        .execute(
+            &format!(
+                "INSERT INTO {table} (id, v) SELECT i, \
+                 ARRAY[i, i * 2, i * 3]::real[]::vector \
+                 FROM generate_series(0, 1999) i"
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let idx_config = IndexConfig {
+        index_type: "pg_pinecone".to_string(),
+        name: "test-pg-pinecone".to_string(),
+        params: toml::Value::try_from(toml::toml! {
+            n_lists = 8
+            small_n_threshold = 500
+            seed = 42
+        })
+        .unwrap(),
+        gucs: HashMap::from([(
+            "pinecone.build_parallelism".to_string(),
+            toml::Value::Integer(2),
+        )]),
+        table_parallel_workers: None,
+        physical_index: None,
+    };
+
+    let registry = BackendRegistry::new();
+    let backend = registry
+        .create(
+            &conn,
+            table,
+            dim,
+            Metric::Euclidean,
+            &idx_config,
+            None,
+            rekall_lib::config::QueryMode::Default,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert!(!backend.index_exists().await.unwrap());
+    let build_result = backend.build_index().await.unwrap();
+    assert!(build_result.index_size_bytes > 0);
+    let create_sql = build_result.create_sql.unwrap();
+    assert!(
+        create_sql.contains("USING pinecone (v vector_l2_ops) WITH (mode = 'local'"),
+        "{create_sql}"
+    );
+
+    // The build calibrated: a clustered index reports its probe count.
+    let idx_sql = "idx_rekall__rekall_test_pg_pinecone_test_pg_pinecone";
+    let row = client
+        .query_one(
+            "SELECT nprobe::int, calib_samples::int \
+             FROM pinecone.index_calibration($1::text::regclass)",
+            &[&idx_sql],
+        )
+        .await
+        .unwrap();
+    let nprobe: Option<i32> = row.get(0);
+    let calib_samples: Option<i32> = row.get(1);
+    assert!(nprobe.is_some_and(|n| (1..=8).contains(&n)), "{nprobe:?}");
+    assert!(calib_samples.is_some_and(|n| n > 0), "{calib_samples:?}");
+
+    backend
+        .validate_query_plan(&[0.0, 0.0, 0.0], 5)
+        .await
+        .unwrap();
+
+    // Probing every list makes the answer exact.
+    let mut search_params = HashMap::new();
+    search_params.insert(
+        "pinecone.scan_fraction".to_string(),
+        toml::Value::Float(1.0),
+    );
+    backend.set_search_params(&search_params).await.unwrap();
+    let results = backend.query(&[0.0, 0.0, 0.0], 5).await.unwrap();
+    assert_eq!(results, vec![0, 1, 2, 3, 4]);
+
+    backend.drop_index().await.unwrap();
+    assert!(!backend.index_exists().await.unwrap());
+
+    client
+        .execute(&format!("DROP TABLE IF EXISTS {table} CASCADE"), &[])
+        .await
+        .unwrap();
+}
+
 // ---------- Search phase tests ----------
 
 /// Write a small Euclidean dataset: `train` vectors, `test` queries and

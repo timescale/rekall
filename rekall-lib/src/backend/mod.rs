@@ -2,6 +2,7 @@
 // Licensed under the PostgreSQL License. See LICENSE for details.
 
 pub mod build_monitor;
+pub mod pg_pinecone;
 pub mod pg_vector_type;
 pub mod pgvector_encoding;
 pub mod pgvector_hnsw;
@@ -59,6 +60,10 @@ fn backend_kinds() -> &'static [BackendKind] {
         BackendKind {
             type_names: vchordrq::VchordrqBackend::type_names,
             validate_params: vchordrq::VchordrqBackend::validate_params,
+        },
+        BackendKind {
+            type_names: pg_pinecone::PgPineconeBackend::type_names,
+            validate_params: pg_pinecone::PgPineconeBackend::validate_params,
         },
     ]
 }
@@ -575,6 +580,18 @@ impl BackendRegistry {
                     index_config,
                     cancel_registry,
                     query_mode,
+                )
+                .await?;
+                Box::new(b)
+            }
+            "pg_pinecone" => {
+                let b = pg_pinecone::PgPineconeBackend::create(
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
+                    cancel_registry,
                 )
                 .await?;
                 Box::new(b)
