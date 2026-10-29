@@ -205,6 +205,10 @@ pub struct InfraConfig {
     pub pgvector: Option<ExtVersionConfig>,
     #[serde(default)]
     pub vectorchord: Option<ExtVersionConfig>,
+    /// pg_pinecone release to build from source when `extensions` lists
+    /// `pg_pinecone`. The version selects the `v<version>` tag.
+    #[serde(default)]
+    pub pg_pinecone: Option<ExtVersionConfig>,
     /// Path to the user's SSH public key for instance access.
     /// Uploaded to AWS for the key pair. The corresponding private key
     /// (same path without .pub) is used locally for SSH connections.
@@ -252,6 +256,7 @@ impl Default for InfraConfig {
             pg_vectorsearch: None,
             pgvector: None,
             vectorchord: None,
+            pg_pinecone: None,
             ssh_key: None,
             s3_bucket: None,
             results_bucket: None,
@@ -344,6 +349,34 @@ impl InfraConfig {
             .as_ref()
             .and_then(|c| c.version.as_deref())
             .unwrap_or("1.1.1")
+    }
+
+    pub fn pg_pinecone_version(&self) -> &str {
+        self.pg_pinecone
+            .as_ref()
+            .and_then(|c| c.version.as_deref())
+            .unwrap_or("0.11.0")
+    }
+
+    /// Reject extension sets that cannot be installed together. pg_pinecone
+    /// builds its opclasses over pgvector's `vector` type and supports only
+    /// PostgreSQL 17 and 18.
+    pub fn validate_extensions(&self) -> std::result::Result<(), String> {
+        if !self.extensions.iter().any(|e| e == "pg_pinecone") {
+            return Ok(());
+        }
+        if !self.extensions.iter().any(|e| e == "pgvector") {
+            return Err("extensions lists \"pg_pinecone\" without \"pgvector\": \
+                 pg_pinecone needs pgvector installed"
+                .to_string());
+        }
+        if !matches!(self.pg_version, 17 | 18) {
+            return Err(format!(
+                "pg_pinecone supports PostgreSQL 17 and 18, not pg_version = {}",
+                self.pg_version
+            ));
+        }
+        Ok(())
     }
 
     /// Ubuntu codename for the configured `ubuntu_version`. Used in the AMI
@@ -883,6 +916,38 @@ git_ref = "feat/parallel-build"
         let vars = cfg.to_tfvars();
         assert_eq!(vars["ubuntu_version"], "26.04");
         assert_eq!(vars["ubuntu_codename"], "resolute");
+    }
+
+    #[test]
+    fn pg_pinecone_version_defaults_and_overrides() {
+        let mut cfg = InfraConfig::default();
+        assert_eq!(cfg.pg_pinecone_version(), "0.11.0");
+        cfg = toml::from_str("[pg_pinecone]\nversion = \"0.10.0\"\n").unwrap();
+        assert_eq!(cfg.pg_pinecone_version(), "0.10.0");
+    }
+
+    #[test]
+    fn pg_pinecone_requires_pgvector_and_pg_17_or_18() {
+        let with = |exts: &[&str], pg_version: u32| InfraConfig {
+            extensions: exts.iter().map(|e| e.to_string()).collect(),
+            pg_version,
+            ..Default::default()
+        };
+        assert!(with(&["pgvector"], 16).validate_extensions().is_ok());
+        assert!(with(&["pgvector", "pg_pinecone"], 18)
+            .validate_extensions()
+            .is_ok());
+        assert!(with(&["pgvector", "pg_pinecone"], 17)
+            .validate_extensions()
+            .is_ok());
+        let err = with(&["pg_pinecone"], 18)
+            .validate_extensions()
+            .unwrap_err();
+        assert!(err.contains("pgvector"), "{err}");
+        let err = with(&["pgvector", "pg_pinecone"], 16)
+            .validate_extensions()
+            .unwrap_err();
+        assert!(err.contains("pg_version = 16"), "{err}");
     }
 
     #[test]

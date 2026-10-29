@@ -16,6 +16,8 @@
 #   REKALL_GIT_URL     — git URL for rekall (empty to skip)
 #   REKALL_GIT_REF     — git ref for rekall (default: main)
 #   VECTORCHORD        — set to "1" to install VectorChord
+#   PG_PINECONE        — set to "1" to install pg_pinecone
+#   PG_PINECONE_VERSION — pg_pinecone release to build (default: 0.11.0)
 
 set -euo pipefail
 
@@ -26,6 +28,8 @@ REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
 VECTORCHORD="${VECTORCHORD:-}"
 VECTORCHORD_VERSION="${VECTORCHORD_VERSION:-1.1.1}"
+PG_PINECONE="${PG_PINECONE:-}"
+PG_PINECONE_VERSION="${PG_PINECONE_VERSION:-0.11.0}"
 PG_PORT="${PG_PORT:-5432}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
@@ -173,6 +177,53 @@ if [ "$VECTORCHORD" = "1" ]; then
     fi
 fi
 
+# --- pg_pinecone ---
+
+if [ "$PG_PINECONE" = "1" ]; then
+    PG_PINECONE_SQL="/usr/share/postgresql/${PG_VERSION}/extension/pg_pinecone--${PG_PINECONE_VERSION}.sql"
+    PG_PINECONE_DIR="$REPOS_DIR/pg_pinecone"
+
+    if [ -f "$PG_PINECONE_SQL" ]; then
+        echo "=== pg_pinecone ${PG_PINECONE_VERSION} already installed, skipping ==="
+    else
+        echo "=== Building pg_pinecone ${PG_PINECONE_VERSION} from source ==="
+        source "$HOME/.cargo/env"
+
+        if [ -d "$PG_PINECONE_DIR" ]; then
+            cd "$PG_PINECONE_DIR"
+            git fetch origin --tags
+        else
+            git clone https://github.com/pinecone-io/pg_pinecone.git "$PG_PINECONE_DIR"
+            cd "$PG_PINECONE_DIR"
+        fi
+        git checkout "v${PG_PINECONE_VERSION}"
+
+        # pg_pinecone pins pgrx exactly (pgrx = "=0.19.2"). Install the
+        # matching cargo-pgrx under its own root so it never replaces the
+        # one VectorChord's build installed into ~/.cargo/bin.
+        PGRX_VERSION=$(sed -n 's/^pgrx = "=\{0,1\}\([0-9][^"]*\)"/\1/p' pg_pinecone/Cargo.toml | head -1)
+        if [ -z "$PGRX_VERSION" ]; then
+            echo "ERROR: could not parse the pgrx version from pg_pinecone/Cargo.toml" >&2
+            exit 1
+        fi
+        PGRX_ROOT="$HOME/.cargo-pgrx-${PGRX_VERSION}"
+        CARGO_PGRX="$PGRX_ROOT/bin/cargo-pgrx"
+        if [ ! -x "$CARGO_PGRX" ]; then
+            cargo install cargo-pgrx --version "$PGRX_VERSION" --locked --root "$PGRX_ROOT"
+        fi
+        "$CARGO_PGRX" pgrx init "--pg${PG_VERSION}=$PG_CONFIG"
+
+        # target-cpu=native matches pg_vectorsearch's -Dnative=true build.
+        # The scan kernels dispatch on the CPU at runtime either way; native
+        # lets the compiler use the box's full ISA everywhere else too.
+        cd "$PG_PINECONE_DIR/pg_pinecone"
+        RUSTFLAGS="-C target-cpu=native" "$CARGO_PGRX" pgrx install --release --sudo \
+            --pg-config="$PG_CONFIG" --no-default-features --features "pg${PG_VERSION}"
+        # PG is stopped during builds; the .so loads on the final restart.
+        echo "=== pg_pinecone installed ==="
+    fi
+fi
+
 # --- Connection service file ---
 
 # Register the benchmark instance in ~/.pg_service.conf so any libpq client
@@ -256,6 +307,9 @@ if [ -n "$PG_VECTORSEARCH_GIT_URL" ]; then
 fi
 if [ "$VECTORCHORD" = "1" ]; then
     echo "  cd ~/repos/vectorchord && git pull && cargo pgrx install --release --pg-config=$PG_CONFIG"
+fi
+if [ "$PG_PINECONE" = "1" ]; then
+    echo "  cd ~/repos/pg_pinecone/pg_pinecone && git fetch --tags && git checkout v<version> && RUSTFLAGS='-C target-cpu=native' ~/.cargo-pgrx-*/bin/cargo-pgrx pgrx install --release --sudo --pg-config=$PG_CONFIG --no-default-features --features pg$PG_VERSION"
 fi
 if [ -n "$REKALL_GIT_URL" ]; then
     echo "  cd ~/repos/rekall && git pull && source ~/.cargo/env && cargo build --release && sudo cp target/release/rekall /usr/local/bin/"

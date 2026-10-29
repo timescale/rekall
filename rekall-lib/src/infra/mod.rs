@@ -86,6 +86,7 @@ impl InfraManager {
         self.config
             .validate_ubuntu_version()
             .map_err(Error::Config)?;
+        self.config.validate_extensions().map_err(Error::Config)?;
 
         let (ssh_pub_path, ssh_priv_path) = self.config.require_ssh_key().map_err(Error::Config)?;
         if !Path::new(&ssh_pub_path).exists() {
@@ -421,7 +422,11 @@ pub fn ssh_provision(
 
     // Upload and run provisioning script
     let has_vectorchord = config.extensions.contains(&"vectorchord".to_string());
-    let has_builds = config.pg_vectorsearch.is_some() || config.rekall.is_some() || has_vectorchord;
+    let has_pg_pinecone = config.extensions.contains(&"pg_pinecone".to_string());
+    let has_builds = config.pg_vectorsearch.is_some()
+        || config.rekall.is_some()
+        || has_vectorchord
+        || has_pg_pinecone;
     if has_builds {
         info!("Uploading provisioning script");
 
@@ -455,6 +460,13 @@ pub fn ssh_provision(
             env_vars.push(format!(
                 "VECTORCHORD_VERSION={}",
                 config.vectorchord_version()
+            ));
+        }
+        if has_pg_pinecone {
+            env_vars.push("PG_PINECONE=1".to_string());
+            env_vars.push(format!(
+                "PG_PINECONE_VERSION={}",
+                config.pg_pinecone_version()
             ));
         }
 

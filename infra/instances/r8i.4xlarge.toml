@@ -3,7 +3,7 @@
 # Launch with:
 #   rekall infra up -c infra/instances/r8i.4xlarge.toml
 #
-# Role in the size ladder: the small box. Two uses:
+# Role in the size ladder: the small box. Three uses:
 #   - In-memory HNSW builds for ~10M datasets: the auto maintenance_work_mem
 #     (~51 GiB) comfortably holds a cohere-10M m24 graph (~39 GiB), so the
 #     build stays single-pass in RAM.
@@ -12,6 +12,9 @@
 #     the index-doesn't-fit-in-RAM path. Build the index on a 16xlarge, then
 #     `rekall infra resize -c infra/instances/r8i.4xlarge.toml --name <box>`
 #     to drop down for the query run (the EBS volume + index are preserved).
+#   - PRISM vs pg_pinecone at 10M (benchmarks/cohere-10m-prism-vs-pg_pinecone.toml).
+#     AVX-512 gives pg_pinecone's fastest scan kernel, and its in-memory
+#     build (~35 GB for cohere-10M) fits beside shared_buffers.
 # Do NOT build a 50M index here: the graph (~195 GiB) far exceeds the ~51 GiB
 # maintenance_work_mem, so the build spills to the slow on-disk path.
 #
@@ -50,8 +53,10 @@ name_prefix = "rekall-r8i4"
 pg_version = 18
 # pg_port  = 5432
 
-# Only the extensions this box benchmarks (pgvector HNSW vs PRISM).
-extensions = ["pgvector", "pg_vectorsearch"]
+# Only the extensions this box benchmarks (pgvector HNSW, PRISM,
+# pg_pinecone). pg_pinecone builds from source with cargo-pgrx, adding
+# several minutes to provisioning.
+extensions = ["pgvector", "pg_vectorsearch", "pg_pinecone"]
 
 # PG GUC overrides — merged over the auto-computed defaults. Only the values
 # that deliberately differ are listed; the rest are derived from the instance
@@ -76,6 +81,9 @@ maintenance_io_concurrency = "256"
 
 [pgvector]
 version = "v0.8.2"
+
+[pg_pinecone]
+version = "0.11.0"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 

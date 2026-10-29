@@ -23,6 +23,7 @@ A single EC2 instance with:
 - PostgreSQL (via PGDG apt packages, latest point release)
 - pgvector (via apt or built from source)
 - PRISM (built from source if configured)
+- VectorChord and pg_pinecone (built from source when listed in `extensions`)
 - Rust toolchain + rekall (built from source if configured)
 - Build tools: gcc, clang, cmake, meson, ninja, gdb, valgrind
 - AWS CLI (for S3 dataset access)
@@ -378,7 +379,10 @@ gives a confounded comparison.
 | `pg_version` | `18` | PostgreSQL major version |
 | `pg_port` | `5432` | PostgreSQL listen port |
 | `ubuntu_version` | `"24.04"` | Ubuntu LTS version (`22.04`, `24.04`, or `26.04`) |
-| `extensions` | `[]` | Extensions to install |
+| `extensions` | `[]` | Extensions to install: `pgvector`, `pg_vectorsearch`, `vectorchord`, `pg_pinecone` |
+| `pgvector.version` | `"v0.8.2"` | pgvector tag for the source-build fallback |
+| `vectorchord.version` | `"1.1.1"` | VectorChord tag to build |
+| `pg_pinecone.version` | `"0.11.0"` | pg_pinecone release to build (tag `v<version>`); needs `pgvector` and `pg_version` 17 or 18 |
 | `huge_pages` | `false` | Reserve kernel huge pages + disable THP + set PG `huge_pages = on` |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
 | `ssh_key` | `~/.ssh/id_ed25519.pub` | Path to your SSH public key |
