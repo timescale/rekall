@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Recall vs QPS (per config)</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  html, body { height: 100%; margin: 0; padding: 0; background: white; }
+  body { display: flex; flex-direction: column; font-family: sans-serif; }
+  #header { flex: 0 0 auto; padding: 10px 16px 6px; text-align: center; }
+  #header .title { font-size: 20px; font-weight: 600; color: #222; }
+  #header .meta { margin-top: 4px; font-size: 12px; color: #555; }
+  #plot { flex: 1 1 auto; min-height: 0; width: 100%; }
+</style>
+</head>
+<body>
+<div id="header"><div class="title">Recall vs QPS (per config)</div><div class="meta">“Pinecone vs PRISM”<br>cohere-10m  |  2026-10-29  |  r8i.4xlarge, Intel(R) Xeon(R) 6975P-C, 16 vCPU, 124 GB<br>PG 18.6  |  shared_buffers=32 GB  |  work_mem=1 GB  |  max_parallel_maintenance_workers=8  |  pg_vectorsearch 0.2.0-dev (5f71e47), pgvector 0.8.7</div></div>
+<div id="plot"></div>
+<script>
+var traces = [{
+                x: [1.409455199039188, 1.9075175449929234, 2.445067533265681, 3.0375048650648546, 3.237463252675463, 3.6801012003377016, 4.55549501493103, 5.430913689103296, 6.423707816118972, 6.906754778648553],
+                y: [2762.159301460959, 1695.6159172213884, 959.1972823255246, 587.9956685887068, 495.0511714593889, 320.8399744534376, 184.2712271977254, 103.43770666853786, 55.45947755663644, 28.378844220941264],
+                customdata: [0.8036800000000086, 0.8707400000000087, 0.9202000000000056, 0.9542400000000034, 0.962220000000002, 0.9754000000000016, 0.9896000000000008, 0.9956400000000002, 0.99838, 0.99948],
+                text: ["<br>Disk read/query: 0 B<br>Blks read/query: -214.8 (idx -215.3, heap 0.6)<br>Buffer hit: 98.9%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -425.2 (idx -425.3, heap 0.1)<br>Buffer hit: 99.7%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -844.0 (idx -844.1, heap 0.1)<br>Buffer hit: 99.9%<br>Disk busy: 0%","<br>Disk read/query: 2 B<br>Blks read/query: -1359.0 (idx -1359.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -1673.8 (idx -1679.0, heap 5.1)<br>Buffer hit: 91.9%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -2704.5 (idx -2704.8, heap 0.3)<br>Buffer hit: 99.5%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -4840.4 (idx -4840.8, heap 0.4)<br>Buffer hit: 99.4%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: -8617.6 (idx -8618.0, heap 0.4)<br>Buffer hit: 99.5%<br>Disk busy: 0%","<br>Disk read/query: 1007 B<br>Blks read/query: -16170.7 (idx -16171.0, heap 0.3)<br>Buffer hit: 99.6%<br>Disk busy: 0%","<br>Disk read/query: 6 B<br>Blks read/query: -31218.0 (idx -31218.3, heap 0.3)<br>Buffer hit: 99.7%<br>Disk busy: 0%"],
+                name: "prism-defaults",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(31,119,180)", width: 3 },
+                marker: { color: "rgb(31,119,180)", size: 8 },
+                legendgroup: "prism-defaults",
+                hovertemplate: "<b>prism-defaults</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                x: [1.4766100323321785, 1.4799167105626787, 2.135436396476042, 2.1439279284747386, 2.8194902797324226, 2.8430824049305703, 3.6146629271040687, 3.677603630422477, 4.446828236487726, 4.615524557250839, 4.795387319784774, 5.054516327380266, 5.17937294245525, 5.617654685088586, 6.886932131131712],
+                y: [502.09196617707687, 437.0573592330034, 316.7184522450652, 287.12353725631743, 187.15569901830077, 178.70987766665505, 104.62899166404095, 101.02484043227496, 56.09088446395134, 54.90779487748047, 40.972389526146145, 40.07114070035378, 28.67382065493207, 26.38053563883738, 15.077536896903949],
+                customdata: [0.8140600000000142, 0.8145600000000143, 0.8943000000000093, 0.8951000000000091, 0.9437200000000052, 0.9449600000000052, 0.9737800000000026, 0.975340000000002, 0.9884200000000006, 0.9902000000000004, 0.9917999999999996, 0.9936599999999997, 0.9943999999999992, 0.9963799999999994, 0.9989799999999998],
+                text: ["<br>Disk read/query: 0 B<br>Blks read/query: 0.1 (idx 0.0, heap 0.1)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 3.8 (idx 0.0, heap 3.8)<br>Buffer hit: 99.7%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.5 (idx 0.0, heap 0.5)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.2 (idx 0.0, heap 0.2)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.1 (idx 0.0, heap 0.1)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 2 B<br>Blks read/query: 3.7 (idx 0.0, heap 3.7)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 657 B<br>Blks read/query: 8.8 (idx 0.0, heap 8.8)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 1 B<br>Blks read/query: 0.1 (idx 0.0, heap 0.1)<br>Buffer hit: 100.0%<br>Disk busy: 0%","<br>Disk read/query: 489 B<br>Blks read/query: 0.1 (idx 0.0, heap 0.1)<br>Buffer hit: 100.0%<br>Disk busy: 0%"],
+                name: "pg_pinecone-defaults",
+                type: "scatter",
+                mode: "lines+markers",
+                line: { color: "rgb(255,127,14)", width: 3 },
+                marker: { color: "rgb(255,127,14)", size: 8 },
+                legendgroup: "pg_pinecone-defaults",
+                hovertemplate: "<b>pg_pinecone-defaults</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+            },{
+                    x: [5.799473878193192],
+                    y: [14.653495245468308],
+                    customdata: [0.9969799999999996],
+                    text: ["<br>Disk read/query: 0 B<br>Blks read/query: 0.0 (idx 0.0, heap 0.0)<br>Buffer hit: 100.0%<br>Disk busy: 0%"],
+                    type: "scatter",
+                    mode: "markers",
+                    marker: { color: "rgb(255,127,14)", size: 5, opacity: 0.4 },
+                    legendgroup: "pg_pinecone-defaults",
+                    showlegend: false,
+                    hovertemplate: "<b>pg_pinecone-defaults</b><br>Recall: %{customdata:.4f}<br>QPS: %{y:.4~r}%{text}<extra></extra>"
+                }];
+var layout = {
+  margin: { t: 20 },
+  xaxis: { title: "Recall@10", tickmode: "array", tickvals: [0.0, 0.4054651081081642, 0.8472978603872034, 1.3862943611198908, 1.7346010553881064, 2.1972245773362196, 2.5123056239761152, 2.9444389791664394, 3.6635616461296454, 4.595119850134589, 5.293304824724491, 6.906754778648553], ticktext: ["0.5", "0.6", "0.7", "0.8", "0.85", "0.9", "0.925", "0.95", "0.975", "0.99", "0.995", "0.999"], range: [0, 6.906754778648553], gridcolor: "#eeeeee" },
+  yaxis: { title: "Queries per second", type: "log", dtick: 1, tickformat: ",.1~f", gridcolor: "#eeeeee" },
+  legend: { x: 0.02, y: 0.02, xanchor: "left", yanchor: "bottom", bgcolor: "rgba(255,255,255,0.9)", bordercolor: "#cccccc", borderwidth: 1 },
+  hovermode: "closest",
+  plot_bgcolor: "white",
+  paper_bgcolor: "white"
+};
+Plotly.newPlot("plot", traces, layout, { responsive: true });
+function showAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: true}, [i]); }); }
+function hideAll() { var d = document.getElementById("plot"); d.data.forEach(function(_,i) { Plotly.restyle(d, {visible: "legendonly"}, [i]); }); }
+</script>
+<div style="position:fixed;top:8px;right:8px;z-index:999;font-family:sans-serif;font-size:13px">
+  <button onclick="showAll()" style="cursor:pointer;padding:4px 10px">All</button>
+  <button onclick="hideAll()" style="cursor:pointer;padding:4px 10px">None</button>
+</div>
+</body>
+</html>
