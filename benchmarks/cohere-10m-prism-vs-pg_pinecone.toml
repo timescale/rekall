@@ -1,0 +1,16 @@
+# PRISM vs pg_pinecone's native engine, cohere-10M. Both sides run their
+# defaults: PRISM's auto settings (the prism-defaults arm) and pg_pinecone
+# 0.11's calibrated native index, each swept over its query-time knobs.
+#
+# Runs on infra/instances/r8i.4xlarge.toml (16 vCPU, 128 GiB, AVX-512):
+# the 10M heap (~31 GB) and both indexes stay in memory, and pg_pinecone's
+# in-memory build (~32 GB) fits beside shared_buffers.
+#
+# Usage: rekall run benchmarks/cohere-10m-prism-vs-pg_pinecone.toml [--dry-run]
+
+indexes = [
+    "indexes/prism-defaults.toml",
+    "indexes/pg_pinecone-defaults.toml",
+]
+[[suite]]
+dataset = "datasets/cohere-10m.toml"

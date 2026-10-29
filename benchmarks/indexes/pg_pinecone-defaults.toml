@@ -1,0 +1,39 @@
+# pg_pinecone's native engine as its docs recommend running it: default
+# reloptions (n_lists = ceil(sqrt(rows)), probes and rescore pool calibrated
+# at build for recall@10 0.95), mode = 'local' so no API key or network is
+# involved. The rekall table already stores v STORAGE PLAIN, which the
+# extension asks for: an out-of-line vector costs a TOAST fetch per
+# rescored row.
+#
+# seed is fixed so a rebuild reproduces the same index; it does not change
+# performance. pinecone.build_parallelism defaults to min(8, cores/2); 64
+# asks for every core (the extension caps it at the core count), since
+# nothing else runs during the build.
+#
+# The build buffers every vector in backend memory (about 3.2 KB a 768-d
+# row, so ~32 GB at 10M) on top of shared_buffers. Size the box for it.
+#
+# The sweep is the extension's two session knobs. (0, 0) is the
+# calibrated out-of-the-box point.
+#   pinecone.scan_fraction       lists probed = ceil(value x n_lists); the
+#                                values are fractions so one list fits
+#                                every scale (8..507 lists at 10M,
+#                                3..160 at 1M).
+#   pinecone.rescore_multiplier  rescore pool = value x 100 rows. The
+#                                default first batch stops rescoring once
+#                                the estimator's error bound shows the rest
+#                                cannot reach the top 10, so a bigger pool
+#                                costs less than its size suggests.
+[[index]]
+type = "pg_pinecone"
+name = "pg_pinecone-defaults"
+[index.params]
+seed = 42
+[index.gucs]
+"pinecone.build_parallelism" = 64
+
+[[search.sweep]]
+index = "pg_pinecone-defaults"
+[search.sweep.params]
+"pinecone.scan_fraction" = [0.0, 0.0025, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16]
+"pinecone.rescore_multiplier" = [0, 3]
