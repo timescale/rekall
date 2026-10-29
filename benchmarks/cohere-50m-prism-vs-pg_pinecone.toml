@@ -1,0 +1,23 @@
+# PRISM vs pg_pinecone's native engine, cohere-50M. Same arms as the 10M
+# suite: PRISM's auto settings and pg_pinecone 0.11's calibrated native
+# index, each swept over its query-time knobs.
+#
+# No HNSW arm, so the box is sized by pg_pinecone's build alone. It holds
+# every vector in one backend, an estimated 155-175 GB at 50M, with no
+# on-disk fallback: an allocation failure kills the backend. Build on
+# infra/instances/r8i.16xlarge.toml (512 GiB, 128 GB shared_buffers). The
+# r8i.8xlarge would leave ~15-35 GB beside its 64 GB shared_buffers, too
+# little margin for a build that cannot recover.
+#
+# The query run can move down to r8i.4xlarge with `rekall infra resize`.
+# The ~155 GB heap no longer fits in RAM there, so it measures rescoring
+# from disk for pg_pinecone, and whatever heap reads PRISM's rerank does.
+#
+# Usage: rekall run benchmarks/cohere-50m-prism-vs-pg_pinecone.toml [--dry-run]
+
+indexes = [
+    "indexes/prism-defaults.toml",
+    "indexes/pg_pinecone-defaults.toml",
+]
+[[suite]]
+dataset = "datasets/cohere-50m.toml"

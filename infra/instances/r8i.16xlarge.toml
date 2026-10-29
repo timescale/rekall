@@ -14,6 +14,11 @@
 # pgvector's on-disk insert pass and slows the build by orders of
 # magnitude — use the r8i.24xlarge (307 GiB) for 100M HNSW builds.
 #
+# Also the build box for pg_pinecone at 50M
+# (benchmarks/cohere-50m-prism-vs-pg_pinecone.toml): its native build holds
+# every vector in backend memory, ~160 GB at cohere-50M, next to 128 GB of
+# shared_buffers.
+#
 # This file is the canonical, committed config for this instance type.
 # Personal/machine-specific overrides go in `r8i.16xlarge.local.toml`
 # (same directory, gitignored): ssh_key, iam_instance_profile, s3_bucket,
@@ -51,8 +56,10 @@ name_prefix = "rekall-r8i16"
 pg_version = 18
 # pg_port  = 5432
 
-# Only the extensions this box benchmarks (pgvector HNSW vs PRISM).
-extensions = ["pgvector", "pg_vectorsearch"]
+# Only the extensions this box benchmarks (pgvector HNSW, PRISM,
+# pg_pinecone). pg_pinecone builds from source with cargo-pgrx, adding
+# several minutes to provisioning.
+extensions = ["pgvector", "pg_vectorsearch", "pg_pinecone"]
 
 # PG GUC overrides — merged over the auto-computed defaults. Only the
 # values that deliberately differ from the defaults are listed here;
@@ -79,6 +86,9 @@ maintenance_io_concurrency = "256"
 
 [pgvector]
 version = "v0.8.2"
+
+[pg_pinecone]
+version = "0.11.0"
 
 # ----- Private-repo builds (set git_url in .local.toml) ----------------
 
