@@ -1,0 +1,25 @@
+{
+  "run_id": "cohere-10m/2026-10-30/r8i.4xlarge-110113",
+  "dataset": "cohere-10m",
+  "date": "2026-10-30",
+  "time": "11:01:13",
+  "timestamp": "2026-10-30T11:01:13+0000",
+  "instance_type": "r8i.4xlarge",
+  "hostname": "ip-172-31-37-77",
+  "cpu_model": "Intel(R) Xeon(R) 6975P-C",
+  "cpu_count": 16,
+  "memory_gb": 123.8,
+  "pg_version": "PostgreSQL 18.6 (Ubuntu 18.6-1.pgdg26.04+2) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+  "rekall_commit": "90ed19e",
+  "extensions": {
+    "pg_pinecone": "0.11.0",
+    "pg_prewarm": "1.2",
+    "pg_vectorsearch": "0.2.0-dev (5f71e47)",
+    "vector": "0.8.7"
+  },
+  "peak_recall": 0.9993600000000002,
+  "qps_at_peak": 24.98990008198286,
+  "num_indexes": 2,
+  "s3_url": "s3://rekall-bench/runs/cohere-10m/2026-10-30/r8i.4xlarge-110113/",
+  "comment": "PRISM packed fastscan pages vs pg_pinecone"
+}
