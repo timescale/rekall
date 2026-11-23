@@ -10,6 +10,8 @@
 //!
 //! The target database must have the pgvector extension available.
 //! pg_vectorsearch tests also require the pg_vectorsearch extension.
+//! ParadeDB tests run with REKALL_TEST_PARADEDB=1 and need pg_search
+//! installed and preloaded.
 
 use std::collections::HashMap;
 
@@ -322,6 +324,145 @@ async fn backend_pg_vectorsearch_lifecycle() {
 
     let results = backend.query(&[0.0, 0.0, 0.0], 5).await.unwrap();
     assert_eq!(results.len(), 5);
+
+    backend.drop_index().await.unwrap();
+    assert!(!backend.index_exists().await.unwrap());
+
+    client
+        .execute(&format!("DROP TABLE IF EXISTS {table} CASCADE"), &[])
+        .await
+        .unwrap();
+}
+
+/// ParadeDB is opt-in: pg_search must be installed and preloaded.
+fn has_paradedb() -> bool {
+    std::env::var("REKALL_TEST_PARADEDB")
+        .map(|v| v == "1" || v == "true")
+        .unwrap_or(false)
+}
+
+fn paradedb_arm(name: &str) -> IndexConfig {
+    IndexConfig {
+        index_type: "paradedb".to_string(),
+        name: name.to_string(),
+        // One segment holds all 2000 rows. Segments below
+        // paradedb.vector_clustering_threshold rows are stored flat, so
+        // several small ones would not exercise the clustered index.
+        params: toml::Value::try_from(toml::toml! {
+            target_segment_count = 1
+        })
+        .unwrap(),
+        gucs: HashMap::new(),
+        table_parallel_workers: None,
+        physical_index: None,
+    }
+}
+
+#[tokio::test]
+async fn backend_paradedb_lifecycle() {
+    let dsn = require_pg!();
+    if !has_paradedb() {
+        eprintln!("Skipping ParadeDB test: set REKALL_TEST_PARADEDB=1");
+        return;
+    }
+
+    let conn = test_connection(&dsn);
+    let table = "_rekall_test_paradedb";
+    let dim = 3;
+
+    let pg = PgConnection::new(&conn, table, dim, Metric::Euclidean);
+    pg.create_table().await.unwrap();
+
+    // 2000 rows on a line: the nearest neighbours of the origin are the
+    // lowest ids, in order.
+    let client = pg.open_connection().await.unwrap();
+    client
+        .execute(
+            &format!(
+                "INSERT INTO {table} (id, v) SELECT i, \
+                 ARRAY[i, i * 2, i * 3]::real[]::vector \
+                 FROM generate_series(0, 1999) i"
+            ),
+            &[],
+        )
+        .await
+        .unwrap();
+
+    let registry = BackendRegistry::new();
+    let create = |idx: IndexConfig| {
+        let registry = &registry;
+        let conn = &conn;
+        async move {
+            registry
+                .create(
+                    conn,
+                    table,
+                    dim,
+                    Metric::Euclidean,
+                    &idx,
+                    None,
+                    rekall_lib::config::QueryMode::Default,
+                    None,
+                )
+                .await
+                .unwrap()
+        }
+    };
+    let backend = create(paradedb_arm("test-paradedb")).await;
+
+    assert!(!backend.index_exists().await.unwrap());
+    let build = backend.build_index().await.unwrap();
+    assert!(build.index_size_bytes > 0);
+    let create_sql = build.create_sql.unwrap();
+    assert!(
+        create_sql.contains("USING paradedb (v vector_l2_ops) WITH (target_segment_count = 1)"),
+        "{create_sql}"
+    );
+    let layout = build.index_layout.expect("ParadeDB reports its layout");
+    assert_eq!(layout["segments"], 1, "{layout}");
+    assert_eq!(layout["ivf_segments"], 1, "{layout}");
+    assert_eq!(layout["vectors"], 2000, "{layout}");
+
+    backend
+        .validate_query_plan(&[0.0, 0.0, 0.0], 5)
+        .await
+        .unwrap();
+
+    // A failed EXPLAIN (NaN is not a valid vector) must not leave the
+    // prepared statement or an aborted transaction on the connection the
+    // benchmark then queries through.
+    let sql = format!("SELECT id FROM {table} WHERE v @@@ pdb.all() ORDER BY v <-> $1 LIMIT $2");
+    assert!(backend
+        .pg()
+        .explain_search_plans(&sql, &[f32::NAN, 0.0, 0.0], 5)
+        .await
+        .is_err());
+    backend
+        .validate_query_plan(&[0.0, 0.0, 0.0], 5)
+        .await
+        .unwrap();
+
+    // Probing every cluster makes the answer exact. More than five
+    // executions crosses PostgreSQL's switch to a generic plan.
+    let mut search_params = HashMap::new();
+    search_params.insert(
+        "paradedb.vector_cluster_max_probe".to_string(),
+        toml::Value::Integer(1_000_000),
+    );
+    backend.set_search_params(&search_params).await.unwrap();
+    for _ in 0..8 {
+        let results = backend.query(&[0.0, 0.0, 0.0], 5).await.unwrap();
+        assert_eq!(results, vec![0, 1, 2, 3, 4]);
+    }
+
+    // ParadeDB allows one ParadeDB index per table: a second arm is refused
+    // before CREATE INDEX, with the statement that clears the way.
+    let second = create(paradedb_arm("test-paradedb-2")).await;
+    let err = second.build_index().await.unwrap_err().to_string();
+    assert!(
+        err.contains("DROP INDEX idx_rekall__rekall_test_paradedb_test_paradedb;"),
+        "{err}"
+    );
 
     backend.drop_index().await.unwrap();
     assert!(!backend.index_exists().await.unwrap());

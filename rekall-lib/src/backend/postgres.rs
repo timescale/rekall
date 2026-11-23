@@ -321,7 +321,9 @@ impl PgConnection {
                  WHERE name IN (\
                      'shared_buffers', 'work_mem', 'effective_cache_size', \
                      'maintenance_work_mem', 'max_parallel_workers', \
-                     'max_parallel_maintenance_workers', 'random_page_cost', \
+                     'max_parallel_maintenance_workers', \
+                     'max_parallel_workers_per_gather', \
+                     'shared_preload_libraries', 'random_page_cost', \
                      'effective_io_concurrency', 'wal_level', \
                      'max_connections', 'huge_pages', \
                      'data_directory', 'cluster_name', 'server_version', \
@@ -402,8 +404,14 @@ impl PgConnection {
                 None
             };
 
+            // pg_search reports the loaded library's version through
+            // paradedb.version_info(); it can differ from extversion when the
+            // .so was upgraded without ALTER EXTENSION.
             let version_candidates = match extension_schema.as_deref() {
                 Some(s) => vec![format!("SELECT {s}.pg_vectorsearch_version()")],
+                None if name == "pg_search" => {
+                    vec!["SELECT version FROM paradedb.version_info()".to_string()]
+                }
                 None => vec![format!("SELECT {name}_version()")],
             };
 
@@ -447,14 +455,7 @@ impl PgConnection {
             .as_deref()
             .expect("PgConnection::connect() not called");
 
-        let vec_lit = format!(
-            "'[{}]'::vector",
-            sample_vector
-                .iter()
-                .map(|v| v.to_string())
-                .collect::<Vec<_>>()
-                .join(",")
-        );
+        let vec_lit = format!("'{}'::vector", vector_literal(sample_vector));
 
         let explain_sql = format!(
             "EXPLAIN (FORMAT TEXT) SELECT id FROM {} ORDER BY v {} {} LIMIT {}",
@@ -492,6 +493,68 @@ impl PgConnection {
 
         tracing::debug!("Query plan validated: using {expected_idx_sql}");
         Ok(plan_text)
+    }
+
+    /// EXPLAIN a search statement as the benchmark runs it: once as a custom
+    /// plan, and once as the generic plan a prepared statement may switch to
+    /// after five executions. `sql` binds the query vector as `$1` and the
+    /// LIMIT as `$2`. Returns `("custom", plan)` and `("generic", plan)`.
+    pub async fn explain_search_plans(
+        &self,
+        sql: &str,
+        sample_vector: &[f32],
+        k: usize,
+    ) -> Result<Vec<(&'static str, String)>> {
+        const STMT: &str = "rekall_plan_check";
+        let client = self.client();
+        client
+            .batch_execute(&format!("PREPARE {STMT} AS {sql}"))
+            .await
+            .map_err(|e| {
+                Error::Config(format!(
+                    "Cannot prepare search query: {}\n  SQL: {sql}",
+                    server_message(&e)
+                ))
+            })?;
+
+        let execute = format!(
+            "EXPLAIN EXECUTE {STMT}('{}', {k})",
+            vector_literal(sample_vector)
+        );
+        let explained = async {
+            client.batch_execute("BEGIN").await?;
+            let mut plans = Vec::new();
+            for (label, mode) in [
+                ("custom", "force_custom_plan"),
+                ("generic", "force_generic_plan"),
+            ] {
+                client
+                    .batch_execute(&format!("SET LOCAL plan_cache_mode = {mode}"))
+                    .await?;
+                let rows = client.query(&execute, &[]).await?;
+                let plan: Vec<String> = rows.iter().map(|r| r.get(0)).collect();
+                plans.push((label, plan.join("\n")));
+            }
+            Ok::<_, tokio_postgres::Error>(plans)
+        }
+        .await;
+
+        // A prepared statement outlives ROLLBACK, and DEALLOCATE fails inside
+        // an aborted transaction, so end the transaction first and then
+        // deallocate, whether or not the EXPLAINs succeeded. Otherwise the
+        // statement and an aborted transaction stay on the connection that
+        // runs the benchmark.
+        let rollback = client.batch_execute("ROLLBACK").await;
+        let deallocate = client.batch_execute(&format!("DEALLOCATE {STMT}")).await;
+        let plans = explained.map_err(|e| {
+            Error::Config(format!(
+                "EXPLAIN of the search query failed: {}\n  SQL: {sql}",
+                server_message(&e)
+            ))
+        })?;
+        rollback?;
+        deallocate?;
+        Ok(plans)
     }
 
     /// Prewarm a relation into the OS page cache only, blocking until every
@@ -780,6 +843,12 @@ fn extension_error(extension: &str, e: &tokio_postgres::Error) -> Error {
         extension: extension.to_string(),
         reason: server_message(e),
     }
+}
+
+/// pgvector text literal for a vector, e.g. `[0.5,1,-2]`.
+fn vector_literal(v: &[f32]) -> String {
+    let elems: Vec<String> = v.iter().map(f32::to_string).collect();
+    format!("[{}]", elems.join(","))
 }
 
 async fn try_query_string(client: &Client, candidates: &[String]) -> Option<String> {
@@ -1193,6 +1262,12 @@ mod tests {
         let mut half_ = Vec::new();
         encode_copy_row(&mut half_, 1, &v, StorageKind::Halfvec);
         assert_eq!(full.len() - half_.len(), v.len() * 2);
+    }
+
+    #[test]
+    fn vector_literal_is_pgvector_text_form() {
+        assert_eq!(vector_literal(&[0.5, 1.0, -2.25]), "[0.5,1,-2.25]");
+        assert_eq!(vector_literal(&[]), "[]");
     }
 
     #[test]

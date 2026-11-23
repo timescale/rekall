@@ -981,6 +981,7 @@ impl BenchmarkConfig {
             // so an unsupported key fails the suite load and `--dry-run`.
             crate::backend::validate_index_params(idx)?;
         }
+        crate::backend::validate_index_set(&self.index)?;
         for sweep in &self.search.sweep {
             if !self.index.iter().any(|idx| idx.name == sweep.index) {
                 return Err(Error::SweepIndexNotFound {

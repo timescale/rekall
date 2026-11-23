@@ -3,8 +3,8 @@
 ## Project Overview
 
 Rekall is a Rust-based vector search benchmark tool. It measures recall-vs-QPS
-tradeoffs for PostgreSQL vector indexes (PRISM, pgvector HNSW, VectorChord)
-with streaming data loading that scales to 100M+ vectors.
+tradeoffs for PostgreSQL vector indexes (PRISM, pgvector HNSW, VectorChord,
+ParadeDB) with streaming data loading that scales to 100M+ vectors.
 
 ## Build
 

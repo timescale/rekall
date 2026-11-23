@@ -2,6 +2,7 @@
 // Licensed under the PostgreSQL License. See LICENSE for details.
 
 pub mod build_monitor;
+pub mod paradedb;
 pub mod pg_vector_type;
 pub mod pgvector_encoding;
 pub mod pgvector_hnsw;
@@ -42,6 +43,7 @@ pub(crate) fn invalid_params(idx: &IndexConfig, err: impl std::fmt::Display) -> 
 struct BackendKind {
     type_names: fn() -> &'static [&'static str],
     validate_params: fn(&IndexConfig) -> Result<()>,
+    single_index_per_table: fn() -> bool,
 }
 
 fn backend_kinds() -> &'static [BackendKind] {
@@ -49,18 +51,28 @@ fn backend_kinds() -> &'static [BackendKind] {
         BackendKind {
             type_names: prism::PrismBackend::type_names,
             validate_params: prism::PrismBackend::validate_params,
+            single_index_per_table: prism::PrismBackend::single_index_per_table,
         },
         BackendKind {
             type_names: pgvector_hnsw::PgvectorHnswBackend::type_names,
             validate_params: pgvector_hnsw::PgvectorHnswBackend::validate_params,
+            single_index_per_table: pgvector_hnsw::PgvectorHnswBackend::single_index_per_table,
         },
         BackendKind {
             type_names: pgvector_ivfflat::PgvectorIvfflatBackend::type_names,
             validate_params: pgvector_ivfflat::PgvectorIvfflatBackend::validate_params,
+            single_index_per_table:
+                pgvector_ivfflat::PgvectorIvfflatBackend::single_index_per_table,
         },
         BackendKind {
             type_names: vchordrq::VchordrqBackend::type_names,
             validate_params: vchordrq::VchordrqBackend::validate_params,
+            single_index_per_table: vchordrq::VchordrqBackend::single_index_per_table,
+        },
+        BackendKind {
+            type_names: paradedb::ParadedbBackend::type_names,
+            validate_params: paradedb::ParadedbBackend::validate_params,
+            single_index_per_table: paradedb::ParadedbBackend::single_index_per_table,
         },
     ]
 }
@@ -80,6 +92,37 @@ fn kind_for(index_type: &str) -> Result<&'static BackendKind> {
 /// any connection, so `--dry-run` fails the same way a real run does.
 pub fn validate_index_params(idx: &IndexConfig) -> Result<()> {
     (kind_for(&idx.index_type)?.validate_params)(idx)
+}
+
+/// Reject index sets the table cannot hold at once. Every arm is built
+/// before any is searched, so a backend that allows only one index per
+/// table can have only one arm that builds; others reuse it through
+/// `physical_index`. Called at config load, like `validate_index_params`.
+pub fn validate_index_set(indexes: &[IndexConfig]) -> Result<()> {
+    for kind in backend_kinds() {
+        if !(kind.single_index_per_table)() {
+            continue;
+        }
+        let building: Vec<&str> = indexes
+            .iter()
+            .filter(|idx| {
+                idx.physical_index.is_none()
+                    && (kind.type_names)().contains(&idx.index_type.as_str())
+            })
+            .map(|idx| idx.name.as_str())
+            .collect();
+        if building.len() > 1 {
+            return Err(Error::Config(format!(
+                "indexes '{}' are separate {} builds, but it allows only one \
+                 index per table. Build one and point the others at it with \
+                 physical_index, or run them as separate configs, dropping \
+                 the index in between.",
+                building.join("', '"),
+                (kind.type_names)().join("/"),
+            )));
+        }
+    }
+    Ok(())
 }
 
 /// Standard constructor flow for every PG-backed index: parse params
@@ -184,6 +227,15 @@ pub trait IndexBackend: Send + Sync {
     where
         Self: Sized;
 
+    /// Whether the extension refuses a second index of its kind on a table
+    /// (see [`validate_index_set`]). Default: no limit.
+    fn single_index_per_table() -> bool
+    where
+        Self: Sized,
+    {
+        false
+    }
+
     fn index_name(&self) -> &str;
 
     fn pg(&self) -> &PgConnection;
@@ -284,6 +336,18 @@ pub trait IndexBackend: Send + Sync {
         None
     }
 
+    /// Fail before `CREATE INDEX` when the table as it stands cannot take
+    /// this index, with an error that says how to fix it. Default: no check.
+    async fn check_can_build(&self) -> Result<()> {
+        Ok(())
+    }
+
+    /// What the finished build produced, as the extension reports it,
+    /// recorded as `IndexBuildResult::index_layout`. Default: nothing.
+    async fn index_layout(&self) -> Result<Option<serde_json::Value>> {
+        Ok(None)
+    }
+
     /// Wire up the PG connection. Reads `extensions()`, `order_op()`,
     /// `query_column()`, `query_bind()`, and `custom_search_sql()` off
     /// `self` to (1) CREATE EXTENSION + LOAD, and (2) prepare the
@@ -343,6 +407,8 @@ pub trait IndexBackend: Send + Sync {
                 self.index_name(),
             )));
         }
+
+        self.check_can_build().await?;
 
         if let (Some(col), Some(ty), Some(expr)) = (
             self.derived_column(),
@@ -419,6 +485,12 @@ pub trait IndexBackend: Send + Sync {
         let peak_workers = monitor_result.as_ref().map(|m| m.peak_workers).unwrap_or(0);
 
         let size = self.index_size().await?;
+        // The index is built at this point; a failed probe of its layout
+        // must not discard the build result.
+        let index_layout = self.index_layout().await.unwrap_or_else(|e| {
+            tracing::warn!("Cannot read the layout of '{}': {e}", self.index_name());
+            None
+        });
 
         Ok(IndexBuildResult {
             index_name: self.index_name().to_string(),
@@ -432,6 +504,7 @@ pub trait IndexBackend: Send + Sync {
             build_gucs: serde_json::to_value(&self.pg().build_gucs)
                 .unwrap_or(serde_json::Value::Null),
             monitor: monitor_result,
+            index_layout,
         })
     }
 
@@ -581,6 +654,18 @@ impl BackendRegistry {
                 .await?;
                 Box::new(b)
             }
+            "paradedb" => {
+                let b = paradedb::ParadedbBackend::create(
+                    conn,
+                    table,
+                    dimension,
+                    metric,
+                    index_config,
+                    cancel_registry,
+                )
+                .await?;
+                Box::new(b)
+            }
             t @ ("vchordrq" | "vchordrq-rabitq8" | "vchordrq-rabitq4") => {
                 let variant = match t {
                     "vchordrq" => vchordrq::Variant::Plain,
@@ -707,6 +792,49 @@ pub trait DataLoader: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn arm(name: &str, index_type: &str, physical_index: Option<&str>) -> IndexConfig {
+        IndexConfig {
+            name: name.to_string(),
+            index_type: index_type.to_string(),
+            params: toml::Value::Table(Default::default()),
+            gucs: Default::default(),
+            table_parallel_workers: None,
+            physical_index: physical_index.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn two_building_paradedb_arms_are_rejected() {
+        let err = validate_index_set(&[
+            arm("pdb-a", "paradedb", None),
+            arm("hnsw", "pgvector-hnsw", None),
+            arm("pdb-b", "paradedb", None),
+        ])
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("'pdb-a', 'pdb-b'"), "{err}");
+        assert!(err.contains("physical_index"), "{err}");
+    }
+
+    #[test]
+    fn paradedb_arm_sharing_a_build_is_accepted() {
+        validate_index_set(&[
+            arm("pdb-a", "paradedb", None),
+            arm("pdb-a-probe", "paradedb", Some("pdb-a")),
+        ])
+        .unwrap();
+    }
+
+    #[test]
+    fn several_arms_of_other_backends_are_accepted() {
+        validate_index_set(&[
+            arm("hnsw-a", "pgvector-hnsw", None),
+            arm("hnsw-b", "pgvector-hnsw", None),
+            arm("pdb", "paradedb", None),
+        ])
+        .unwrap();
+    }
 
     #[test]
     fn create_index_sql_no_options_omits_with_clause() {

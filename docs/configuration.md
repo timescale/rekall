@@ -43,6 +43,12 @@ name = "ivfflat-l3162"
 lists = 3162               # pgvector guidance: sqrt(rows) beyond 1M rows
 # encoding = "halfvec"     # or "bit"; both support mode = "rerank" queries
 
+[[index]]
+type = "paradedb"          # pg_search; see "ParadeDB" below
+name = "paradedb-seg8"
+[index.params]             # every key optional; omitted = ParadeDB default
+target_segment_count = 8
+
 [search]
 k = 10
 runs = 3                  # best-of-N runs kept
@@ -60,6 +66,11 @@ index = "prism-fs16"
 index = "hnsw-m16"
 [search.sweep.params]
 "hnsw.ef_search" = [10, 20, 40, 80, 200, 400]
+
+[[search.sweep]]
+index = "paradedb-seg8"
+[search.sweep.params]
+"paradedb.vector_cluster_max_probe" = [10, 40, 160, 640, 2560]
 
 [output]
 format = ["table", "json"]
@@ -86,7 +97,8 @@ Each `[[index]]` has two parameter sections:
 - **`[index.gucs]`** — default GUC values set before every search sweep.
   Keys must be full PG GUC names (e.g., `"prism.fastscan_bits"`, not
   `fastscan_bits`). These are applied before each sweep point; sweep
-  params in `[search.sweep.params]` override them.
+  params in `[search.sweep.params]` override them. They are also set on
+  the session that runs `CREATE INDEX`.
 
 ## Search Sweep Params
 
@@ -235,7 +247,7 @@ benchmarks/
   cohere-100m-ivfflat.toml
   cohere-{10,50,100}m-tuning.toml
   datasets/cohere-{1m,10m,...}.toml
-  indexes/{hnsw,prism,vchordrq}-*.toml
+  indexes/{hnsw,prism,vchordrq,paradedb}-*.toml
 ```
 
 ## Directory-Based Config Groups
@@ -323,6 +335,10 @@ index configs. Use `--rebuild` to force rebuilding all indexes:
 rekall run configs/cohere-1m-comparison/ --rebuild
 ```
 
+ParadeDB is the exception to building every arm side by side: it allows
+one ParadeDB index per table, disabled or not (see
+[ParadeDB](#paradedb-pg_search)).
+
 ## Run Traceability
 
 Every run captures and outputs:
@@ -379,6 +395,62 @@ rekall infra iam-policy [-c config] [--cloudformation]
 `rekall report` and `rekall publish` take a results directory of per-index
 `*.json.gz` files, not a benchmark config. `rekall search` skips sweep
 points already saved in that directory; `--rerun` measures them again.
+
+## ParadeDB (`pg_search`)
+
+`type = "paradedb"` benchmarks ParadeDB's vector index (pg_search 0.27 or
+later) on a regular PostgreSQL with the extension installed. It builds a
+vector-only index and searches every row through ParadeDB's custom scan:
+
+```sql
+CREATE INDEX ... ON t USING paradedb (v vector_cosine_ops) WITH (...);
+SELECT id FROM t WHERE v @@@ pdb.all() ORDER BY v <=> $1 LIMIT $2;
+```
+
+**Server setup.** pg_search needs pgvector and must be preloaded, so set
+`shared_preload_libraries = 'pg_search'` and restart. A run against a server
+without it fails with pg_search's own message saying so. Preloading
+pg_search adds its planner hooks to every query on the server, including
+the other backends' queries in a comparison on that server.
+
+**Build params** (`[index.params]`), all optional. Omitted keys keep
+ParadeDB's default, so the defaults below are ParadeDB's.
+
+| Key | ParadeDB default | Meaning |
+|-----|------------------|---------|
+| `target_segment_count` | max(`max_parallel_workers_per_gather`, 4) of the build session | Segments the build writes, each with its own clustered vector index. Set it explicitly to keep the build independent of the session. |
+| `target_leaf_size` | `400` | Target vectors per cluster |
+| `training_sample_ratio` | `0.32` | Fraction of vectors sampled to train clusters, `0` = chosen from `maintenance_work_mem`. At 100M rows the default samples 32M vectors. |
+| `replication` | `2` | Clusters each vector is assigned to (1 or 2) |
+| `vector_router_quantization` | `true` | One-bit centroid routing |
+| `quantization` | `[1, 1]` | Bits per quantization layer, in scoring order; `0` turns quantization off |
+
+The build result records `index_layout`, the segment and cluster counts
+ParadeDB actually built, next to the requested params.
+
+**Search params.** Sweep `paradedb.vector_cluster_max_probe` (default 100,
+minimum 1, so unlike PRISM's `prism.nprobe` there is no `0` = auto). It
+caps the probing work in units of an average cluster; adaptive probing may
+stop before the cap.
+
+**Plan check.** Before a sweep, rekall requires both the custom and the
+generic plan of the prepared search to use ParadeDB's top-k scan
+(`TopKScanExecState`) on the arm's own index. Without it ParadeDB still
+answers, but by sorting every row.
+
+**One ParadeDB index per table.** ParadeDB refuses a second ParadeDB index
+on a table, even a disabled one, and rekall builds every arm before
+searching any. So:
+
+- A config may have only one ParadeDB arm that builds. Further arms can
+  sweep other search settings over that index with `physical_index`.
+- To compare build params (say `target_segment_count` 4, 8 and 16), run
+  one config per variant, dropping the previous index in between. A build
+  that finds another ParadeDB index on the table stops before
+  `CREATE INDEX` and prints the `DROP INDEX` statement to run.
+
+**Heap storage.** ParadeDB indexes only `vector(N)`, so the arm needs
+`[load] storage` to resolve to `vector`.
 
 ## Heap storage precision (`[load] storage`)
 

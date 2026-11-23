@@ -422,6 +422,10 @@ pub struct IndexBuildResult {
     /// determined how warm the heap was).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache: Option<String>,
+    /// What the build produced, as the extension reports it (e.g. ParadeDB's
+    /// segment and cluster counts), where build params are only targets.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index_layout: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

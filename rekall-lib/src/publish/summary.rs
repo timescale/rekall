@@ -281,6 +281,7 @@ mod tests {
                 build_gucs: serde_json::Value::Null,
                 monitor: None,
                 cache: Some("prewarmed".into()),
+                index_layout: None,
             }],
             search_results: vec![search_result("prism-n1000", 0.91, 3000.0)],
             concurrency_results: Vec::new(),

@@ -226,6 +226,7 @@ mod tests {
             build_gucs: serde_json::Value::Null,
             monitor: None,
             cache: None,
+            index_layout: None,
         }
     }
 
