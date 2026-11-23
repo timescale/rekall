@@ -150,6 +150,27 @@ async fn pg_guc_pg_vectorsearch_after_load() {
     assert!(result.is_err());
 }
 
+#[tokio::test]
+async fn pg_missing_extension_reports_server_reason() {
+    let dsn = require_pg!();
+    let mut pg = PgConnection::new(
+        &test_connection(&dsn),
+        "_rekall_test_ext",
+        3,
+        Metric::Angular,
+    );
+    let err = pg
+        .connect_with_setup(&["rekall_no_such_extension"])
+        .await
+        .unwrap_err()
+        .to_string();
+    // Once from rekall, once in the server's own message.
+    assert!(
+        err.matches("rekall_no_such_extension").count() >= 2,
+        "{err}"
+    );
+}
+
 // ---------- IndexBackend tests ----------
 
 fn has_pg_vectorsearch() -> bool {

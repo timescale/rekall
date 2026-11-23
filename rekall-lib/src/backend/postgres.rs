@@ -173,10 +173,8 @@ impl PgConnection {
                 .execute(&format!("CREATE EXTENSION IF NOT EXISTS {ext}"), &[])
                 .await
                 .map_err(|e| {
-                    tracing::error!("CREATE EXTENSION {ext} failed: {e}");
-                    Error::ExtensionMissing {
-                        extension: (*ext).to_string(),
-                    }
+                    tracing::error!("CREATE EXTENSION {ext} failed: {}", server_message(&e));
+                    extension_error(ext, &e)
                 })?;
         }
 
@@ -202,10 +200,8 @@ impl PgConnection {
                 .execute(&format!("LOAD '{libpath}'"), &[])
                 .await
                 .map_err(|e| {
-                    tracing::error!("LOAD '{libpath}' failed: {e}");
-                    Error::ExtensionMissing {
-                        extension: (*ext).to_string(),
-                    }
+                    tracing::error!("LOAD '{libpath}' failed: {}", server_message(&e));
+                    extension_error(ext, &e)
                 })?;
         }
 
@@ -765,6 +761,27 @@ impl PgConnection {
     }
 }
 
+/// The server's message for a failed statement. tokio-postgres displays
+/// every server error as just "db error".
+fn server_message(e: &tokio_postgres::Error) -> String {
+    match e.as_db_error() {
+        Some(db) => match db.hint() {
+            Some(hint) => format!("{} ({hint})", db.message()),
+            None => db.message().to_string(),
+        },
+        None => e.to_string(),
+    }
+}
+
+/// `ExtensionMissing` carrying the server's own reason (not installed, must
+/// be preloaded, ...) rather than a guess.
+fn extension_error(extension: &str, e: &tokio_postgres::Error) -> Error {
+    Error::ExtensionMissing {
+        extension: extension.to_string(),
+        reason: server_message(e),
+    }
+}
+
 async fn try_query_string(client: &Client, candidates: &[String]) -> Option<String> {
     for sql in candidates {
         if let Ok(row) = client.query_one(sql.as_str(), &[]).await {
@@ -876,9 +893,7 @@ impl DataLoader for PgConnection {
             .await
             .map_err(|e| {
                 if e.to_string().contains("could not open extension") {
-                    Error::ExtensionMissing {
-                        extension: "vector".to_string(),
-                    }
+                    extension_error("vector", &e)
                 } else {
                     e.into()
                 }

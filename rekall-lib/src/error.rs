@@ -35,11 +35,10 @@ pub enum Error {
     )]
     IndexNotFound { name: String },
 
-    #[error(
-        "Extension '{extension}' is not available. \
-         Install {extension} before running this benchmark."
-    )]
-    ExtensionMissing { extension: String },
+    /// `reason` is the server's message, e.g. that the extension is not
+    /// installed or must be preloaded.
+    #[error("Extension '{extension}' cannot be used: {reason}")]
+    ExtensionMissing { extension: String, reason: String },
 
     #[error(
         "Dataset already fully loaded ({loaded}/{total} rows). \
