@@ -12,6 +12,8 @@ pub mod search_monitor;
 pub mod vchordrq;
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -374,15 +376,23 @@ pub trait IndexBackend: Send + Sync {
 
         let monitor = build_monitor::BuildMonitor::new(&self.pg().dsn).await;
         let progress_tx = self.pg().progress.clone();
-        let monitor_handle = monitor
-            .map(|m| tokio::spawn(async move { m.monitor_until_done(progress_tx.as_ref()).await }));
+        let build_done = Arc::new(AtomicBool::new(false));
+        let monitor_done = Arc::clone(&build_done);
+        let monitor_handle = monitor.map(|m| {
+            tokio::spawn(async move {
+                m.monitor_until_done(progress_tx.as_ref(), &monitor_done)
+                    .await
+            })
+        });
 
         let start = Instant::now();
         let build_res = self.pg().client().execute(&sql, &[]).await;
         let build_time = start.elapsed();
+        build_done.store(true, Ordering::Release);
 
         // Always stop the monitor before returning. On success, await it (it
-        // ends once the build leaves pg_stat_progress_create_index). On
+        // ends once the build leaves pg_stat_progress_create_index, or on its
+        // next poll if the build was too quick to ever show up there). On
         // failure, ABORT it: a build that errors before it ever appears there
         // (e.g. a shared-memory allocation failure at setup) never sets the
         // monitor's `started` flag, so monitor_until_done would loop forever —

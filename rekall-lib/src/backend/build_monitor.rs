@@ -11,6 +11,7 @@
  * - Tuples/blocks progress for reporting
  */
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -87,7 +88,15 @@ impl BuildMonitor {
         })
     }
 
-    pub async fn monitor_until_done(&self, progress_tx: Option<&ProgressTx>) -> BuildMonitorResult {
+    /// Poll until the build leaves `pg_stat_progress_create_index`.
+    /// `build_done` is set by the caller once CREATE INDEX has returned: a
+    /// build faster than one poll interval never shows up there, and without
+    /// it the loop would wait forever for the build to start.
+    pub async fn monitor_until_done(
+        &self,
+        progress_tx: Option<&ProgressTx>,
+        build_done: &AtomicBool,
+    ) -> BuildMonitorResult {
         let mut phases: Vec<BuildPhase> = Vec::new();
         let mut memory_samples: Vec<MemorySample> = Vec::new();
         let mut peak_workers: u32 = 0;
@@ -118,7 +127,7 @@ impl BuildMonitor {
             let row = match progress {
                 Ok(Some(row)) => row,
                 Ok(None) => {
-                    if started {
+                    if started || build_done.load(Ordering::Acquire) {
                         break; // build finished
                     }
                     continue; // not started yet
