@@ -233,6 +233,7 @@ Running:
 # Canonical suites
 rekall run benchmarks/cohere-1m.toml
 rekall run benchmarks/cohere-10m-prism-vs-vchordrq.toml
+rekall run benchmarks/cohere-10m-prism-vs-paradedb.toml
 
 # A suite you keep outside the repo
 rekall run ~/my-experiments/scaling-test.toml
@@ -244,6 +245,7 @@ Repo layout under `benchmarks/`:
 benchmarks/
   cohere-{1,5,10,50,100}m.toml     # base suites: default PRISM vs hnsw-m24-halfvec
   cohere-10m-prism-vs-vchordrq.toml
+  cohere-10m-prism-vs-paradedb.toml
   cohere-100m-ivfflat.toml
   cohere-{10,50,100}m-tuning.toml
   datasets/cohere-{1m,10m,...}.toml
@@ -411,7 +413,9 @@ SELECT id FROM t WHERE v @@@ pdb.all() ORDER BY v <=> $1 LIMIT $2;
 `shared_preload_libraries = 'pg_search'` and restart. A run against a server
 without it fails with pg_search's own message saying so. Preloading
 pg_search adds its planner hooks to every query on the server, including
-the other backends' queries in a comparison on that server.
+the other backends' queries in a comparison on that server. `rekall infra`
+installs and preloads it when the instance's `extensions` lists `paradedb`
+(see [Cloud Infrastructure](cloud-infrastructure.md#extensions)).
 
 **Build params** (`[index.params]`), all optional. Omitted keys keep
 ParadeDB's default, so the defaults below are ParadeDB's.

@@ -268,7 +268,7 @@ install_rust() {
 export -f install_rust
 try_step "rust" install_rust
 
-{% if "pgvector" in extensions -%}
+{% if "pgvector" in extensions or "paradedb" in extensions -%}
 install_pgvector() {
   apt-get install -y postgresql-{{ pg_version }}-pgvector || {
     echo "pgvector apt package not available, building from source"

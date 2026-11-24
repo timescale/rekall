@@ -16,6 +16,8 @@
 #   REKALL_GIT_URL     — git URL for rekall (empty to skip)
 #   REKALL_GIT_REF     — git ref for rekall (default: main)
 #   VECTORCHORD        — set to "1" to install VectorChord
+#   PARADEDB           — set to "1" to install ParadeDB's pg_search
+#   PARADEDB_VERSION   — pg_search release (default: 0.27.0)
 
 set -euo pipefail
 
@@ -26,12 +28,89 @@ REKALL_GIT_URL="${REKALL_GIT_URL:-}"
 REKALL_GIT_REF="${REKALL_GIT_REF:-main}"
 VECTORCHORD="${VECTORCHORD:-}"
 VECTORCHORD_VERSION="${VECTORCHORD_VERSION:-1.1.1}"
+PARADEDB="${PARADEDB:-}"
+PARADEDB_VERSION="${PARADEDB_VERSION:-0.27.0}"
 PG_PORT="${PG_PORT:-5432}"
 
 PG_CONFIG="/usr/lib/postgresql/${PG_VERSION}/bin/pg_config"
 PG_UNIT="postgresql@${PG_VERSION}-main"
 REPOS_DIR="$HOME/repos"
 mkdir -p "$REPOS_DIR"
+
+pg_admin() {
+    sudo -u postgres psql -X -p "$PG_PORT" -d postgres -v ON_ERROR_STOP=1 "$@"
+}
+
+wait_for_postgres() {
+    for _ in $(seq 1 60); do
+        if pg_admin -c 'SELECT 1' >/dev/null 2>&1; then
+            return
+        fi
+        sleep 1
+    done
+    echo "ERROR: PostgreSQL did not accept connections on port $PG_PORT" >&2
+    return 1
+}
+
+has_preload_library() {
+    local normalized="${1//[[:space:]\"]/}"
+    [[ ",$normalized," == *",$2,"* || ",$normalized," == *",\$libdir/$2,"* ]]
+}
+
+package_dir=
+package_path=
+auto_conf=
+auto_backup=
+recover_postgres=0
+cleanup() {
+    local status=$?
+    if (( status != 0 && recover_postgres )); then
+        if [ -n "$auto_backup" ]; then
+            sudo mv -f -- "$auto_backup" "$auto_conf" ||
+                echo "ERROR: Could not restore $auto_conf from $auto_backup" >&2
+            sudo systemctl restart "$PG_UNIT" ||
+                echo "ERROR: Could not restart $PG_UNIT with the prior configuration" >&2
+        else
+            sudo systemctl start "$PG_UNIT" ||
+                echo "ERROR: Could not start $PG_UNIT after provisioning failed" >&2
+        fi
+    fi
+    if [ -n "$package_dir" ]; then
+        rm -f -- "$package_path" && rmdir -- "$package_dir" ||
+            echo "WARNING: Could not clean up $package_dir" >&2
+    fi
+    return "$status"
+}
+trap cleanup EXIT
+
+# Resolve and fetch the package before taking PostgreSQL offline.
+if [ "$PARADEDB" = "1" ]; then
+    CODENAME=$(. /etc/os-release && echo "${VERSION_CODENAME:-}")
+    ARCH=$(dpkg --print-architecture)
+    if [[ ! "$PARADEDB_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ||
+          ! "$PG_VERSION" =~ ^(15|16|17|18)$ ||
+          ! "$CODENAME" =~ ^(noble|resolute)$ ||
+          ! "$ARCH" =~ ^(amd64|arm64)$ ]]; then
+        echo "ERROR: Unsupported pg_search package: $PARADEDB_VERSION, PostgreSQL $PG_VERSION, $CODENAME/$ARCH" >&2
+        exit 1
+    fi
+    PG_SEARCH_PKG="postgresql-${PG_VERSION}-pg-search"
+    INSTALLED=$(dpkg-query -W -f='${db:Status-Status} ${Version}' "$PG_SEARCH_PKG" 2>/dev/null || true)
+    if [[ "$INSTALLED" == "installed $PARADEDB_VERSION" ||
+          "$INSTALLED" == "installed ${PARADEDB_VERSION}-"* ]]; then
+        echo "=== pg_search $PARADEDB_VERSION already installed, skipping ==="
+    elif [[ "$INSTALLED" == installed\ * ]] &&
+         dpkg --compare-versions "${INSTALLED#installed }" gt "$PARADEDB_VERSION"; then
+        echo "ERROR: Refusing to downgrade pg_search from ${INSTALLED#installed } to $PARADEDB_VERSION" >&2
+        exit 1
+    else
+        DEB="${PG_SEARCH_PKG}_${PARADEDB_VERSION}-1PARADEDB-${CODENAME}_${ARCH}.deb"
+        package_dir=$(mktemp -d)
+        package_path="$package_dir/$DEB"
+        curl -fsSL --retry 3 -o "$package_path" \
+            "https://github.com/paradedb/paradedb/releases/download/v${PARADEDB_VERSION}/$DEB"
+    fi
+fi
 
 # Stop PostgreSQL for the duration of the source builds below and start it
 # again as the last step (see the end of this script). The builds are
@@ -41,10 +120,9 @@ mkdir -p "$REPOS_DIR"
 # mid-build. Nothing here needs the server: the rekall role and database are
 # created earlier in cloud-init, `cargo pgrx install` and `meson install` only
 # copy files (no live server), and `rekall setup` just writes a config file.
-# The new .so's and any postgresql.conf changes below take effect on the
-# single restart at the end.
 echo "=== Stopping PostgreSQL to free memory during source builds ==="
-sudo systemctl stop "$PG_UNIT" || true
+recover_postgres=1
+sudo systemctl stop "$PG_UNIT"
 
 # --- PRISM ---
 
@@ -156,20 +234,22 @@ if [ "$VECTORCHORD" = "1" ]; then
         # PG is stopped during builds; the .so loads on the final restart.
         echo "=== VectorChord installed ==="
     fi
+fi
 
-    # VectorChord needs its library preloaded. Nothing else sets
-    # shared_preload_libraries (pg_vectorsearch is a plain IAM and needs no preload), so
-    # add vchord here -- after the .so is installed -- and restart. This must
-    # live in provision.sh, not the config's [pg_config]: cloud-init starts PG
-    # before this script runs, so vchord.so only exists now; setting the preload
-    # earlier would make PG fail to start. Runs for both the freshly-built and
-    # already-installed paths; idempotent.
-    PG_CONF="/etc/postgresql/${PG_VERSION}/main/postgresql.conf"
-    if ! grep -qE "^[[:space:]]*shared_preload_libraries[[:space:]]*=.*vchord" \
-        "$PG_CONF"; then
-        echo "shared_preload_libraries = 'vchord'" | sudo tee -a "$PG_CONF" >/dev/null
-        # Applied on the final restart at the end of this script.
-        echo "=== Enabled vchord in shared_preload_libraries ==="
+# --- ParadeDB (pg_search) ---
+
+if [ "$PARADEDB" = "1" ]; then
+    packages=()
+    # A manual `infra provision` can opt in on a box that skipped pgvector.
+    if [ ! -f "/usr/share/postgresql/${PG_VERSION}/extension/vector.control" ]; then
+        packages+=("postgresql-${PG_VERSION}-pgvector")
+    fi
+    if [ -n "$package_path" ]; then
+        packages+=("$package_path")
+    fi
+    if (( ${#packages[@]} )); then
+        echo "=== Installing pg_search dependencies and requested packages ==="
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y "${packages[@]}"
     fi
 fi
 
@@ -232,19 +312,58 @@ if [ -n "$REKALL_GIT_URL" ]; then
         --dsn "host=localhost port=$PG_PORT dbname=rekall user=rekall password=rekall"
 fi
 
-# Bring PostgreSQL back up -- it was stopped at the top to free RAM for the
-# source builds. Doing it last means the box ends ready to serve, with the
-# freshly installed extensions and any postgresql.conf changes applied. Wait
-# for it to accept connections so a caller that connects right after
-# provisioning doesn't race the startup.
-echo "=== Starting PostgreSQL (final step) ==="
+echo "=== Starting PostgreSQL ==="
 sudo systemctl start "$PG_UNIT"
-for _ in $(seq 1 60); do
-    if sudo -u postgres psql -p "$PG_PORT" -c 'SELECT 1' >/dev/null 2>&1; then
-        break
+wait_for_postgres
+
+preloads=()
+if [ "$VECTORCHORD" = "1" ]; then preloads+=(vchord); fi
+if [ "$PARADEDB" = "1" ]; then preloads+=(pg_search); fi
+if (( ${#preloads[@]} )); then
+    current=$(pg_admin -Atc 'SHOW shared_preload_libraries')
+    merged=$current
+    for lib in "${preloads[@]}"; do
+        if ! has_preload_library "$merged" "$lib"; then
+            merged="${merged:+$merged,}$lib"
+        fi
+    done
+    if [ "$merged" != "$current" ]; then
+        # ALTER SYSTEM preserves PostgreSQL's precedence over included files.
+        # Keep the previous file so a bad preload cannot strand the server.
+        auto_conf="$(pg_admin -Atc 'SHOW data_directory')/postgresql.auto.conf"
+        backup=$(sudo mktemp "${auto_conf}.rekall.XXXXXX")
+        sudo cp -p -- "$auto_conf" "$backup"
+        auto_backup=$backup
+        pg_admin -v "preloads=$merged" <<'SQL'
+-- PostgreSQL treats one SQL string containing commas as one library.
+-- Emit a separate SQL value for each item in the configured list.
+SELECT 'ALTER SYSTEM SET shared_preload_libraries TO ' ||
+       string_agg(quote_literal(
+           CASE WHEN left(item, 1) = '"' THEN
+               replace(substr(item, 2, length(item) - 2), '""', '"')
+           ELSE item END
+       ), ', ' ORDER BY pos)
+FROM regexp_matches(:'preloads', '(?:^|,)[[:space:]]*("(?:[^"]|"")*"|[^",]+)', 'g')
+     WITH ORDINALITY AS matches(parts, pos)
+CROSS JOIN LATERAL (SELECT btrim(parts[1]) AS item) AS library
+\gexec
+SQL
+        sudo systemctl restart "$PG_UNIT"
+        wait_for_postgres
     fi
-    sleep 1
-done
+    current=$(pg_admin -Atc 'SHOW shared_preload_libraries')
+    for lib in "${preloads[@]}"; do
+        if ! has_preload_library "$current" "$lib"; then
+            echo "ERROR: PostgreSQL did not preload $lib" >&2
+            exit 1
+        fi
+    done
+    if [ -n "$auto_backup" ]; then
+        sudo rm -f -- "$auto_backup"
+        auto_backup=
+    fi
+fi
+recover_postgres=0
 
 echo "=== Provisioning complete ==="
 echo ""
@@ -256,6 +375,9 @@ if [ -n "$PG_VECTORSEARCH_GIT_URL" ]; then
 fi
 if [ "$VECTORCHORD" = "1" ]; then
     echo "  cd ~/repos/vectorchord && git pull && cargo pgrx install --release --pg-config=$PG_CONFIG"
+fi
+if [ "$PARADEDB" = "1" ]; then
+    echo "  pg_search: set [paradedb] version, run \`rekall infra provision\`, then ALTER EXTENSION pg_search UPDATE"
 fi
 if [ -n "$REKALL_GIT_URL" ]; then
     echo "  cd ~/repos/rekall && git pull && source ~/.cargo/env && cargo build --release && sudo cp target/release/rekall /usr/local/bin/"

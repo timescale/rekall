@@ -1,0 +1,16 @@
+# PRISM vs ParadeDB (pg_search), cohere-10M: PRISM with all index
+# parameters left to its auto settings, ParadeDB with the 8-segment build
+# its own benchmarks use. Cohere 10M is one of the datasets in ParadeDB's
+# filter-aware vector search post; this suite is unfiltered.
+#
+# The instance needs pg_search installed and preloaded: on `rekall infra`
+# boxes, list "paradedb" in the instance's `extensions`.
+#
+# Usage: rekall run benchmarks/cohere-10m-prism-vs-paradedb.toml [--dry-run]
+
+indexes = [
+    "indexes/prism-defaults.toml",
+    "indexes/paradedb-seg8.toml",
+]
+[[suite]]
+dataset = "datasets/cohere-10m.toml"

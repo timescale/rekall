@@ -86,6 +86,7 @@ impl InfraManager {
         self.config
             .validate_ubuntu_version()
             .map_err(Error::Config)?;
+        self.config.validate_extensions().map_err(Error::Config)?;
 
         let (ssh_pub_path, ssh_priv_path) = self.config.require_ssh_key().map_err(Error::Config)?;
         if !Path::new(&ssh_pub_path).exists() {
@@ -204,6 +205,7 @@ impl InfraManager {
     }
 
     pub fn provision(&self) -> Result<()> {
+        self.config.validate_extensions().map_err(Error::Config)?;
         let status = self.backend.status()?;
         if !status.running {
             return Err(Error::InfraNotRunning);
@@ -420,8 +422,10 @@ pub fn ssh_provision(
     }
 
     // Upload and run provisioning script
-    let has_vectorchord = config.extensions.contains(&"vectorchord".to_string());
-    let has_builds = config.pg_vectorsearch.is_some() || config.rekall.is_some() || has_vectorchord;
+    let has_builds = config.pg_vectorsearch.is_some()
+        || config.rekall.is_some()
+        || config.has_extension("vectorchord")
+        || config.has_extension("paradedb");
     if has_builds {
         info!("Uploading provisioning script");
 
@@ -438,28 +442,8 @@ pub fn ssh_provision(
         )?;
         let _ = std::fs::remove_file(&tmp_script);
 
-        let mut env_vars = vec![
-            format!("PG_VERSION={}", config.pg_version),
-            format!("PG_PORT={}", config.pg_port),
-        ];
-        if let Some(ref m) = config.pg_vectorsearch {
-            env_vars.push(format!("PG_VECTORSEARCH_GIT_URL={}", m.git_url));
-            env_vars.push(format!("PG_VECTORSEARCH_GIT_REF={}", m.git_ref));
-        }
-        if let Some(ref r) = config.rekall {
-            env_vars.push(format!("REKALL_GIT_URL={}", r.git_url));
-            env_vars.push(format!("REKALL_GIT_REF={}", r.git_ref));
-        }
-        if has_vectorchord {
-            env_vars.push("VECTORCHORD=1".to_string());
-            env_vars.push(format!(
-                "VECTORCHORD_VERSION={}",
-                config.vectorchord_version()
-            ));
-        }
-
         info!("Running provisioning script");
-        let env_str = env_vars.join(" ");
+        let env_str = provision_env(config).join(" ");
         ssh_run(
             ip,
             ssh_priv_path,
@@ -468,6 +452,35 @@ pub fn ssh_provision(
     }
 
     Ok(())
+}
+
+/// Environment for provision.sh: which sources to build and which
+/// extensions to install.
+fn provision_env(config: &InfraConfig) -> Vec<String> {
+    let mut env_vars = vec![
+        format!("PG_VERSION={}", config.pg_version),
+        format!("PG_PORT={}", config.pg_port),
+    ];
+    if let Some(ref m) = config.pg_vectorsearch {
+        env_vars.push(format!("PG_VECTORSEARCH_GIT_URL={}", m.git_url));
+        env_vars.push(format!("PG_VECTORSEARCH_GIT_REF={}", m.git_ref));
+    }
+    if let Some(ref r) = config.rekall {
+        env_vars.push(format!("REKALL_GIT_URL={}", r.git_url));
+        env_vars.push(format!("REKALL_GIT_REF={}", r.git_ref));
+    }
+    if config.has_extension("vectorchord") {
+        env_vars.push("VECTORCHORD=1".to_string());
+        env_vars.push(format!(
+            "VECTORCHORD_VERSION={}",
+            config.vectorchord_version()
+        ));
+    }
+    if config.has_extension("paradedb") {
+        env_vars.push("PARADEDB=1".to_string());
+        env_vars.push(format!("PARADEDB_VERSION={}", config.paradedb_version()));
+    }
+    env_vars
 }
 
 fn check_pg_via_ssh(ip: &str, key_path: &Path, pg_port: u16) -> bool {
@@ -1184,6 +1197,62 @@ mod tests {
         // Huge pages off by default — block should be omitted entirely.
         assert!(!out.contains("vm.nr_hugepages"));
         assert!(!out.contains("disable-thp.service"));
+    }
+
+    #[test]
+    fn provision_env_installs_paradedb_only_when_listed() {
+        let off = InfraConfig {
+            extensions: vec!["pgvector".to_string(), "vectorchord".to_string()],
+            ..Default::default()
+        };
+        let env = provision_env(&off);
+        assert!(env.contains(&"VECTORCHORD=1".to_string()));
+        assert!(!env.iter().any(|v| v.starts_with("PARADEDB")), "{env:?}");
+
+        let on = InfraConfig {
+            extensions: vec!["pgvector".to_string(), "paradedb".to_string()],
+            paradedb: Some(config::ExtVersionConfig {
+                version: Some("0.27.1".to_string()),
+            }),
+            ..Default::default()
+        };
+        let env = provision_env(&on);
+        assert!(env.contains(&"PARADEDB=1".to_string()), "{env:?}");
+        assert!(
+            env.contains(&"PARADEDB_VERSION=0.27.1".to_string()),
+            "{env:?}"
+        );
+        assert!(!env.iter().any(|v| v.starts_with("VECTORCHORD")), "{env:?}");
+
+        let mut both = on;
+        both.extensions.push("vectorchord".to_string());
+        let env = provision_env(&both);
+        assert!(env.iter().any(|v| v == "PARADEDB=1"), "{env:?}");
+        assert!(env.iter().any(|v| v == "VECTORCHORD=1"), "{env:?}");
+    }
+
+    #[test]
+    fn provision_script_is_valid_bash() {
+        let tmp = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(tmp.path(), include_str!("../../../infra/provision.sh")).unwrap();
+        let status = std::process::Command::new("bash")
+            .arg("-n")
+            .arg(tmp.path())
+            .status();
+        if let Ok(s) = status {
+            assert!(s.success(), "bash -n rejected infra/provision.sh");
+        }
+        // If bash isn't on PATH, skip silently — CI may not have it.
+    }
+
+    #[test]
+    fn render_user_data_installs_pgvector_for_paradedb() {
+        let cfg = InfraConfig {
+            extensions: vec!["paradedb".to_string()],
+            ..Default::default()
+        };
+        let out = render_user_data(&cfg, None).expect("template renders");
+        assert!(out.contains("try_step \"pgvector v0.8.2\" install_pgvector"));
     }
 
     #[test]

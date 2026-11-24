@@ -205,6 +205,9 @@ pub struct InfraConfig {
     pub pgvector: Option<ExtVersionConfig>,
     #[serde(default)]
     pub vectorchord: Option<ExtVersionConfig>,
+    /// pg_search release to install when `extensions` has "paradedb".
+    #[serde(default)]
+    pub paradedb: Option<ExtVersionConfig>,
     /// Path to the user's SSH public key for instance access.
     /// Uploaded to AWS for the key pair. The corresponding private key
     /// (same path without .pub) is used locally for SSH connections.
@@ -252,6 +255,7 @@ impl Default for InfraConfig {
             pg_vectorsearch: None,
             pgvector: None,
             vectorchord: None,
+            paradedb: None,
             ssh_key: None,
             s3_bucket: None,
             results_bucket: None,
@@ -344,6 +348,72 @@ impl InfraConfig {
             .as_ref()
             .and_then(|c| c.version.as_deref())
             .unwrap_or("1.1.1")
+    }
+
+    /// pg_search release, without the leading `v` of its git tag.
+    pub fn paradedb_version(&self) -> &str {
+        self.paradedb
+            .as_ref()
+            .and_then(|c| c.version.as_deref())
+            .unwrap_or("0.27.0")
+    }
+
+    pub fn has_extension(&self, name: &str) -> bool {
+        self.extensions.iter().any(|e| e == name)
+    }
+
+    /// Reject `extensions` that provisioning would not install as asked:
+    /// an unknown name would be skipped without a word.
+    pub fn validate_extensions(&self) -> std::result::Result<(), String> {
+        const KNOWN: &[&str] = &["pgvector", "pg_vectorsearch", "vectorchord", "paradedb"];
+        if let Some(unknown) = self
+            .extensions
+            .iter()
+            .find(|e| !KNOWN.contains(&e.as_str()))
+        {
+            let hint = if unknown == "pg_search" {
+                " (ParadeDB's pg_search is listed as \"paradedb\")"
+            } else {
+                ""
+            };
+            return Err(format!(
+                "Unknown extension '{unknown}'{hint}. Supported: {}",
+                KNOWN.join(", ")
+            ));
+        }
+        if self.has_extension("paradedb") {
+            if self.provider == "terraform" {
+                return Err("extension \"paradedb\" is installed by provision.sh, \
+                            which the terraform backend does not run; use \
+                            provider = \"aws\""
+                    .to_string());
+            }
+            // ParadeDB publishes pg_search .debs for noble and resolute only.
+            if !matches!(self.ubuntu_version.as_str(), "24.04" | "26.04") {
+                return Err(format!(
+                    "ParadeDB packages require Ubuntu 24.04 or 26.04, not {}",
+                    self.ubuntu_version
+                ));
+            }
+            if !(15..=18).contains(&self.pg_version) {
+                return Err(format!(
+                    "ParadeDB provisioning supports PostgreSQL 15 through 18, not {}",
+                    self.pg_version
+                ));
+            }
+            let version = self.paradedb_version();
+            let is_release = version.split('.').count() == 3
+                && version
+                    .split('.')
+                    .all(|part| !part.is_empty() && part.bytes().all(|c| c.is_ascii_digit()));
+            if !is_release {
+                return Err(format!(
+                    "[paradedb] version '{version}' is not a release version \
+                     such as \"0.27.0\""
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Ubuntu codename for the configured `ubuntu_version`. Used in the AMI
@@ -883,6 +953,109 @@ git_ref = "feat/parallel-build"
         let vars = cfg.to_tfvars();
         assert_eq!(vars["ubuntu_version"], "26.04");
         assert_eq!(vars["ubuntu_codename"], "resolute");
+    }
+
+    fn with_extensions(extensions: &[&str]) -> InfraConfig {
+        InfraConfig {
+            extensions: extensions.iter().map(|e| e.to_string()).collect(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn paradedb_version_defaults_and_pins() {
+        assert_eq!(InfraConfig::default().paradedb_version(), "0.27.0");
+        let cfg: InfraConfig =
+            toml::from_str("extensions = [\"paradedb\"]\n[paradedb]\nversion = \"0.27.1\"\n")
+                .unwrap();
+        assert_eq!(cfg.paradedb_version(), "0.27.1");
+        assert!(cfg.has_extension("paradedb"));
+    }
+
+    #[test]
+    fn committed_extension_sets_are_valid() {
+        assert!(
+            with_extensions(&["pgvector", "pg_vectorsearch", "vectorchord"])
+                .validate_extensions()
+                .is_ok()
+        );
+        assert!(with_extensions(&["pgvector", "paradedb"])
+            .validate_extensions()
+            .is_ok());
+    }
+
+    /// Reads only the committed files, not the machine's global infra.toml.
+    #[test]
+    fn committed_instance_configs_list_known_extensions() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../infra/instances");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            if !name.ends_with(".toml") || name.ends_with(".local.toml") {
+                continue;
+            }
+            let cfg: InfraConfig = toml::from_str(&std::fs::read_to_string(&path).unwrap())
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            cfg.validate_extensions()
+                .unwrap_or_else(|e| panic!("{name}: {e}"));
+            checked += 1;
+        }
+        assert!(
+            checked > 0,
+            "no instance configs found in {}",
+            dir.display()
+        );
+    }
+
+    #[test]
+    fn unknown_extension_is_rejected_with_paradedb_hint() {
+        let err = with_extensions(&["pgvector", "pg_search"])
+            .validate_extensions()
+            .unwrap_err();
+        assert!(err.contains("'pg_search'"), "{err}");
+        assert!(err.contains("\"paradedb\""), "{err}");
+    }
+
+    #[test]
+    fn paradedb_on_jammy_is_rejected() {
+        let cfg = InfraConfig {
+            ubuntu_version: "22.04".to_string(),
+            ..with_extensions(&["paradedb"])
+        };
+        let err = cfg.validate_extensions().unwrap_err();
+        assert!(err.contains("22.04"), "{err}");
+        // Without ParadeDB, jammy stays supported.
+        let cfg = InfraConfig {
+            ubuntu_version: "22.04".to_string(),
+            ..with_extensions(&["pgvector"])
+        };
+        assert!(cfg.validate_extensions().is_ok());
+    }
+
+    #[test]
+    fn paradedb_needs_the_aws_backend() {
+        let cfg = InfraConfig {
+            provider: "terraform".to_string(),
+            ..with_extensions(&["paradedb"])
+        };
+        let err = cfg.validate_extensions().unwrap_err();
+        assert!(err.contains("terraform"), "{err}");
+    }
+
+    #[test]
+    fn paradedb_version_must_be_a_release() {
+        // The version ends up in a shell command and a download URL.
+        for bad in ["", "0.27.0; false", "v0.27.0", "latest", "0..0"] {
+            let cfg = InfraConfig {
+                paradedb: Some(ExtVersionConfig {
+                    version: Some(bad.to_string()),
+                }),
+                ..with_extensions(&["paradedb"])
+            };
+            let err = cfg.validate_extensions().unwrap_err();
+            assert!(err.contains("[paradedb] version"), "{bad}: {err}");
+        }
     }
 
     #[test]

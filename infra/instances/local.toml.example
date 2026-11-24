@@ -34,6 +34,10 @@
 # you regenerate it; not strictly required at launch time.
 # s3_bucket = "my-datasets-bucket"
 
+# Opt in to ParadeDB. The array replaces the base config's, so keep any
+# other extensions you want (such as "vectorchord").
+# extensions = ["pgvector", "pg_vectorsearch", "paradedb"]
+
 # The canonical reason to have this file: benchmark ONE box against a
 # pg_vectorsearch feature branch. git_url is inherited from the global file, so
 # only the ref needs restating.
@@ -46,3 +50,7 @@
 # huge_pages = true                 # reserve kernel huge pages
 # [pg_config]
 # shared_buffers = "32GB"           # override auto-computed value
+
+# Optional release pin when "paradedb" is enabled.
+# [paradedb]
+# version = "0.27.0"

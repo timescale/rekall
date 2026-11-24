@@ -19,10 +19,12 @@ If using the Terraform backend (`provider = "terraform"`), you also need:
 
 A single EC2 instance with:
 
-- Ubuntu 24.04 LTS (ARM for Graviton, x86_64 otherwise)
+- Ubuntu 26.04 LTS by default (ARM for Graviton, x86_64 otherwise)
 - PostgreSQL (via PGDG apt packages, latest point release)
 - pgvector (via apt or built from source)
 - PRISM (built from source if configured)
+- VectorChord (built from source if `extensions` lists `vectorchord`)
+- ParadeDB's pg_search (release `.deb`, if `extensions` lists `paradedb`)
 - Rust toolchain + rekall (built from source if configured)
 - Build tools: gcc, clang, cmake, meson, ninja, gdb, valgrind
 - AWS CLI (for S3 dataset access)
@@ -196,6 +198,46 @@ git_ref = "main"
 git_url = "git@github.com:myorg/rekall.git"
 git_ref = "main"
 ```
+
+### Extensions
+
+`extensions` names what gets installed. An unknown name fails `infra up`
+rather than being skipped.
+
+| Name | Installed by | How |
+|------|--------------|-----|
+| `pgvector` | cloud-init | PGDG apt package, or built from source at `[pgvector] version` |
+| `pg_vectorsearch` | provision.sh | built when `[pg_vectorsearch] git_url` is set |
+| `vectorchord` | provision.sh | built from source at `[vectorchord] version`, preloaded |
+| `paradedb` | provision.sh | ParadeDB's pg_search `.deb` at `[paradedb] version` (default `0.27.0`), preloaded |
+
+Provisioning merges the required libraries into the server's effective
+`shared_preload_libraries`, preserving existing entries, then restarts
+PostgreSQL if the list changed.
+
+ParadeDB is opt-in and not listed in the committed instance configs. To
+benchmark it on one box, restate that box's list in its `.local.toml` (an
+array replaces the base value rather than extending it):
+
+```toml
+extensions = ["pgvector", "pg_vectorsearch", "paradedb"]
+
+[paradedb]
+version = "0.27.0"
+```
+
+- ParadeDB provisioning uses GitHub release `.deb`s on Ubuntu 24.04 and
+  26.04 with PostgreSQL 15–18. It also installs pgvector if `paradedb`
+  is listed without `pgvector`. This is supported by the default `aws`
+  provider, not the Terraform provider.
+- The package depends on `libopenblas0`, which registers OpenBLAS as the
+  system `libblas.so.3`. Graviton and Intel boxes install OpenBLAS anyway;
+  on AMD boxes it is installed next to the AMD BLIS build.
+- A preloaded pg_search adds its planner hooks to every query on the
+  server, including those of the other backends compared on that box.
+- To upgrade, change `[paradedb] version`, run `rekall infra provision`,
+  then `ALTER EXTENSION pg_search UPDATE` in the benchmark database.
+  Provisioning does not downgrade an installed package.
 
 ### PostgreSQL Auto-Configuration
 
@@ -377,8 +419,8 @@ gives a confounded comparison.
 | `disk_throughput` | (default) | gp3 throughput MiB/s (default 125) |
 | `pg_version` | `18` | PostgreSQL major version |
 | `pg_port` | `5432` | PostgreSQL listen port |
-| `ubuntu_version` | `"24.04"` | Ubuntu LTS version (`22.04`, `24.04`, or `26.04`) |
-| `extensions` | `[]` | Extensions to install |
+| `ubuntu_version` | `"26.04"` | Ubuntu LTS version (`22.04`, `24.04`, or `26.04`) |
+| `extensions` | `[]` | Extensions to install: `pgvector`, `pg_vectorsearch`, `vectorchord`, `paradedb` (see [Extensions](#extensions)) |
 | `huge_pages` | `false` | Reserve kernel huge pages + disable THP + set PG `huge_pages = on` |
 | `name_prefix` | `"rekall"` | Resource naming prefix |
 | `ssh_key` | `~/.ssh/id_ed25519.pub` | Path to your SSH public key |
