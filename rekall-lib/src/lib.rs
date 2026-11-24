@@ -23,7 +23,6 @@ use std::time::Instant;
 
 use backend::DataLoader;
 use config::{BenchmarkConfig, CacheMode};
-use dataset::DatasetReader;
 use error::Result;
 use metrics::{IndexBuildResult, PgRuntimeInfo, RunEnvironment};
 use output::OutputSink;
@@ -167,8 +166,7 @@ impl Agent {
         environment::collect_storage_info(data_dir.as_deref())
     }
 
-    /// If the dataset file doesn't exist locally and a URI is configured,
-    /// download it before running phases that need it.
+    /// Download or prepare a missing dataset before phases that read it.
     async fn ensure_dataset(&mut self, phases: &[Phase]) -> Result<()> {
         // Init is in here too: the column type it creates now comes from the
         // source file's precision, so it cannot run before the file is there.
@@ -179,26 +177,24 @@ impl Agent {
             return Ok(());
         }
 
-        let uri = match self.config.dataset.uri {
-            Some(ref u) => u.clone(),
-            None => return Ok(()),
-        };
-
         let dest = self.config.dataset.resolved_path();
-        if dest.exists() {
+        let Some(source) = dataset::pending_source(&self.config.dataset) else {
             return Ok(());
-        }
-
+        };
         for output in self.outputs.iter_mut() {
             output.on_progress(&ProgressEvent::Message {
-                text: format!(
-                    "Dataset not found at {}. Downloading from {uri}",
-                    dest.display()
-                ),
+                text: format!("Fetching dataset from {source} into {}", dest.display()),
             });
         }
 
-        dataset::download::ensure_available(&uri, &dest).await?;
+        match self.config.dataset.format {
+            config::DatasetFormat::Hdf5 => {
+                dataset::download::ensure_available(&source, &dest).await?;
+            }
+            config::DatasetFormat::MsmarcoParquet => {
+                dataset::msmarco::prepare(&dest).await?;
+            }
+        }
 
         for output in self.outputs.iter_mut() {
             output.on_progress(&ProgressEvent::Message {
@@ -280,12 +276,7 @@ impl Agent {
                     let row_count = pg.row_count().await.unwrap_or(0);
                     if row_count > 0 {
                         // Verify against dataset size
-                        let dataset_path = self.config.dataset.resolved_path();
-                        if let Ok(reader) = dataset::hdf5::Hdf5Reader::open(
-                            &dataset_path,
-                            self.config.dataset.metric,
-                            self.config.dataset.dimension,
-                        ) {
+                        if let Ok(reader) = dataset::open(&self.config.dataset) {
                             let expected = reader.meta().num_vectors;
                             if row_count == expected {
                                 true

@@ -1,6 +1,6 @@
 # Graviton4 / ARM64, 8 vCPU and 32 GiB, matching ParadeDB's container budget.
 # A VM with EBS is not the same as the blog's c8gd.metal-24xl with local NVMe.
-# The volume holds the HDF5 input, vector heap, both indexes and build/WAL
+# The volume holds the Parquet cache, vector heap, both indexes and build/WAL
 # space. Do not switch to a single ~474 GB instance-store drive.
 provider = "aws"
 region = "us-east-1"

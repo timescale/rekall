@@ -79,34 +79,27 @@ both reuse the same table and physical indexes. Run without `--reload`
 or `--rebuild` to reuse them across the two groups. On a fresh run,
 the top-10 group's results include the build timings.
 
-**Prepare the input once.** ParadeDB publishes Parquet, not Rekall's
-HDF5 format. The converter streams the public corpus and both published
-ground-truth files, maps document IDs to Rekall's row IDs, and checks
-that the top-10 fixture is the prefix of the top-100 fixture. Allow
-about 433 GiB for the resulting HDF5 file. On the benchmark host, from
-a checkout of this repository:
-
-```bash
-sudo apt-get install -y python3-venv  # on Ubuntu, if needed
-python3 -m venv ~/msmarco-venv
-~/msmarco-venv/bin/pip install h5py numpy pyarrow
-~/msmarco-venv/bin/python scripts/prepare-msmarco.py \
-  ~/data/msmarco-113m-1024-angular.hdf5
-```
+**Input is fetched automatically.** On the first run, Rekall caches
+ParadeDB's public Parquet shards on the benchmark host and reads the
+vectors directly from them. It maps ground-truth document IDs to Rekall
+row IDs and checks that top-10 is the prefix of top-100. Both groups
+reuse the same `msmarco-113m-parquet` directory under Rekall's configured
+`data_dir`. Budget disk space for the Parquet cache in addition to
+PostgreSQL's data and indexes. No Python or HDF5 conversion is required.
 
 **AWS target.** Use
 [`msmarco-113m-m8g.2xlarge.toml`](../infra/instances/msmarco-113m-m8g.2xlarge.toml):
 Graviton4/ARM64, 8 vCPUs, 32 GiB of RAM, and the published PostgreSQL
 memory and worker settings. It enables pgvector, pg_vectorsearch and
-ParadeDB. Set `[rekall]` to a git ref containing the ParadeDB backend
-in your infra overrides. The instance profile pins pg_vectorsearch to
+ParadeDB. Set `[rekall]` to a git ref containing the ParadeDB and
+MS MARCO Parquet backends in your infra overrides. An existing instance
+also needs a Rekall binary built from that ref. The instance profile pins pg_vectorsearch to
 `93567fd1a10096a28f11a247151fe5acae8ee2d9`, the revision used by
 [ParadeDB's benchmark profile](https://github.com/paradedb/paradedb/blob/main/.github/workflows/benchmark-pg_search-benchmarker-msmarco.yml),
 including its parallel-build memory fix.
 
 ```bash
 rekall infra up -c infra/instances/msmarco-113m-m8g.2xlarge.toml
-# Prepare the HDF5 file on the instance before running the suite.
 rekall infra run -c infra/instances/msmarco-113m-m8g.2xlarge.toml \
   benchmarks/msmarco-113m-prism-vs-paradedb.toml --wait --no-publish
 ```
@@ -114,7 +107,7 @@ rekall infra run -c infra/instances/msmarco-113m-m8g.2xlarge.toml \
 This matches the container's CPU architecture and resource budget, not
 its storage or isolation: the blog used local NVMe on a
 `c8gd.metal-24xl`, while this profile uses a 4,000 GiB gp3 volume to fit
-the HDF5 file, heap, both indexes and build space. Rekall runs on the same
+the Parquet cache, heap, both indexes and build space. Rekall runs on the same
 instance, returns only IDs, and sweeps fixed probe values with one
 client. The blog instead tuned to recall targets and timed a separate
 50-second k6 run. Compare curves at matched recall, not raw QPS against
@@ -122,7 +115,7 @@ the blog.
 
 ## Auto-Download
 
-Dataset configs include a `uri` field pointing to the canonical download
+HDF5 dataset configs can include a `uri` field pointing to the canonical download
 source (S3 or HTTP/S). When a benchmark runs and the dataset file isn't
 found locally, it is downloaded automatically with a progress bar.
 
@@ -144,6 +137,7 @@ If the file already exists, no download occurs.
 
 S3 downloads use the AWS SDK (respects `AWS_PROFILE`, `AWS_REGION`,
 etc.). HTTP/S downloads use `reqwest`.
+The MS MARCO Parquet backend instead fetches its public S3 source without AWS credentials.
 
 ## Local Overrides
 

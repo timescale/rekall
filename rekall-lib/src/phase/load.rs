@@ -4,8 +4,7 @@
 use crate::backend::postgres::PgConnection;
 use crate::backend::DataLoader;
 use crate::config::BenchmarkConfig;
-use crate::dataset::hdf5::Hdf5Reader;
-use crate::dataset::DatasetReader;
+use crate::dataset;
 use crate::error::{Error, Result};
 use crate::progress::{ProgressEvent, ProgressTx};
 
@@ -92,12 +91,7 @@ pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64>
     }
 
     let existing = pg.row_count().await?;
-    let dataset_path = config.dataset.resolved_path();
-    let reader = Hdf5Reader::open(
-        &dataset_path,
-        config.dataset.metric,
-        config.dataset.dimension,
-    )?;
+    let reader = dataset::open(&config.dataset)?;
     let total = reader.meta().num_vectors;
 
     if existing >= total {
@@ -121,7 +115,7 @@ pub async fn run(config: &BenchmarkConfig, progress: &ProgressTx) -> Result<u64>
             .await?;
     }
 
-    // Channel to bridge blocking HDF5 reads -> async COPY writes.
+    // Channel to bridge blocking dataset reads -> async COPY writes.
     // Bounded to limit memory: at most 4 chunks buffered.
     let chunk_size = config.load.chunk_size;
     let (tx, mut rx) = tokio::sync::mpsc::channel(4);

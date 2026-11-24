@@ -34,8 +34,10 @@ aws-config = { workspace = true }
 aws-sdk-s3 = { workspace = true }
 half = { version = "2.7.1", default-features = false }
 libc = { workspace = true }
+arrow-array = "60"
+parquet = { version = "60", default-features = false, features = ["arrow", "snap", "zstd", "flate2-zlib-rs", "lz4"] }
+tempfile = { workspace = true }
 
 [dev-dependencies]
-tempfile = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 toml = { workspace = true }

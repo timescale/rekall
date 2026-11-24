@@ -19,9 +19,9 @@ find? Total recall means you found them all.
 - **Suite files**: one TOML file pairs datasets with shared index definitions.
   A single `rekall run` crosses datasets × index variants. Directory groups
   and `*.local.toml` overrides still work for one-off exploration.
-- **Memory-bounded loading**: streams HDF5 in chunks via COPY BINARY, so
-  memory stays bounded as the dataset grows. Missing files are downloaded
-  from the dataset `uri` (S3 or HTTP).
+- **Memory-bounded loading**: streams HDF5 or MS MARCO Parquet in chunks
+  via COPY BINARY. HDF5 files can be downloaded from the dataset `uri`
+  (S3 or HTTP); the MS MARCO suite caches the public Parquet shards automatically.
 - **Index reuse**: indexes are built once and switched with enable/disable.
   Existing indexes are skipped unless `--rebuild`; a loaded table is kept
   unless `--reload`. Completed search points are skipped on the next run.

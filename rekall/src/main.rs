@@ -3479,6 +3479,12 @@ fn print_dry_run(cfg: &BenchmarkConfig, phase: Option<&str>, index: Option<&str>
         } else {
             println!("  Source: {uri} (will download)");
         }
+    } else if cfg.dataset.format == rekall_lib::config::DatasetFormat::MsmarcoParquet {
+        let status = match rekall_lib::dataset::pending_source(&cfg.dataset) {
+            Some(_) => "will download when needed",
+            None => "cached",
+        };
+        println!("  Source: ParadeDB MS MARCO Parquet ({status})");
     }
 
     let phases = if let Some(p) = phase {

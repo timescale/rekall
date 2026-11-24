@@ -4,12 +4,46 @@
 pub mod download;
 pub mod emit;
 pub mod hdf5;
+pub(crate) mod msmarco;
 
 use ndarray::Array2;
 use serde::{Deserialize, Serialize};
 
-use crate::config::Metric;
+use crate::config::{DatasetConfig, DatasetFormat, Metric};
 use crate::error::Result;
+
+/// Open a local dataset using the configured reader.
+pub fn open(config: &DatasetConfig) -> Result<Box<dyn DatasetReader>> {
+    let path = config.resolved_path();
+    match config.format {
+        DatasetFormat::Hdf5 => Ok(Box::new(hdf5::Hdf5Reader::open(
+            &path,
+            config.metric,
+            config.dimension,
+        )?)),
+        DatasetFormat::MsmarcoParquet => Ok(Box::new(msmarco::Reader::open(&path)?)),
+    }
+}
+
+/// Read the source precision without reading the vector payload.
+pub fn source_precision(config: &DatasetConfig) -> Result<SourcePrecision> {
+    match config.format {
+        DatasetFormat::Hdf5 => hdf5::source_precision(&config.resolved_path()),
+        DatasetFormat::MsmarcoParquet => Ok(SourcePrecision::F32),
+    }
+}
+
+/// Describe outstanding acquisition work without downloading anything.
+pub fn pending_source(config: &DatasetConfig) -> Option<String> {
+    let path = config.resolved_path();
+    match config.format {
+        DatasetFormat::Hdf5 if !path.exists() => config.uri.clone(),
+        DatasetFormat::Hdf5 => None,
+        DatasetFormat::MsmarcoParquet => {
+            (!msmarco::is_ready(&path)).then(|| "ParadeDB's public MS MARCO Parquet shards".into())
+        }
+    }
+}
 
 /// Float width the source file stores its vectors in.
 ///

@@ -83,6 +83,18 @@ in a separate `{index}-concurrency-{ts}.json.gz`. The consolidated view is
 produced on demand by `rekall report <results_dir>` /
 `rekall publish <results_dir>`.
 
+## Dataset Formats
+
+`[dataset].format` defaults to `"hdf5"`. For HDF5, `path` points to the
+local file and `uri` can supply the download source if it is missing.
+
+`format = "msmarco-parquet"` selects the built-in reader for ParadeDB's
+public MS MARCO 113M corpus and query fixtures. It requires `metric = "angular"`
+and `dimension = 1024`. Rekall downloads and caches the native Parquet
+files automatically; `uri` is not used by this backend. `path`, if set,
+points to the cache directory. Otherwise the cache is `msmarco-113m-parquet`
+under `data_dir` (or the configured `filename` under `data_dir`).
+
 ## Index Params vs GUCs
 
 Each `[[index]]` has two parameter sections:

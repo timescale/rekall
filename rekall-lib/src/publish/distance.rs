@@ -14,7 +14,7 @@
 
 use std::path::Path;
 
-use crate::config::DatasetConfig;
+use crate::config::{DatasetConfig, DatasetFormat};
 use crate::metrics::{mean_recall_distance_based, RunSummary, SearchResult};
 
 /// Ground-truth neighbour IDs and their distances, one row per query.
@@ -74,7 +74,7 @@ pub fn load_ground_truth(
 
 fn dataset_from_config(summary: &RunSummary) -> Option<std::path::PathBuf> {
     let ds: DatasetConfig = serde_json::from_value(summary.config.get("dataset")?.clone()).ok()?;
-    Some(ds.resolved_path())
+    (ds.format == DatasetFormat::Hdf5).then(|| ds.resolved_path())
 }
 
 fn from_hdf5(path: &Path) -> Option<GroundTruth> {

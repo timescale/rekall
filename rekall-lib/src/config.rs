@@ -112,6 +112,21 @@ impl std::fmt::Display for Metric {
     }
 }
 
+/// Storage format of the benchmark input.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DatasetFormat {
+    #[default]
+    Hdf5,
+    MsmarcoParquet,
+}
+
+impl DatasetFormat {
+    fn is_hdf5(&self) -> bool {
+        *self == Self::Hdf5
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DatasetConfig {
@@ -120,6 +135,9 @@ pub struct DatasetConfig {
     pub path: Option<String>,
     #[serde(default)]
     pub uri: Option<String>,
+    /// Reader used for this dataset. MS MARCO Parquet uses a cache directory.
+    #[serde(default, skip_serializing_if = "DatasetFormat::is_hdf5")]
+    pub format: DatasetFormat,
     /// Local cache filename under `data_dir`, overriding the name derived
     /// from the `uri`'s last path segment. For sources whose URLs end in a
     /// non-identifying name (e.g. buckets where every dataset is
@@ -139,7 +157,7 @@ fn default_data_dir() -> String {
 }
 
 impl DatasetConfig {
-    /// Resolve the local file path for this dataset.
+    /// Resolve the local HDF5 file or Parquet cache directory.
     ///
     /// If `path` is set explicitly, use it (with tilde expansion).
     /// Otherwise `data_dir` + `filename` if set, else `data_dir` + the
@@ -152,7 +170,10 @@ impl DatasetConfig {
             .filename
             .as_deref()
             .or_else(|| self.uri.as_ref().and_then(|u| u.rsplit('/').next()))
-            .unwrap_or("dataset.hdf5");
+            .unwrap_or(match self.format {
+                DatasetFormat::Hdf5 => "dataset.hdf5",
+                DatasetFormat::MsmarcoParquet => "msmarco-113m-parquet",
+            });
         PathBuf::from(shellexpand::tilde(&self.data_dir).as_ref()).join(filename)
     }
 
@@ -894,12 +915,10 @@ impl BenchmarkConfig {
 
     /// Resolve the declared heap storage against the source file's precision.
     ///
-    /// Reads the HDF5 header only. Both init (which needs a column type) and
-    /// load (which needs a COPY encoding) go through here so the two can
-    /// never disagree.
+    /// Init and load share this so the column type and COPY encoding agree.
     pub fn resolve_storage(&self) -> Result<StorageKind> {
         let path = self.dataset.resolved_path();
-        let source = crate::dataset::hdf5::source_precision(&path)?;
+        let source = crate::dataset::source_precision(&self.dataset)?;
         let kind = self.load.storage.resolve(source);
 
         match (self.load.storage, source, kind) {
@@ -976,6 +995,21 @@ impl BenchmarkConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        if self.dataset.format == DatasetFormat::MsmarcoParquet {
+            if self.dataset.uri.is_some() {
+                return Err(Error::Config(
+                    "[dataset].uri is not supported with format = \"msmarco-parquet\"".into(),
+                ));
+            }
+            if self.dataset.metric != Metric::Angular
+                || self.dataset.dimension != crate::dataset::msmarco::DIM as u32
+            {
+                return Err(Error::Config(
+                    "format = \"msmarco-parquet\" requires angular distance and dimension 1024"
+                        .into(),
+                ));
+            }
+        }
         for idx in &self.index {
             // Parse build params here, not only when the backend connects,
             // so an unsupported key fails the suite load and `--dry-run`.
@@ -2521,6 +2555,7 @@ not_supported = true
         assert_ne!(top10.output.results_dir, top100.output.results_dir);
         assert_ne!(top10.dataset.name, top100.dataset.name);
         for config in [top10, top100] {
+            assert_eq!(config.dataset.format, DatasetFormat::MsmarcoParquet);
             assert_eq!(config.dataset.dimension, 1024);
             assert_eq!(config.dataset.metric, Metric::Angular);
             assert_eq!(config.search.num_queries, Some(100));

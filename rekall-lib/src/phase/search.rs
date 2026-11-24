@@ -14,8 +14,7 @@ use crate::backend::{BackendRegistry, IndexBackend};
 use crate::config::{
     BenchmarkConfig, CacheMode, ClientCount, ClientLevel, IndexConfig, QueryConfig,
 };
-use crate::dataset::hdf5::Hdf5Reader;
-use crate::dataset::DatasetReader;
+use crate::dataset;
 use crate::error::{Error, Result};
 use crate::metrics::{
     compute_recall, latest_concurrency_results, mean_recall_distance_based, recall_distance_based,
@@ -280,12 +279,7 @@ pub async fn run(
     index_builds: &[IndexBuildResult],
     rerun: bool,
 ) -> Result<SearchResults> {
-    let dataset_path = config.dataset.resolved_path();
-    let reader = Hdf5Reader::open(
-        &dataset_path,
-        config.dataset.metric,
-        config.dataset.dimension,
-    )?;
+    let reader = dataset::open(&config.dataset)?;
 
     // Shared with the concurrent clients' tasks.
     let queries = Arc::new(reader.queries()?);

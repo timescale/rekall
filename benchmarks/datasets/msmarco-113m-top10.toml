@@ -1,7 +1,6 @@
 [dataset]
 name = "msmarco-113m-top10"
-# Prepare from ParadeDB's published Parquet shards with scripts/prepare-msmarco.py.
-path = "~/data/msmarco-113m-1024-angular.hdf5"
+format = "msmarco-parquet"
 metric = "angular"
 dimension = 1024
 
