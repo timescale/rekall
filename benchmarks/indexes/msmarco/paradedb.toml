@@ -1,0 +1,17 @@
+[[index]]
+type = "paradedb"
+name = "paradedb-msmarco-113m"
+[index.params]
+target_segment_count = 8
+training_sample_ratio = 0.32
+vector_router_quantization = true
+[index.gucs]
+"paradedb.vector_adaptive_probing" = true
+"paradedb.vector_router_rerank_factor" = 2.0
+"paradedb.vector_router_min_beam_fraction" = 0.5
+"paradedb.vector_router_aps" = true
+
+[[search.sweep]]
+index = "paradedb-msmarco-113m"
+[search.sweep.params]
+"paradedb.vector_cluster_max_probe" = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000]

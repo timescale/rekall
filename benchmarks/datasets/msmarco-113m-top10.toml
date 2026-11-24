@@ -1,0 +1,22 @@
+[dataset]
+name = "msmarco-113m-top10"
+# Prepare from ParadeDB's published Parquet shards with scripts/prepare-msmarco.py.
+path = "~/data/msmarco-113m-1024-angular.hdf5"
+metric = "angular"
+dimension = 1024
+
+[load]
+table = "msmarco_113m"
+storage = "vector"
+chunk_size = 10000
+
+[search]
+k = 10
+runs = 1
+warmup = 100
+num_queries = 100
+clients = []
+
+[output]
+format = ["table", "json"]
+results_dir = "results/msmarco-113m-top10"

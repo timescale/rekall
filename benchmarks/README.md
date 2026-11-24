@@ -51,11 +51,12 @@ dataset = "datasets/cohere-100m.toml"
 indexes = ["indexes/prism-defaults.toml"]   # only PRISM for 100M
 ```
 
-### Run a single dataset with all indexes
+### Run a single dataset with the default comparison indexes
 
 ```bash
 rekall run --datasets benchmarks/datasets/cohere-1m.toml \
-           --indexes benchmarks/indexes/
+           --indexes benchmarks/indexes/prism-defaults.toml \
+                     benchmarks/indexes/hnsw-m24-halfvec.toml
 ```
 
 ### Run specific combinations
@@ -66,6 +67,58 @@ rekall run --datasets benchmarks/datasets/cohere-1m.toml \
            --indexes benchmarks/indexes/hnsw-m24-halfvec.toml \
                      benchmarks/indexes/prism-defaults.toml
 ```
+
+## MS MARCO 113M: pg_vectorsearch vs. ParadeDB
+
+[`msmarco-113m-prism-vs-paradedb.toml`](msmarco-113m-prism-vs-paradedb.toml)
+uses the [ParadeDB blog's MS MARCO workload](https://www.paradedb.com/blog/filter-aware-vector-search):
+113,520,750 embeddings of dimension 1024, cosine distance, no filters,
+and the same 100 held-out queries (ascending query ID). Both engines run
+`LIMIT 10` and `LIMIT 100`. Each limit has its own results directory, but
+both reuse the same table and physical indexes. Run without `--reload`
+or `--rebuild` to reuse them across the two groups. On a fresh run,
+the top-10 group's results include the build timings.
+
+**Prepare the input once.** ParadeDB publishes Parquet, not Rekall's
+HDF5 format. The converter streams the public corpus and both published
+ground-truth files, maps document IDs to Rekall's row IDs, and checks
+that the top-10 fixture is the prefix of the top-100 fixture. Allow
+about 433 GiB for the resulting HDF5 file. On the benchmark host, from
+a checkout of this repository:
+
+```bash
+sudo apt-get install -y python3-venv  # on Ubuntu, if needed
+python3 -m venv ~/msmarco-venv
+~/msmarco-venv/bin/pip install h5py numpy pyarrow
+~/msmarco-venv/bin/python scripts/prepare-msmarco.py \
+  ~/data/msmarco-113m-1024-angular.hdf5
+```
+
+**AWS target.** Use
+[`msmarco-113m-m8g.2xlarge.toml`](../infra/instances/msmarco-113m-m8g.2xlarge.toml):
+Graviton4/ARM64, 8 vCPUs, 32 GiB of RAM, and the published PostgreSQL
+memory and worker settings. It enables pgvector, pg_vectorsearch and
+ParadeDB. Set `[rekall]` to a git ref containing the ParadeDB backend
+in your infra overrides. The instance profile pins pg_vectorsearch to
+`93567fd1a10096a28f11a247151fe5acae8ee2d9`, the revision used by
+[ParadeDB's benchmark profile](https://github.com/paradedb/paradedb/blob/main/.github/workflows/benchmark-pg_search-benchmarker-msmarco.yml),
+including its parallel-build memory fix.
+
+```bash
+rekall infra up -c infra/instances/msmarco-113m-m8g.2xlarge.toml
+# Prepare the HDF5 file on the instance before running the suite.
+rekall infra run -c infra/instances/msmarco-113m-m8g.2xlarge.toml \
+  benchmarks/msmarco-113m-prism-vs-paradedb.toml --wait --no-publish
+```
+
+This matches the container's CPU architecture and resource budget, not
+its storage or isolation: the blog used local NVMe on a
+`c8gd.metal-24xl`, while this profile uses a 4,000 GiB gp3 volume to fit
+the HDF5 file, heap, both indexes and build space. Rekall runs on the same
+instance, returns only IDs, and sweeps fixed probe values with one
+client. The blog instead tuned to recall targets and timed a separate
+50-second k6 run. Compare curves at matched recall, not raw QPS against
+the blog.
 
 ## Auto-Download
 

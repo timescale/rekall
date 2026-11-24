@@ -1,0 +1,21 @@
+[dataset]
+name = "msmarco-113m-top100"
+path = "~/data/msmarco-113m-1024-angular.hdf5"
+metric = "angular"
+dimension = 1024
+
+[load]
+table = "msmarco_113m"
+storage = "vector"
+chunk_size = 10000
+
+[search]
+k = 100
+runs = 1
+warmup = 100
+num_queries = 100
+clients = []
+
+[output]
+format = ["table", "json"]
+results_dir = "results/msmarco-113m-top100"

@@ -2505,6 +2505,42 @@ not_supported = true
     }
 
     #[test]
+    fn msmarco_suite_shares_builds_and_separates_top_k_results() {
+        let suite = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../benchmarks/msmarco-113m-prism-vs-paradedb.toml");
+        let groups = resolve_suite(&suite).unwrap();
+        assert_eq!(groups.len(), 2);
+        let top10 = &groups[0].config;
+        let top100 = &groups[1].config;
+        assert_eq!((top10.search.k, top100.search.k), (10, 100));
+        assert_eq!(top10.table_name(), top100.table_name());
+        assert_eq!(
+            top10.dataset.resolved_path(),
+            top100.dataset.resolved_path()
+        );
+        assert_ne!(top10.output.results_dir, top100.output.results_dir);
+        assert_ne!(top10.dataset.name, top100.dataset.name);
+        for config in [top10, top100] {
+            assert_eq!(config.dataset.dimension, 1024);
+            assert_eq!(config.dataset.metric, Metric::Angular);
+            assert_eq!(config.search.num_queries, Some(100));
+            assert!(config.search.clients.is_empty());
+            assert_eq!(
+                config
+                    .index
+                    .iter()
+                    .map(|index| (index.name.as_str(), index.index_type.as_str()))
+                    .collect::<Vec<_>>(),
+                [
+                    ("prism-msmarco-113m", "prism"),
+                    ("paradedb-msmarco-113m", "paradedb"),
+                ]
+            );
+            assert_eq!(config.effective_queries().len(), 2);
+        }
+    }
+
+    #[test]
     fn suite_unknown_top_level_key_error() {
         let dir = tempfile::tempdir().unwrap();
         write_suite_dir(dir.path());

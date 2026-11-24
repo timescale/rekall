@@ -1,0 +1,37 @@
+# Graviton4 / ARM64, 8 vCPU and 32 GiB, matching ParadeDB's container budget.
+# A VM with EBS is not the same as the blog's c8gd.metal-24xl with local NVMe.
+# The volume holds the HDF5 input, vector heap, both indexes and build/WAL
+# space. Do not switch to a single ~474 GB instance-store drive.
+provider = "aws"
+region = "us-east-1"
+instance_type = "m8g.2xlarge"
+name_prefix = "rekall-msmarco-113m"
+disk_size_gb = 4000
+disk_iops = 16000
+disk_throughput = 1000
+spot = false
+ubuntu_version = "24.04"
+
+pg_version = 18
+extensions = ["pgvector", "pg_vectorsearch", "paradedb"]
+
+[pg_config]
+shared_buffers = "8GB"
+maintenance_work_mem = "8GB"
+effective_cache_size = "24GB"
+work_mem = "256MB"
+max_parallel_maintenance_workers = "7"
+max_parallel_workers = "8"
+max_worker_processes = "32"
+max_parallel_workers_per_gather = "4"
+max_wal_size = "32GB"
+jit = "off"
+plan_cache_mode = "force_custom_plan"
+
+[paradedb]
+version = "0.27.0"
+
+[pg_vectorsearch]
+git_url = "https://github.com/timescale/pg_vectorsearch.git"
+# ParadeDB's MS MARCO benchmark pin, including the parallel detoast fix.
+git_ref = "93567fd1a10096a28f11a247151fe5acae8ee2d9"

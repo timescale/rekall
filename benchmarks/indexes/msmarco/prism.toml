@@ -1,0 +1,14 @@
+[[index]]
+type = "prism"
+name = "prism-msmarco-113m"
+[index.params]
+nlist = 0 # automatic, as in ParadeDB's pg_vectorsearch profile
+[index.gucs]
+enable_seqscan = false
+enable_bitmapscan = false
+enable_sort = false
+
+[[search.sweep]]
+index = "prism-msmarco-113m"
+[search.sweep.params]
+"prism.nprobe" = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096]

@@ -1,0 +1,13 @@
+# Unfiltered cosine search on the ParadeDB blog's 113,520,750 × 1024
+# MS MARCO corpus. Both groups use the same heap and physical indexes.
+# AWS profile: infra/instances/msmarco-113m-m8g.2xlarge.toml
+indexes = [
+    "indexes/msmarco/prism.toml",
+    "indexes/msmarco/paradedb.toml",
+]
+
+[[suite]]
+dataset = "datasets/msmarco-113m-top10.toml"
+
+[[suite]]
+dataset = "datasets/msmarco-113m-top100.toml"
